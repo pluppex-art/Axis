@@ -10,9 +10,9 @@ interface LandingPage {
   status: string;
   views: number;
   conversions: number;
-  rate: string;
-  pixel?: string;
-  gtag?: string;
+  conversion_rate?: number;
+  meta_pixel_id?: string;
+  google_analytics_id?: string;
 }
 
 interface LandingPageCardProps {
@@ -67,7 +67,7 @@ export function LandingPageCard({ page, index, onToggleStatus, onOpenTracking, o
           </div>
           <div className="flex flex-col items-center lg:items-start shrink-0">
             <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest flex items-center gap-1 mb-1"><TrendingUp className="w-3 text-emerald-400" /> Tx Conv</span>
-            <span className="text-lg font-bold text-emerald-400">{page.views > 0 ? page.rate : "—"}</span>
+            <span className="text-lg font-bold text-emerald-400">{page.views > 0 ? `${page.conversion_rate ?? 0}%` : "—"}</span>
           </div>
         </div>
 
@@ -75,7 +75,7 @@ export function LandingPageCard({ page, index, onToggleStatus, onOpenTracking, o
           <div className="hidden lg:flex items-center gap-4 mr-4 border-r border-white/10 pr-4">
             <div className="text-right">
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Pixel Meta</p>
-              <p className="text-xs text-emerald-400 font-semibold">• {page.pixel ? 'Ativo' : 'Inativo'}</p>
+              <p className="text-xs text-emerald-400 font-semibold">• {page.meta_pixel_id ? 'Ativo' : 'Inativo'}</p>
             </div>
           </div>
           <Button variant="ghost" size="icon" onClick={() => onOpenTracking(page)} className="hover:bg-blue-500/10 text-slate-400 hover:text-blue-400" title="Configurações de Rastreamento">

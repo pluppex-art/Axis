@@ -23,6 +23,7 @@ import { NotasSection } from "./lead-details/NotasSection";
 import { TarefasSection } from "./lead-details/TarefasSection";
 import { useData } from "../../contexts/DataContext";
 import { toast } from "sonner";
+import { calculateLeadScore } from "../../lib/leadScore";
 import { cn } from "../../lib/utils";
 
 interface LeadDetailsModalProps {
@@ -144,9 +145,19 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
 
   const moveToStage = (stg: any) => {
     setCurrentStageId(stg.id);
-    updateLead(lead.id, { stageId: stg.id, status: stg.status });
+    const newStatus = stg.status || ((stg.name || "").toLowerCase().includes("ganho") || (stg.name || "").toLowerCase().includes("fechado") ? "Fechado" : (stg.name || "").toLowerCase().includes("perdid") ? "Perdido" : "Em Aberto");
+    updateLead(lead.id, { stageId: stg.id, status: newStatus });
+
+    // Recalcular Score IA do Lead considerando a nova etapa e anotações
+    const evalResult = calculateLeadScore(
+      { ...lead, stageId: stg.id, status: newStatus },
+      stg,
+      stagesDef
+    );
+    handleUpdateScore(evalResult.score, evalResult.temperature);
+
     setAlterationLogs((prev: any[]) => [
-      { id: Date.now().toString(), author: seller || "Sistema", desc: `Moveu para '${stg.name}'`, time: "Agora" },
+      { id: Date.now().toString(), author: seller || "Sistema", desc: `Moveu para '${stg.name}' (Score IA: ${evalResult.score}/100)`, time: "Agora" },
       ...prev,
     ]);
     if ((stg.name || "").toLowerCase().includes("reuni")) {
@@ -154,7 +165,7 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
       return;
     }
     toast.success(`Etapa: ${stg.name}`);
-    if (stg.status === "Fechado" || stg.id === stagesDef[stagesDef.length - 1]?.id) {
+    if (newStatus === "Fechado" || stg.id === stagesDef[stagesDef.length - 1]?.id) {
       enrollInLinkedTurmas();
     }
   };

@@ -5,6 +5,7 @@ import { Task } from "../../../../types";
 import { useData } from "../../../../contexts/DataContext";
 
 import { parseCurrencyBR } from "../../../../lib/utils";
+import { calculateLeadScore, normalizeText } from "../../../../lib/leadScore";
 
 interface PipelineKanbanBoardProps {
   activePipelineStages: any[];
@@ -75,17 +76,39 @@ export function PipelineKanbanBoard({
     e.preventDefault();
     const leadId = e.dataTransfer.getData("text/plain") || draggedLeadId;
     if (leadId) {
+      const targetLead = filteredItemsList.find((l: any) => l.id === leadId);
+      const isWon = stage.name?.toLowerCase().includes("ganho") || stage.name?.toLowerCase().includes("fechado");
+      const isLost = stage.name?.toLowerCase().includes("perdid");
+      const newStatus = isWon ? "Fechado" : isLost ? "Perdido" : "Em Aberto";
+
+      // Recalcular Score IA do Lead considerando a nova etapa e as notas existentes do cliente
+      const scoreCalculation = calculateLeadScore(
+        targetLead ? { ...targetLead, stageId: stage.id, status: newStatus } : { stageId: stage.id, status: newStatus },
+        stage,
+        activePipelineStages
+      );
+
       updateLead(leadId, {
         stageId: stage.id,
-        status: (stage.name?.toLowerCase().includes("ganho") || stage.name?.toLowerCase().includes("fechado")) ? "Fechado" : "Em Aberto"
+        status: newStatus,
+        scoreIA: scoreCalculation.score,
+        score_ia: scoreCalculation.score,
+        temperature: scoreCalculation.rawTemperature,
+        probability: scoreCalculation.probability,
       });
-      if (stage.name?.toLowerCase().includes("ganho") || stage.name?.toLowerCase().includes("fechado")) {
+
+      if (isWon) {
         triggerCelebration?.();
       }
-      const isReuniaoStage = ["reuniao_agendada", "reuniao agendada", "reunião agendada", "diagnostico", "apresentacao"].includes(
-        (stage.name || "").toLowerCase()
-      );
-      if (isReuniaoStage && onReuniaoStageDrop) onReuniaoStageDrop(leadId, stage);
+
+      // Abre o modal de nova reunião para todas as etapas que tenham a palavra "reunião" (ou "reuniao").
+      // Expressamente NÃO abre para "diagnostico" (a menos que contenha a palavra reunião).
+      const stageNameNorm = normalizeText(stage.name || "");
+      const isReuniaoStage = stageNameNorm.includes("reuniao") || (stage.id && String(stage.id).toLowerCase().includes("reuniao"));
+
+      if (isReuniaoStage && onReuniaoStageDrop) {
+        onReuniaoStageDrop(leadId, stage);
+      }
     }
     setDraggedOverStageId(null);
     setDraggedLeadId(null);

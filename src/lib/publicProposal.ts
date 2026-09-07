@@ -70,3 +70,23 @@ export async function fetchPublicProposal(token: string): Promise<PublicProposal
     return null;
   }
 }
+
+export async function acceptPublicProposal(
+  token: string,
+  clientData?: { clientName?: string; clientDoc?: string }
+): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const res = await fetch(`/api/public-proposal/${token}/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(clientData || {}),
+    });
+    if (res.ok) {
+      return true;
+    }
+  } catch (err) {
+    console.warn("[publicProposal] Falha ao enviar aceite via API:", err);
+  }
+  return false;
+}

@@ -34,7 +34,9 @@ export default function Turmas() {
     name: t.nome || t.name,
     instructor: t.professor || t.instructor || "Não definido",
     subject: t.curso || t.subject || "Geral",
-    students: t.students?.length || 0,
+    // `turmas` não tem coluna `students` — matrícula é a tabela real `students`,
+    // ligada por `turma_id`.
+    students: students.filter((s: any) => s.turma_id === t.id).length,
     capacity: t.vagas || t.capacity || 0,
     status: (t.status as any) || "Planejamento",
     startDate: t.data_inicio || t.startDate || "",

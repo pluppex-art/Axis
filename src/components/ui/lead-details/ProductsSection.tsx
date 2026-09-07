@@ -22,6 +22,11 @@ import {
   Loader2,
   RefreshCw,
   Wrench,
+  CreditCard,
+  Banknote,
+  QrCode,
+  Calendar,
+  ArrowRightLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
@@ -93,6 +98,13 @@ export function ProductsSection({
   const [itemRecurrences, setItemRecurrences] = useState<Record<string, boolean>>({});
   const [itemMonths, setItemMonths] = useState<Record<string, number>>({});
   const [itemImplFees, setItemImplFees] = useState<Record<string, number>>({});
+
+  // Payment & Installment State (Mini PDV)
+  const [formaPagamento, setFormaPagamento] = useState<
+    "Pix" | "Cartão de Crédito" | "Boleto Bancário" | "Cartão de Débito" | "Dinheiro" | "Transferência / TED" | "Link de Pagamento" | "A Prazo (Crediário)"
+  >("Pix");
+  const [parcelas, setParcelas] = useState<number>(1);
+  const [detalhesPagamento, setDetalhesPagamento] = useState<string>("");
 
   // Word Editor Modal State
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
@@ -190,8 +202,25 @@ export function ProductsSection({
   const totalCost = linkedItems.reduce((acc, item) => acc + item.totalCost, 0);
   const totalCommission = linkedItems.reduce((acc, item) => acc + item.totalCommission, 0);
   const finalTotal = Math.max(0, subtotalRaw - (discountValue || 0));
-  const netProfit = Math.max(0, finalTotal - totalCost - totalCommission);
-  const marginPercent = finalTotal > 0 ? ((netProfit / finalTotal) * 100).toFixed(1) : "0";
+  const netProfit = finalTotal - totalCost - totalCommission;
+  const marginPercent = finalTotal > 0 ? Math.round((netProfit / finalTotal) * 100) : 0;
+
+  // Valor por Parcela
+  const valorParcela = useMemo(() => {
+    if (parcelas <= 1) return finalTotal;
+    return finalTotal / parcelas;
+  }, [finalTotal, parcelas]);
+
+  const PAYMENT_OPTIONS = [
+    { id: "Pix", label: "Pix", icon: QrCode },
+    { id: "Cartão de Crédito", label: "Cartão Crédito", icon: CreditCard },
+    { id: "Boleto Bancário", label: "Boleto", icon: FileText },
+    { id: "Cartão de Débito", label: "Cartão Débito", icon: CreditCard },
+    { id: "Dinheiro", label: "Dinheiro", icon: Banknote },
+    { id: "Transferência / TED", label: "TED / Transferência", icon: ArrowRightLeft },
+    { id: "Link de Pagamento", label: "Link de Pagamento", icon: Zap },
+    { id: "A Prazo (Crediário)", label: "A Prazo / Crediário", icon: Calendar },
+  ] as const;
 
   // Filter available products
   const filteredCatalog = useMemo(() => {
@@ -230,7 +259,6 @@ export function ProductsSection({
           category: newProdCategory,
           type: newProdType,
           recurrence: newProdIsRecurring,
-          billingCycle: newProdIsRecurring ? "Mensal" : "Pontual",
           contractMonths: newProdIsRecurring ? (parseInt(newProdMonths) || 12) : 1,
           hasImplementation: newProdHasImpl,
           implementationFee: newProdHasImpl ? (parseFloat(newProdImplFee.replace(",", ".")) || 0) : 0,
@@ -339,23 +367,30 @@ export function ProductsSection({
         })),
       });
 
-      // 2. Criar lançamento financeiro no Contas a Receber
+      // 2. Criar lançamento financeiro no Contas a Receber com forma de pagamento e parcelamento
       const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const installmentInfo = parcelas > 1
+        ? ` (${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+        : " (À Vista)";
+      const paymentInfoStr = `Forma: ${formaPagamento}${installmentInfo}${detalhesPagamento ? ` - Obs: ${detalhesPagamento}` : ""}`;
+
       await addFinanceEntry({
-        description: `Venda PDV — ${clientName} (${linkedItems.length} soluções: 1º Vencimento R$ ${firstPaymentTotal.toLocaleString("pt-BR")} | LTV R$ ${finalTotal.toLocaleString("pt-BR")})`,
+        description: `Venda PDV — ${clientName} | ${paymentInfoStr} (${linkedItems.length} soluções: 1º Vencimento R$ ${firstPaymentTotal.toLocaleString("pt-BR")} | Total R$ ${finalTotal.toLocaleString("pt-BR")})`,
         category: "Vendas / Serviços",
         value: finalTotal,
         type: "Receber",
-        status: "A Vencer",
+        status: (formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito") ? "Pago" : "A Vencer",
         date: dueDate,
       });
 
-      // 3. Atualizar Lead no banco (valor, produtos e status fechado)
+      // 3. Atualizar Lead no banco (valor, produtos, status fechado, score 100 e dados do pagamento)
       if (leadId && updateLead) {
         await updateLead(leadId, {
           value: finalTotal,
           productIds: linkedProductIds,
           status: "Fechado",
+          scoreIA: 100,
+          temperature: "quente",
         });
       }
 
@@ -391,7 +426,7 @@ export function ProductsSection({
         {
           id: Date.now().toString(),
           author: seller || "Mini PDV",
-          desc: `⚡ Pedido de R$ ${finalTotal.toLocaleString("pt-BR")} concluído: Proposta gerada, Contas a Receber lançado e Lead atualizado.`,
+          desc: `⚡ Pedido de R$ ${finalTotal.toLocaleString("pt-BR")} concluído via ${formaPagamento}${installmentInfo}: Proposta gerada, Contas a Receber lançado e Lead atualizado.`,
           time: "Agora",
         },
         ...prev,
@@ -399,7 +434,7 @@ export function ProductsSection({
 
       addNotification({
         title: `🎉 Venda Concluída no PDV: ${clientName}`,
-        desc: `Venda de R$ ${finalTotal.toLocaleString("pt-BR")} processada. Proposta vinculada e receita provisionada no financeiro.`,
+        desc: `Venda de R$ ${finalTotal.toLocaleString("pt-BR")} processada via ${formaPagamento}${installmentInfo}. Proposta vinculada e receita provisionada no financeiro.`,
         type: "success",
         category: "CRM & Vendas",
         link: "/app/crm/propostas",
@@ -517,7 +552,7 @@ export function ProductsSection({
         <Button
           type="button"
           size="sm"
-          variant={showAddForm ? "secondary" : "primary"}
+          variant={showAddForm ? "secondary" : "default"}
           onClick={() => setShowAddForm((v) => !v)}
           className="text-[11px] font-bold h-7.5 gap-1.5 cursor-pointer"
         >
@@ -700,7 +735,7 @@ export function ProductsSection({
               </Button>
               <Button
                 type="submit"
-                variant="primary"
+                variant="default"
                 size="sm"
                 disabled={isSubmitting}
                 className="text-xs h-8 font-bold gap-1.5 bg-blue-600 hover:bg-blue-500"
@@ -926,6 +961,99 @@ export function ProductsSection({
               <span className="text-[9px] text-slate-500 block uppercase">Lucro Líquido</span>
               <span className="text-emerald-400 font-bold text-[11px]">R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
+          </div>
+        </div>
+
+        {/* ── FORMA DE PAGAMENTO & PARCELAS DO MINI PDV ── */}
+        <div className="bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3">
+          <div className="flex items-center justify-between text-[10px] uppercase font-black text-slate-400 border-b border-white/5 pb-1.5">
+            <span className="flex items-center gap-1.5 text-blue-400">
+              <CreditCard className="w-3.5 h-3.5" /> Condição de Pagamento & Parcelas (PDV)
+            </span>
+            <span className="text-[var(--color-text-muted)] font-mono">
+              {parcelas > 1 ? `${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "À Vista"}
+            </span>
+          </div>
+
+          {/* Seletor de Formas de Pagamento */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+              Como foi o Pagamento:
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {PAYMENT_OPTIONS.map((method) => {
+                const isSelected = formaPagamento === method.id;
+                const Icon = method.icon;
+                return (
+                  <button
+                    key={method.id}
+                    type="button"
+                    onClick={() => setFormaPagamento(method.id as any)}
+                    className={cn(
+                      "flex items-center gap-1.5 p-2 rounded-lg border text-left transition-all cursor-pointer",
+                      isSelected
+                        ? "bg-blue-600/20 border-blue-500 text-white font-bold shadow-sm shadow-blue-500/20 ring-1 ring-blue-500/40"
+                        : "bg-[var(--color-surface-elevated)] border-white/[0.06] text-slate-400 hover:text-slate-200 hover:border-white/20"
+                    )}
+                  >
+                    <Icon className={cn("w-3.5 h-3.5 shrink-0", isSelected ? "text-blue-400" : "text-slate-500")} />
+                    <span className="text-[11px] truncate">{method.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Seletor de Parcelas e Observações */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-white/5">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Quantidade de Parcelas:
+                </label>
+                <span className="text-xs font-mono font-black text-emerald-400">
+                  {parcelas}x {parcelas === 1 ? "(À Vista)" : ""}
+                </span>
+              </div>
+              <select
+                value={parcelas}
+                onChange={(e) => setParcelas(Number(e.target.value))}
+                className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none cursor-pointer"
+              >
+                <option value={1}>1x à vista (R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})</option>
+                {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map((num) => (
+                  <option key={num} value={num}>
+                    {num}x de R$ {(finalTotal / num).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                Detalhes / Observação do Pagamento:
+              </label>
+              <input
+                type="text"
+                value={detalhesPagamento}
+                onChange={(e) => setDetalhesPagamento(e.target.value)}
+                placeholder="Ex: Cartão Visa final 4022 / Pix confirmado"
+                className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Resumo da Parcela */}
+          <div className="p-2 bg-[var(--color-surface-elevated)] rounded-lg border border-white/[0.05] flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] text-slate-300">
+                Resumo da Condição: <strong className="text-white">{formaPagamento}</strong>
+              </span>
+            </div>
+            <span className="text-xs font-mono font-black text-emerald-400">
+              {parcelas > 1 ? `${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `R$ ${finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} à vista`}
+            </span>
           </div>
         </div>
 

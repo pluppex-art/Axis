@@ -1002,14 +1002,20 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
   const saveToDB = async (lead: Lead) => {
     if (!supabase) return;
     const { id, ...rest } = lead;
+    // `imobiliario_leads` não tem coluna `status` nem `tags` — ficam só no estado
+    // local (React), senão o UPDATE inteiro falha por coluna desconhecida.
     const row = {
       nome: rest.cliente, telefone: rest.telefone, email: rest.email,
       interesse: rest.interesse, bairro: rest.bairro, orcamento: rest.orcamento,
       corretor: rest.corretor, origem: rest.origem, etapa: rest.etapa,
       dias_etapa: rest.diasEtapa, prioridade: rest.prioridade, obs: rest.obs,
-      status: rest.status, imovel_id: rest.imovelId, veiculo_id: rest.veiculoId,
+      imovel_id: rest.imovelId, veiculo_id: rest.veiculoId,
     };
-    await supabase.from("imobiliario_leads").update(row).eq("id", id);
+    const { error } = await supabase.from("imobiliario_leads").update(row).eq("id", id);
+    if (error) {
+      console.error("[Supabase] update imobiliario_leads error:", error.message);
+      toast.error(`Erro ao salvar lead: ${error.message}`);
+    }
   };
 
   const updateLead = (id: string, patch: Partial<Lead>) => {
@@ -1034,14 +1040,21 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
     };
     setLeads(prev => [novo, ...prev]);
     if (supabase) {
-      const { data } = await supabase.from("imobiliario_leads").insert({
+      // `tipo` é NOT NULL (discrimina imóvel/veículo) e nunca era enviado — todo
+      // insert falhava. `status`/`tags` não têm coluna própria (ficam só localmente).
+      const { data, error } = await supabase.from("imobiliario_leads").insert({
         nome: novo.cliente, telefone: novo.telefone, email: novo.email,
-        interesse: novo.interesse, bairro: novo.bairro, orcamento: novo.orcamento,
+        interesse: novo.interesse, tipo, bairro: novo.bairro, orcamento: novo.orcamento,
         corretor: novo.corretor, origem: novo.origem, etapa: novo.etapa,
         dias_etapa: novo.diasEtapa, prioridade: novo.prioridade, obs: novo.obs,
-        status: novo.status, tags: novo.tags,
         imovel_id: novo.imovelId, veiculo_id: novo.veiculoId,
       }).select("id").single();
+      if (error) {
+        console.error("[Supabase] insert imobiliario_leads error:", error.message);
+        toast.error(`Erro ao adicionar lead: ${error.message}`);
+        setLeads(prev => prev.filter(l => l.id !== novo.id));
+        return;
+      }
       if (data?.id) setLeads(prev => prev.map(l => l.id === novo.id ? { ...l, id: data.id } : l));
     }
     toast.success(`Lead adicionado em ${newLeadEtapa}!`);
@@ -1057,9 +1070,16 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
     setEditLead(null);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     setLeads(prev => prev.filter(l => l.id !== id));
-    if (supabase) supabase.from("imobiliario_leads").delete().eq("id", id);
+    if (supabase) {
+      const { error } = await supabase.from("imobiliario_leads").delete().eq("id", id);
+      if (error) {
+        console.error("[Supabase] delete imobiliario_leads error:", error.message);
+        toast.error(`Erro ao remover lead: ${error.message}`);
+        return;
+      }
+    }
     toast.success("Lead removido.");
   };
 

@@ -108,10 +108,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // mesma "key" (ex.: "spy_sidebar_modules") acabariam lendo/sobrescrevendo
       // a configuração uma da outra.
       const { data } = await supabase.from('app_settings').select('id').eq('key', key).eq('tenant_id', tenantId).maybeSingle();
-      if (data) {
-        await supabase.from('app_settings').update({ value }).eq('id', data.id);
-      } else {
-        await supabase.from('app_settings').insert({ key, value, tenant_id: tenantId });
+      const { error } = data
+        ? await supabase.from('app_settings').update({ value }).eq('id', data.id)
+        : await supabase.from('app_settings').insert({ key, value, tenant_id: tenantId });
+      if (error) {
+        console.error(`Supabase sync setting failed for ${key}:`, error.message);
       }
     } catch (err) {
       console.error(`Supabase sync setting failed for ${key}:`, err);
@@ -216,12 +217,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const addSquad = async (squad: Omit<Squad, 'id'>) => {
     const newSquad = { ...squad, id: `sq${Math.random().toString(36).substring(2, 9)}` };
     setSquads(prev => [...prev, newSquad]);
-    toast.success('Squad criado com sucesso!');
+    if (!supabase) {
+      toast.success('Squad criado com sucesso!');
+      return;
+    }
     if (supabase) {
       try {
         const { id, nome, departamento, focoComercial, membros, leader, cor, logo, membrosFuncoes, clientes } = newSquad as any;
-        await supabase.from('squads').insert({
+        const { error } = await supabase.from('squads').insert({
           id, nome,
+          ...(tenantId ? { tenant_id: tenantId } : {}),
           departamento: departamento || 'Geral',
           foco_comercial: focoComercial || '',
           membros: membros || [],
@@ -231,8 +236,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           membros_funcoes: membrosFuncoes || {},
           clientes: clientes || [],
         });
+        if (error) {
+          console.error("Supabase add squad failed:", error.message);
+          toast.error(`Erro ao criar squad: ${error.message}`);
+          setSquads(prev => prev.filter(s => s.id !== newSquad.id));
+        } else {
+          toast.success('Squad criado com sucesso!');
+        }
       } catch (err) {
         console.error("Supabase add squad failed:", err);
+        toast.error('Erro ao criar squad.');
+        setSquads(prev => prev.filter(s => s.id !== newSquad.id));
       }
     }
   };
@@ -376,14 +390,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const colaboradores = useMemo(() => filterByFilial(colaboradoresRaw), [colaboradoresRaw, activeFilialId]);
 
   const addStudent = async (student: any) => {
-    const newStudent = { ...student, id: `st${Math.random().toString(36).substring(2, 9)}` };
+    const newStudent = { ...student, id: `st${Math.random().toString(36).substring(2, 9)}`, ...(tenantId ? { tenant_id: tenantId } : {}) };
     setStudents(prev => [...prev, newStudent]);
-    if (supabase) await supabase.from('students').insert(newStudent);
+    if (supabase) {
+      const { error } = await supabase.from('students').insert(newStudent);
+      if (error) {
+        console.error("Supabase add student failed:", error.message);
+        toast.error(`Erro ao matricular aluno: ${error.message}`);
+      }
+    }
+    return newStudent;
   };
 
   const updateStudent = async (id: string, updates: any) => {
     setStudents(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-    if (supabase) await supabase.from('students').update(updates).eq('id', id);
+    if (supabase) {
+      const { error } = await supabase.from('students').update(updates).eq('id', id);
+      if (error) {
+        console.error("Supabase update student failed:", error.message);
+        toast.error(`Erro ao atualizar aluno: ${error.message}`);
+      }
+    }
   };
 
   const deleteStudent = async (id: string) => {
@@ -940,7 +967,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (supabase) {
       try {
         // Strip unknown / non-DB fields and fix value type
-        const { customTags, productIds, ...safeUpdates } = updates as any;
+        const { customTags, productIds, probability, ...safeUpdates } = updates as any;
         if (safeUpdates.value !== undefined) {
           safeUpdates.value = parseCurrencyBR(safeUpdates.value);
         }
@@ -954,9 +981,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           safeUpdates.score_ia = safeUpdates.scoreIA;
         }
         const { error } = await supabase.from('leads').update(safeUpdates).eq('id', id);
-        if (error) console.error("Supabase update lead failed:", error.message);
+        if (error) {
+          console.error("Supabase update lead failed:", error.message);
+          toast.error(`Erro ao salvar lead: ${error.message}`);
+        }
       } catch (err) {
         console.error("Supabase update lead failed:", err);
+        toast.error("Erro ao salvar lead.");
       }
     }
     if (hasStatusOrStageChange) {
@@ -1087,10 +1118,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (supabase) {
-      try {
-        await supabase.from('contracts').insert(newContract);
-      } catch (err) {
-        console.error("Supabase add contract failed:", err);
+      // `contracts` real não tem client/plan/mrr/date/progress — mapeia pros campos
+      // reais (title/value/mrr_value/signed_date), guardando cliente/plano em `notes`
+      // já que não existem colunas próprias pra eles. Sem esse remapeamento o insert
+      // falhava em 100% dos casos (0 linhas na tabela em produção).
+      const mrrNumber = parseCurrencyBR(contract.mrr);
+      const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(contract.date);
+      const signedDate = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : (/^\d{4}-\d{2}-\d{2}$/.test(contract.date) ? contract.date : null);
+      const { error } = await supabase.from('contracts').insert({
+        id: newContract.id,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+        filial_id: newContract.filial_id,
+        title: `${contract.plan} - ${contract.client}`,
+        value: mrrNumber,
+        mrr_value: mrrNumber,
+        status: contract.status,
+        ...(signedDate ? { signed_date: signedDate } : {}),
+        notes: `Cliente: ${contract.client} | Plano: ${contract.plan}`,
+      });
+      if (error) {
+        console.error("Supabase add contract failed:", error.message);
+        toast.error(`Erro ao registrar contrato: ${error.message}`);
       }
     }
   };
@@ -1144,10 +1192,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setLeadActivities(updatedActivities);
 
     if (supabase) {
-      try {
-        await supabase.from('lead_activities').insert(newActivity);
-      } catch (err) {
-        console.error("Supabase add lead activity failed:", err);
+      // `lead_activities` não tem coluna `files` nem `leadId` (camelCase) — a FK real é
+      // `lead_id`, NOT NULL. Sem esse remapeamento o insert falhava em 100% dos casos.
+      const { error } = await supabase.from('lead_activities').insert({
+        id: newActivity.id,
+        lead_id: leadId,
+        type: newActivity.type,
+        title: newActivity.title,
+        description: newActivity.description,
+        date: newActivity.date,
+        seller: newActivity.seller,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+      });
+      if (error) {
+        console.error("Supabase add lead activity failed:", error.message);
+        toast.error(`Erro ao registrar atividade: ${error.message}`);
       }
     }
     triggerScoreRecalculation(leadId, leads, updatedActivities);
@@ -1234,6 +1293,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             if (error.message?.includes('updated_at')) {
               console.warn(`[Supabase] Trigger issue on ${tableName} — execute a migration 20260827_fix_colaboradores_updated_at.sql no Supabase SQL Editor`);
             }
+            toast.error(`Erro ao salvar alterações: ${error.message}`);
           }
         }
       },

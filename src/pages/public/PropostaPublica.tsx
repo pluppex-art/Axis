@@ -27,7 +27,6 @@ import { Badge } from "../../components/ui/badge";
 import { fetchPublicProposal, PublicProposal } from "../../lib/publicProposal";
 import { handleDownloadPdf } from "../crm/utils/proposalPdf";
 import { toast } from "sonner";
-import { cn } from "../../lib/utils";
 
 function formatMoney(v: number | null | undefined) {
   return (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -52,6 +51,19 @@ export default function PropostaPublica() {
   const [isAccepted, setIsAccepted] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false); // Default to clean Executive Light theme
+
+  // Página pública, sem sessão logada — não há tema de app pra herdar, então o
+  // toggle aqui aplica a mesma classe `dark` em <html> que o resto do sistema usa
+  // (ver DataContext.tsx), fazendo as variáveis --color-* baterem com "os outros"
+  // em vez de manter uma paleta hexadecimal própria e desalinhada.
+  useEffect(() => {
+    const root = document.documentElement;
+    const hadDark = root.classList.contains("dark");
+    root.classList.toggle("dark", isDarkMode);
+    return () => {
+      root.classList.toggle("dark", hadDark);
+    };
+  }, [isDarkMode]);
 
   useEffect(() => {
     if (!token) {
@@ -142,21 +154,9 @@ export default function PropostaPublica() {
   };
 
   return (
-    <div
-      className={cn(
-        "min-h-screen font-sans selection:bg-blue-600 selection:text-white pb-20 transition-colors",
-        isDarkMode ? "bg-[#0b0c10] text-slate-100" : "bg-[#f8fafc] text-slate-900"
-      )}
-    >
+    <div className="min-h-screen font-sans selection:bg-blue-600 selection:text-white pb-20 bg-[var(--color-surface)] text-[var(--color-text-primary)]">
       {/* ── TOP NAV INSTITUCIONAL (COM BRANDING DO TENANT) ── */}
-      <header
-        className={cn(
-          "sticky top-0 z-30 backdrop-blur-md border-b px-4 sm:px-8 py-3.5 transition-colors",
-          isDarkMode
-            ? "bg-[#0f1118]/90 border-white/[0.08]"
-            : "bg-white/90 border-slate-200/80 shadow-xs"
-        )}
-      >
+      <header className="sticky top-0 z-30 backdrop-blur-md border-b border-[var(--color-border-default)] bg-[var(--color-surface-elevated)]/90 shadow-xs px-4 sm:px-8 py-3.5">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div
@@ -166,18 +166,10 @@ export default function PropostaPublica() {
               {tenantName.charAt(0).toUpperCase()}
             </div>
             <div>
-              <span
-                className="text-xs font-black tracking-wider uppercase block"
-                style={{ color: isDarkMode ? "#f8fafc" : brandColor }}
-              >
+              <span className="text-xs font-black tracking-wider uppercase block" style={{ color: brandColor }}>
                 {tenantName}
               </span>
-              <span
-                className={cn(
-                  "text-[10px] font-mono flex items-center gap-1",
-                  isDarkMode ? "text-slate-400" : "text-slate-500"
-                )}
-              >
+              <span className="text-[10px] font-mono flex items-center gap-1 text-[var(--color-text-muted)]">
                 <Lock className="w-2.5 h-2.5 text-emerald-500" /> Documento Autenticado & Oficial
               </span>
             </div>
@@ -188,15 +180,10 @@ export default function PropostaPublica() {
             <button
               type="button"
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className={cn(
-                "p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer",
-                isDarkMode
-                  ? "bg-[#181a24] border-slate-700 text-amber-300 hover:bg-slate-800"
-                  : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
-              )}
+              className="p-2 rounded-xl border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs font-bold transition-all cursor-pointer"
               title={isDarkMode ? "Mudar para Modo Claro" : "Mudar para Modo Escuro"}
             >
-              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
             </button>
 
             <Button
@@ -204,12 +191,7 @@ export default function PropostaPublica() {
               variant="outline"
               size="sm"
               onClick={handleDownloadDocPdf}
-              className={cn(
-                "text-xs gap-1.5 h-8.5 font-bold cursor-pointer",
-                isDarkMode
-                  ? "border-white/10 hover:bg-white/5 text-slate-300"
-                  : "border-slate-300 hover:bg-slate-100 text-slate-700"
-              )}
+              className="text-xs gap-1.5 h-8.5 font-bold cursor-pointer border-[var(--color-border-default)] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)]"
             >
               <Download className="w-3.5 h-3.5" style={{ color: brandColor }} /> Baixar PDF
             </Button>
@@ -218,12 +200,7 @@ export default function PropostaPublica() {
               variant="outline"
               size="sm"
               onClick={() => window.print()}
-              className={cn(
-                "text-xs gap-1.5 h-8.5 font-bold hidden sm:inline-flex cursor-pointer",
-                isDarkMode
-                  ? "border-white/10 hover:bg-white/5 text-slate-300"
-                  : "border-slate-300 hover:bg-slate-100 text-slate-700"
-              )}
+              className="text-xs gap-1.5 h-8.5 font-bold hidden sm:inline-flex cursor-pointer border-[var(--color-border-default)] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)]"
             >
               <Printer className="w-3.5 h-3.5" /> Imprimir
             </Button>
@@ -243,7 +220,7 @@ export default function PropostaPublica() {
               <h4 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wide">
                 Proposta Aprovada pelo Cliente
               </h4>
-              <p className={cn("text-[11px]", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+              <p className="text-[11px] text-[var(--color-text-muted)]">
                 O aceite comercial foi formalizado. A equipe da <strong>{tenantName}</strong> já foi notificada para os trâmites de implantação.
               </p>
             </div>
@@ -251,14 +228,7 @@ export default function PropostaPublica() {
         )}
 
         {/* CARTÃO PRINCIPAL DA PROPOSTA COM IDENTIDADE DO TENANT */}
-        <Card
-          className={cn(
-            "p-6 sm:p-12 rounded-3xl shadow-xl relative overflow-hidden transition-colors border",
-            isDarkMode
-              ? "bg-[#12141c] border-white/[0.08]"
-              : "bg-white border-slate-200/90 shadow-slate-200/50"
-          )}
-        >
+        <Card className="p-6 sm:p-12 rounded-3xl shadow-xl relative overflow-hidden border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)]">
           {/* Faixa superior de destaque com a cor da marca do Tenant */}
           <div
             className="absolute top-0 left-0 right-0 h-2"
@@ -266,12 +236,7 @@ export default function PropostaPublica() {
           />
 
           {/* CABEÇALHO DO DOCUMENTO */}
-          <div
-            className={cn(
-              "flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-6 border-b",
-              isDarkMode ? "border-white/[0.08]" : "border-slate-200"
-            )}
-          >
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-6 border-b border-[var(--color-border-default)]">
             <div className="space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span
@@ -296,41 +261,31 @@ export default function PropostaPublica() {
                 )}
               </div>
 
-              <h1
-                className={cn(
-                  "text-2xl sm:text-3xl font-black tracking-tight",
-                  isDarkMode ? "text-white" : "text-slate-900"
-                )}
-              >
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[var(--color-text-primary)]">
                 {proposta.titulo}
               </h1>
 
               {proposta.cliente && (
-                <p className={cn("text-xs", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                <p className="text-xs text-[var(--color-text-muted)]">
                   Apresentada exclusivamente para:{" "}
-                  <strong className={isDarkMode ? "text-slate-200" : "text-slate-800"}>
+                  <strong className="text-[var(--color-text-primary)]">
                     {proposta.cliente}
                   </strong>
                 </p>
               )}
             </div>
 
-            <div
-              className={cn(
-                "text-left sm:text-right space-y-1 text-xs",
-                isDarkMode ? "text-slate-400" : "text-slate-500"
-              )}
-            >
+            <div className="text-left sm:text-right space-y-1 text-xs text-[var(--color-text-muted)]">
               <p>
                 Emissão:{" "}
-                <span className={cn("font-semibold", isDarkMode ? "text-white" : "text-slate-800")}>
+                <span className="font-semibold text-[var(--color-text-primary)]">
                   {formatDate(proposta.criadaEm)}
                 </span>
               </p>
               <p className="flex items-center sm:justify-end gap-1">
                 <Calendar className="w-3.5 h-3.5 text-amber-500" />
                 Válida até:{" "}
-                <span className={cn("font-semibold", isDarkMode ? "text-white" : "text-slate-800")}>
+                <span className="font-semibold text-[var(--color-text-primary)]">
                   {formatDate(proposta.validade)}
                 </span>
               </p>
@@ -339,20 +294,8 @@ export default function PropostaPublica() {
 
           {/* CARDS COM MÉTRICAS DE INVESTIMENTO */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-8">
-            <div
-              className={cn(
-                "p-5 rounded-2xl border transition-colors",
-                isDarkMode
-                  ? "bg-[#181a24] border-white/[0.06]"
-                  : "bg-slate-50 border-slate-200/80"
-              )}
-            >
-              <span
-                className={cn(
-                  "text-[10px] font-black uppercase tracking-wider block mb-1",
-                  isDarkMode ? "text-slate-400" : "text-slate-500"
-                )}
-              >
+            <div className="p-5 rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)]">
+              <span className="text-[10px] font-black uppercase tracking-wider block mb-1 text-[var(--color-text-muted)]">
                 Investimento Total
               </span>
               <p
@@ -366,28 +309,11 @@ export default function PropostaPublica() {
               </span>
             </div>
 
-            <div
-              className={cn(
-                "p-5 rounded-2xl border transition-colors",
-                isDarkMode
-                  ? "bg-[#181a24] border-white/[0.06]"
-                  : "bg-slate-50 border-slate-200/80"
-              )}
-            >
-              <span
-                className={cn(
-                  "text-[10px] font-black uppercase tracking-wider block mb-1",
-                  isDarkMode ? "text-slate-400" : "text-slate-500"
-                )}
-              >
+            <div className="p-5 rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)]">
+              <span className="text-[10px] font-black uppercase tracking-wider block mb-1 text-[var(--color-text-muted)]">
                 Validade Comercial
               </span>
-              <p
-                className={cn(
-                  "text-sm font-bold mt-1",
-                  isDarkMode ? "text-white" : "text-slate-800"
-                )}
-              >
+              <p className="text-sm font-bold mt-1 text-[var(--color-text-primary)]">
                 {formatDate(proposta.validade)}
               </p>
               <span className="text-[10px] text-slate-400 block mt-1">
@@ -395,20 +321,8 @@ export default function PropostaPublica() {
               </span>
             </div>
 
-            <div
-              className={cn(
-                "p-5 rounded-2xl border transition-colors",
-                isDarkMode
-                  ? "bg-[#181a24] border-white/[0.06]"
-                  : "bg-slate-50 border-slate-200/80"
-              )}
-            >
-              <span
-                className={cn(
-                  "text-[10px] font-black uppercase tracking-wider block mb-1",
-                  isDarkMode ? "text-slate-400" : "text-slate-500"
-                )}
-              >
+            <div className="p-5 rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)]">
+              <span className="text-[10px] font-black uppercase tracking-wider block mb-1 text-[var(--color-text-muted)]">
                 Status da Proposta
               </span>
               <p
@@ -427,36 +341,19 @@ export default function PropostaPublica() {
           {proposta.itens && proposta.itens.length > 0 && (
             <div className="space-y-3 mb-8">
               <div className="flex items-center justify-between">
-                <h3
-                  className={cn(
-                    "text-xs font-black uppercase tracking-wider flex items-center gap-1.5",
-                    isDarkMode ? "text-white" : "text-slate-900"
-                  )}
-                >
+                <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5 text-[var(--color-text-primary)]">
                   <CreditCard className="w-3.5 h-3.5" style={{ color: brandColor }} />
                   Escopo de Fornecimento & Soluções
                 </h3>
-                <span className="text-[10px] text-slate-400 font-mono">
+                <span className="text-[10px] text-[var(--color-text-muted)] font-mono">
                   {proposta.itens.length}{" "}
                   {proposta.itens.length === 1 ? "item contratado" : "itens contratados"}
                 </span>
               </div>
 
-              <div
-                className={cn(
-                  "border rounded-2xl overflow-hidden",
-                  isDarkMode ? "border-white/[0.08] bg-[#161822]" : "border-slate-200 bg-white shadow-xs"
-                )}
-              >
+              <div className="border rounded-2xl overflow-hidden border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] shadow-xs">
                 <table className="w-full text-xs text-left">
-                  <thead
-                    className={cn(
-                      "uppercase tracking-wider text-[10px] border-b font-black",
-                      isDarkMode
-                        ? "bg-white/[0.03] text-slate-400 border-white/[0.08]"
-                        : "bg-slate-100 text-slate-600 border-slate-200"
-                    )}
-                  >
+                  <thead className="uppercase tracking-wider text-[10px] border-b font-black bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] border-[var(--color-border-default)]">
                     <tr>
                       <th className="py-3 px-4">Item / Descrição</th>
                       <th className="py-3 px-3 text-center">Quantidade</th>
@@ -464,19 +361,11 @@ export default function PropostaPublica() {
                       <th className="py-3 px-4 text-right">Subtotal</th>
                     </tr>
                   </thead>
-                  <tbody
-                    className={cn(
-                      "divide-y",
-                      isDarkMode ? "divide-white/[0.04] text-slate-200" : "divide-slate-100 text-slate-800"
-                    )}
-                  >
+                  <tbody className="divide-y divide-[var(--color-border-subtle)] text-[var(--color-text-primary)]">
                     {proposta.itens.map((item, i) => (
                       <tr
                         key={i}
-                        className={cn(
-                          "transition-colors",
-                          isDarkMode ? "hover:bg-white/[0.02]" : "hover:bg-slate-50"
-                        )}
+                        className="transition-colors hover:bg-[var(--color-surface-sunken)]"
                       >
                         <td className="py-3 px-4 font-semibold">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -513,21 +402,11 @@ export default function PropostaPublica() {
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot
-                    className={cn(
-                      "border-t-2 font-bold",
-                      isDarkMode
-                        ? "bg-white/[0.02] border-white/[0.08]"
-                        : "bg-slate-50 border-slate-200"
-                    )}
-                  >
+                  <tfoot className="border-t-2 font-bold bg-[var(--color-surface-sunken)] border-[var(--color-border-default)]">
                     <tr>
                       <td
                         colSpan={3}
-                        className={cn(
-                          "py-3.5 px-4 text-right uppercase text-[11px]",
-                          isDarkMode ? "text-slate-400" : "text-slate-600"
-                        )}
+                        className="py-3.5 px-4 text-right uppercase text-[11px] text-[var(--color-text-muted)]"
                       >
                         Total do Fornecimento:
                       </td>
@@ -546,66 +425,37 @@ export default function PropostaPublica() {
 
           {/* DIRETRIZES E TERMOS CONTRATUAIS */}
           {proposta.conteudoTexto && (
-            <div
-              className={cn(
-                "space-y-3 pt-6 border-t",
-                isDarkMode ? "border-white/[0.08]" : "border-slate-200"
-              )}
-            >
+            <div className="space-y-3 pt-6 border-t border-[var(--color-border-default)]">
               <div className="flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4" style={{ color: brandColor }} />
-                <h3
-                  className={cn(
-                    "text-xs font-black uppercase tracking-wider",
-                    isDarkMode ? "text-white" : "text-slate-900"
-                  )}
-                >
+                <h3 className="text-xs font-black uppercase tracking-wider text-[var(--color-text-primary)]">
                   Diretrizes, Cláusulas e Termos Contratuais
                 </h3>
               </div>
 
-              <div
-                className={cn(
-                  "p-6 sm:p-8 rounded-2xl border text-xs leading-relaxed whitespace-pre-wrap text-justify shadow-xs",
-                  isDarkMode
-                    ? "bg-[#161822] border-white/[0.08] text-slate-300"
-                    : "bg-slate-50/80 border-slate-200 text-slate-700"
-                )}
-              >
+              <div className="p-6 sm:p-8 rounded-2xl border text-xs leading-relaxed whitespace-pre-wrap text-justify shadow-xs border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)]">
                 {proposta.conteudoTexto}
               </div>
             </div>
           )}
 
           {/* DADOS DA EMPRESA PROPONENTE (CONTRATADA) */}
-          <div
-            className={cn(
-              "mt-8 p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs",
-              isDarkMode
-                ? "bg-[#161822] border-white/[0.08]"
-                : "bg-slate-50 border-slate-200"
-            )}
-          >
+          <div className="mt-8 p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs border-[var(--color-border-default)] bg-[var(--color-surface-sunken)]">
             <div className="space-y-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] block">
                 Empresa Proponente / Contratada
               </span>
-              <p
-                className={cn(
-                  "font-bold text-sm",
-                  isDarkMode ? "text-white" : "text-slate-900"
-                )}
-              >
+              <p className="font-bold text-sm text-[var(--color-text-primary)]">
                 {tenantName}
               </p>
               {proposta.empresaDados?.cnpj && (
-                <p className="text-[11px] font-mono text-slate-500">
+                <p className="text-[11px] font-mono text-[var(--color-text-muted)]">
                   CNPJ: {proposta.empresaDados.cnpj}
                 </p>
               )}
               {proposta.empresaDados?.endereco && (
-                <p className="text-[11px] text-slate-500 flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-slate-400" /> {proposta.empresaDados.endereco}
+                <p className="text-[11px] text-[var(--color-text-muted)] flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-[var(--color-text-faint)]" /> {proposta.empresaDados.endereco}
                 </p>
               )}
             </div>
@@ -613,8 +463,8 @@ export default function PropostaPublica() {
             <div className="space-y-1 text-left sm:text-right">
               {proposta.vendedor && (
                 <p className="text-xs">
-                  <span className="text-slate-400">Consultor Responsável:</span>{" "}
-                  <strong className={isDarkMode ? "text-slate-200" : "text-slate-800"}>
+                  <span className="text-[var(--color-text-muted)]">Consultor Responsável:</span>{" "}
+                  <strong className="text-[var(--color-text-primary)]">
                     {proposta.vendedor}
                   </strong>
                 </p>
@@ -633,22 +483,12 @@ export default function PropostaPublica() {
           </div>
 
           {/* AÇÕES DE ACEITE DIGITAL */}
-          <div
-            className={cn(
-              "mt-10 pt-8 border-t flex flex-col sm:flex-row sm:items-center justify-between gap-4",
-              isDarkMode ? "border-white/[0.08]" : "border-slate-200"
-            )}
-          >
+          <div className="mt-10 pt-8 border-t flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-[var(--color-border-default)]">
             <div>
-              <p
-                className={cn(
-                  "text-xs font-bold mb-0.5",
-                  isDarkMode ? "text-white" : "text-slate-900"
-                )}
-              >
+              <p className="text-xs font-bold mb-0.5 text-[var(--color-text-primary)]">
                 Pronto para dar o próximo passo com a {tenantName}?
               </p>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-[var(--color-text-muted)]">
                 A formalização digital assegura o início imediato dos trabalhos e a reserva das condições propostas.
               </p>
             </div>

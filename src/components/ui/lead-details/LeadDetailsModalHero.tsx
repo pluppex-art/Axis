@@ -66,10 +66,16 @@ export function LeadDetailsModalHero({
             <button
               onClick={() => {
                 const lastStage = stagesDef[stagesDef.length - 1];
-                updateLead(lead.id, { stageId: lastStage?.id ?? "5", status: "Fechado" });
+                updateLead(lead.id, {
+                  stageId: lastStage?.id ?? "5",
+                  status: "Fechado",
+                  scoreIA: 100,
+                  score_ia: 100,
+                  temperature: "quente",
+                });
                 toast.success("Lead fechado como GANHO! 🏆");
                 setAlterationLogs((prev) => [
-                  { id: Date.now().toString(), author: seller || "Sistema", desc: "MARCOU COMO GANHO", time: "Agora" },
+                  { id: Date.now().toString(), author: seller || "Sistema", desc: "MARCOU COMO GANHO (Score IA: 100)", time: "Agora" },
                   ...prev,
                 ]);
               }}
@@ -79,10 +85,15 @@ export function LeadDetailsModalHero({
             </button>
             <button
               onClick={() => {
-                updateLead(lead.id, { status: "Perdido" });
+                updateLead(lead.id, {
+                  status: "Perdido",
+                  scoreIA: 10,
+                  score_ia: 10,
+                  temperature: "frio",
+                });
                 toast.warning("Lead marcado como Perdido.");
                 setAlterationLogs((prev) => [
-                  { id: Date.now().toString(), author: seller || "Sistema", desc: "MARCOU COMO PERDIDO", time: "Agora" },
+                  { id: Date.now().toString(), author: seller || "Sistema", desc: "MARCOU COMO PERDIDO (Score IA: 10)", time: "Agora" },
                   ...prev,
                 ]);
               }}

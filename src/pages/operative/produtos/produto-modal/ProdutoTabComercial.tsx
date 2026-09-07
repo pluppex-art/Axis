@@ -1,5 +1,5 @@
 import { DollarSign, Coins, Percent, TrendingUp, RotateCw, Wrench, Calendar, Sparkles } from "lucide-react";
-import { cn } from "../../../../../lib/utils";
+import { cn } from "../../../../lib/utils";
 
 interface ProdutoTabComercialProps {
   formPrice: string;

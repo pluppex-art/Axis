@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { DropResult } from "@hello-pangea/dnd";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { readKanbanConfig, KANBAN_KEYS, KANBAN_COR_CLASS } from "../../hooks/useKanbanConfig";
 
 function getMarketingColumns(appSettings: Record<string, any>) {
@@ -39,13 +40,14 @@ function mapRowToTask(row: any) {
   };
 }
 
-function taskToRow(task: any) {
+function taskToRow(task: any, tenantId?: string) {
   const row: any = {
     id: task.id,
     title: task.title,
     description: task.desc,
     platform: task.platform,
     status: task.colId,
+    ...(tenantId ? { tenant_id: tenantId } : {}),
   };
   if (task.publishDateISO) row.publish_date = task.publishDateISO;
   return row;
@@ -53,6 +55,7 @@ function taskToRow(task: any) {
 
 export function useMarketingConteudo() {
   const { marketingContent: contentRows, appSettings } = useData();
+  const { activeTenantId } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
 
   useEffect(() => {
@@ -82,7 +85,7 @@ export function useMarketingConteudo() {
       try {
         const { error } = await supabase
           .from("marketing_content")
-          .upsert(taskToRow(task));
+          .upsert(taskToRow(task, activeTenantId));
 
         if (error) {
           console.error("Supabase upsert failure:", error.message);

@@ -113,10 +113,15 @@ export function useDevSprints(projectId?: string | null) {
     if (!supabase) return;
 
     // Atualiza card
-    await supabase
+    const { error: moveError } = await supabase
       .from('dev_sprint_tasks')
       .update({ column_id: column })
       .eq('id', id);
+
+    if (moveError) {
+      console.error('[Supabase] move dev_sprint_tasks error:', moveError.message);
+      toast.error(`Erro ao mover tarefa: ${moveError.message}`);
+    }
 
     // Recalcula progresso do projeto (100% automático)
     // Progresso = cards concluídos / total backlog do projeto
@@ -139,10 +144,14 @@ export function useDevSprints(projectId?: string | null) {
 
     const nextProgress = backlogPoints > 0 ? Math.round((donePoints / backlogPoints) * 100) : 0;
 
-    await supabase
+    const { error: progressError } = await supabase
       .from('dev_projects')
       .update({ progress: nextProgress })
       .eq('id', projectId);
+
+    if (progressError) {
+      console.error('[Supabase] update dev_projects progress error:', progressError.message);
+    }
   }
 
 

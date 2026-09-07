@@ -23,15 +23,18 @@ type Contato = {
   created_at?: string;
 };
 
+type ClienteOption = { id: string; name: string };
+
 export default function Contatos() {
   const { user } = useAuth();
   const [contatos, setContatos] = useState<Contato[]>([]);
+  const [clientes, setClientes] = useState<ClienteOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [cargoFilter, setCargoFilter] = useState("Todos");
   const [showModal, setShowModal] = useState(false);
   const [novoContato, setNovoContato] = useState({
-    nome: "", email: "", telefone: "", cargo: "", empresa: "", isDecisor: false,
+    nome: "", email: "", telefone: "", cargo: "", clienteId: "", isDecisor: false,
   });
 
   const fetchContatos = async () => {
@@ -42,7 +45,7 @@ export default function Contatos() {
     }
     const { data, error } = await supabase
       .from("cliente_contatos")
-      .select("id, nome, email, telefone, cargo, is_decisor, created_at, clientes(name)")
+      .select("id, nome, email, telefone, cargo, principal, created_at, clientes(name)")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -55,15 +58,26 @@ export default function Contatos() {
         telefone: c.telefone || "",
         cargo: c.cargo || "Contato",
         empresa: c.clientes?.name || "Empresa Direta",
-        isDecisor: !!c.is_decisor,
+        isDecisor: !!c.principal,
         created_at: c.created_at,
       })));
     }
     setLoading(false);
   };
 
+  const fetchClientes = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.from("clientes").select("id, name").order("name");
+    if (error) {
+      console.warn("clientes fetch notice:", error.message);
+    } else if (data) {
+      setClientes(data as ClienteOption[]);
+    }
+  };
+
   useEffect(() => {
     fetchContatos();
+    fetchClientes();
   }, []);
 
   const filtered = useMemo(() => {
@@ -86,17 +100,22 @@ export default function Contatos() {
       toast.error("Nome do contato é obrigatório.");
       return;
     }
+    if (!novoContato.clienteId) {
+      toast.error("Selecione a empresa/cliente vinculada ao contato.");
+      return;
+    }
     if (!supabase) {
       toast.error("Supabase não disponível.");
       return;
     }
 
     const { data, error } = await supabase.from("cliente_contatos").insert({
+      cliente_id: novoContato.clienteId,
       nome: novoContato.nome,
       email: novoContato.email,
       telefone: novoContato.telefone,
       cargo: novoContato.cargo || "Contato Comercial",
-      is_decisor: novoContato.isDecisor,
+      principal: novoContato.isDecisor,
     }).select().maybeSingle();
 
     if (error) {
@@ -106,7 +125,7 @@ export default function Contatos() {
 
     toast.success("Contato cadastrado com sucesso!");
     setShowModal(false);
-    setNovoContato({ nome: "", email: "", telefone: "", cargo: "", empresa: "", isDecisor: false });
+    setNovoContato({ nome: "", email: "", telefone: "", cargo: "", clienteId: "", isDecisor: false });
     fetchContatos();
   };
 
@@ -310,12 +329,16 @@ export default function Contatos() {
                 </div>
                 <div>
                   <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] block mb-1">Empresa</label>
-                  <input
-                    value={novoContato.empresa}
-                    onChange={e => setNovoContato({ ...novoContato, empresa: e.target.value })}
-                    placeholder="Nome da empresa"
+                  <select
+                    value={novoContato.clienteId}
+                    onChange={e => setNovoContato({ ...novoContato, clienteId: e.target.value })}
                     className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3 py-2 text-xs text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-blue)]"
-                  />
+                  >
+                    <option value="">Selecione a empresa</option>
+                    {clientes.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <label className="flex items-center gap-2 pt-2 cursor-pointer">

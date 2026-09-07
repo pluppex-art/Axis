@@ -77,8 +77,8 @@ export function useEquipe() {
 
   const editMember = async (id: string, member: Partial<TeamMember>) => {
     await updateColaborador(id, {
-      ...(member.name !== undefined ? { nome: member.name, name: member.name } : {}),
-      ...(member.role !== undefined ? { cargo: member.role, role: member.role } : {}),
+      ...(member.name !== undefined ? { nome: member.name } : {}),
+      ...(member.role !== undefined ? { cargo: member.role } : {}),
       ...(member.email !== undefined ? { email: member.email } : {}),
       ...(member.phone !== undefined ? { phone: member.phone } : {}),
       ...(member.status !== undefined ? { status: member.status } : {}),

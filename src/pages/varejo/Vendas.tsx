@@ -698,11 +698,15 @@ export default function VarejoVendas() {
         throw new Error("Sem conexão com o banco de dados. Não é possível registrar a venda.");
       }
 
+      // `vendas.vendedor_id` é uuid (FK pra `users.id`) — resolve pelo `user_id` do
+      // colaborador selecionado, não pelo `id` (text) usado só como chave local.
+      const vendedorColaborador = (colaboradores as any[]).find((c: any) => c.nome === vendedorSelecionado);
+
       const { error: vendaError } = await supabase.from("vendas").insert({
         id: vendaId,
         tenant_id: activeTenantId,
         cliente_nome: vendaSnap.cliente_nome,
-        vendedor_id: null,
+        vendedor_id: vendedorColaborador?.user_id || null,
         forma_pagamento: formaDesc,
         status: "aberta",
       });

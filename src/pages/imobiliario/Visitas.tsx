@@ -369,38 +369,63 @@ export default function Visitas() {
   const handleSave = async (form: any) => {
     const nova: Visita = { ...form, id: Date.now().toString(), status: "Agendada" };
     setVisitas(prev => [nova, ...prev]);
-    toast.success("Visita agendada!");
     if (supabase) {
       const { imovelId, veiculoId, ...rest } = form;
       const { error } = await supabase.from("imobiliario_visitas").insert({
         ...rest, id: nova.id, imovel_id: imovelId, veiculo_id: veiculoId,
       });
-      if (error) console.error("[Supabase]", error.message);
+      if (error) {
+        console.error("[Supabase]", error.message);
+        toast.error(`Erro ao agendar visita: ${error.message}`);
+        setVisitas(prev => prev.filter(v => v.id !== nova.id));
+        return;
+      }
     }
+    toast.success("Visita agendada!");
   };
 
   const handleEdit = async (form: any) => {
     if (!editVisita) return;
+    const previous = editVisita;
     const updated = { ...editVisita, ...form };
     setVisitas(prev => prev.map(v => v.id === editVisita.id ? updated : v));
     if (selectedVisita?.id === editVisita.id) setSelectedVisita(updated);
-    toast.success("Visita atualizada!");
     if (supabase) {
       const { imovelId, veiculoId, ...rest } = form;
       const { error } = await supabase.from("imobiliario_visitas")
         .update({ ...rest, imovel_id: imovelId, veiculo_id: veiculoId })
         .eq("id", editVisita.id);
-      if (error) console.error("[Supabase]", error.message);
+      if (error) {
+        console.error("[Supabase]", error.message);
+        toast.error(`Erro ao atualizar visita: ${error.message}`);
+        setVisitas(prev => prev.map(v => v.id === previous.id ? previous : v));
+        if (selectedVisita?.id === previous.id) setSelectedVisita(previous);
+        setEditVisita(null);
+        return;
+      }
     }
+    toast.success("Visita atualizada!");
     setEditVisita(null);
   };
 
   const updateStatus = async (id: string, status: Visita["status"]) => {
+    const previous = visitas.find(v => v.id === id)?.status;
     setVisitas(prev => prev.map(v => v.id === id ? { ...v, status } : v));
     if (selectedVisita?.id === id) setSelectedVisita(s => s ? { ...s, status } : null);
+    if (supabase) {
+      const { error } = await supabase.from("imobiliario_visitas").update({ status }).eq("id", id);
+      if (error) {
+        console.error("[Supabase]", error.message);
+        toast.error(`Erro ao atualizar status: ${error.message}`);
+        if (previous) {
+          setVisitas(prev => prev.map(v => v.id === id ? { ...v, status: previous } : v));
+          if (selectedVisita?.id === id) setSelectedVisita(s => s ? { ...s, status: previous } : null);
+        }
+        return;
+      }
+    }
     const msgs: Record<string, string> = { Confirmada: "Visita confirmada!", Realizada: "Visita marcada como realizada.", Cancelada: "Visita cancelada." };
     toast.success(msgs[status] ?? `Status: ${status}`);
-    if (supabase) await supabase.from("imobiliario_visitas").update({ status }).eq("id", id);
   };
 
   const handleDelete = async (id: string) => {
@@ -410,8 +435,16 @@ export default function Visitas() {
       description: alvo ? `Excluir a visita de ${alvo.cliente} ao imóvel ${alvo.imovel}? Essa ação não pode ser desfeita.` : "Excluir esta visita? Essa ação não pode ser desfeita.",
     }))) return;
     setVisitas(prev => prev.filter(v => v.id !== id));
+    if (supabase) {
+      const { error } = await supabase.from("imobiliario_visitas").delete().eq("id", id);
+      if (error) {
+        console.error("[Supabase]", error.message);
+        toast.error(`Erro ao remover visita: ${error.message}`);
+        if (alvo) setVisitas(prev => [alvo, ...prev]);
+        return;
+      }
+    }
     toast.success("Visita removida.");
-    if (supabase) await supabase.from("imobiliario_visitas").delete().eq("id", id);
   };
 
   const hoje = new Date().toISOString().split("T")[0];

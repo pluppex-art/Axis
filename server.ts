@@ -624,6 +624,51 @@ app.get("/api/public-proposal/:token", async (req, res) => {
   }
 });
 
+app.post("/api/public-proposal/:token/accept", async (req, res) => {
+  const { token } = req.params;
+  const { clientName, clientDoc } = req.body || {};
+  const client = supabaseService || supabase;
+  if (!client) {
+    return res.status(503).json({ error: "Supabase client indisponível." });
+  }
+
+  try {
+    if (!token || token.length < 16) {
+      return res.status(400).json({ error: "Token de proposta inválido." });
+    }
+
+    const { data: proposal, error: propErr } = await client
+      .from("proposals")
+      .select("id, status, tenant_id, titulo, cliente")
+      .eq("view_token", token)
+      .maybeSingle();
+
+    if (propErr || !proposal) {
+      return res.status(404).json({ error: "Proposta não encontrada." });
+    }
+
+    const { data: updated, error: updateErr } = await client
+      .from("proposals")
+      .update({
+        status: "Aceita",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", proposal.id)
+      .select()
+      .single();
+
+    if (updateErr) {
+      console.error("[public-proposal] Erro ao registrar aceite:", updateErr);
+      return res.status(500).json({ error: "Erro ao registrar aceite no banco de dados." });
+    }
+
+    return res.json({ success: true, status: "Aceita", proposal: updated });
+  } catch (err: any) {
+    console.error("[public-proposal] Erro ao processar aceite:", err?.message);
+    return res.status(500).json({ error: "Erro interno ao processar aceite." });
+  }
+});
+
 // ── AI Routes ──────────────────────────────────────────────────────────────
 
 app.post("/api/leads/suggest-tags", requireUser, async (req, res) => {

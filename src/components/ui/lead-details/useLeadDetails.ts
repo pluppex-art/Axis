@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useData } from "../../../contexts/DataContext";
 import { supabase } from "../../../lib/supabase";
 import { toast } from "sonner";
+import { calculateLeadScore } from "../../../lib/leadScore";
 
 // ─── Stage helpers ────────────────────────────────────────────────────────────
 
@@ -26,7 +27,7 @@ function buildStages(funis: any[], isSDR: boolean) {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useLeadDetails(lead: any, onClose: () => void) {
-  const { leadActivities, addLeadActivity, updateLead, deleteLead, customLeadFields, products, addProduct, turmas, addTurma, updateTurma, funis } = useData();
+  const { leadActivities, addLeadActivity, updateLead, deleteLead, customLeadFields, products, addProduct, turmas, addTurma, funis, students, addStudent } = useData();
 
   // ── Exclusão ─────────────────────────────────────────────────────────────────
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
@@ -144,20 +145,24 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     setPriority(lead.priority || "Média");
     setCustomFieldsState(lead.customFields || {});
     setLinkedProductIds(Array.isArray(lead.productIds) ? lead.productIds : []);
-    setCustomTags(Array.isArray(lead.tags) ? lead.tags : []);
+    setCustomTags(Array.isArray(lead.customFields?.tags) ? lead.customFields.tags : []);
 
-    const rawScore = lead.scoreIA ?? 45;
+    // Calcula score dinâmico considerando a etapa e as notas do cliente
+    const calculated = calculateLeadScore(lead);
+    const effectiveScore = typeof lead.scoreIA === "number" && lead.scoreIA !== 50
+      ? lead.scoreIA
+      : calculated.score;
+
     const t = (lead.temperature ?? "").toLowerCase();
     const derivedTemp: "Quente" | "Morno" | "Frio" =
       t === "quente" ? "Quente"
       : t === "morno" ? "Morno"
-      : rawScore > 80 ? "Quente"
-      : rawScore > 50 ? "Morno"
-      : "Frio";
+      : t === "frio" ? "Frio"
+      : calculated.temperature;
 
-    setScore(rawScore);
+    setScore(effectiveScore);
     setTemperature(derivedTemp);
-    setProbability(rawScore > 80 ? 80 : rawScore > 50 ? 50 : 25);
+    setProbability(effectiveScore >= 80 ? 85 : effectiveScore >= 70 ? 70 : effectiveScore >= 40 ? 45 : 20);
   }, [lead]);
 
   // Reseta stageId e modo de edição quando muda de lead
@@ -194,17 +199,21 @@ export function useLeadDetails(lead: any, onClose: () => void) {
       p => linkedProductIds.includes(p.id) && isEducationProduct(p)
     );
     for (const product of educationProducts) {
-      const turma = (turmas as any[]).find(
-        t => t.productId === product.id || t.curso === product.name
-      );
+      const turma = (turmas as any[]).find(t => t.curso === product.name);
       if (!turma) continue;
-      const current: any[] = Array.isArray(turma.students) ? turma.students : [];
-      const enrolled = current.some(s =>
-        (typeof s === "string" ? s : s.leadId ?? s.id) === lead.id
+      // `turmas` não tem coluna `students` — matrícula é uma linha na tabela real
+      // `students`, ligada por `turma_id`. Não existe FK pra `leads` nessa tabela,
+      // então o dedupe de "já matriculado" é feito por e-mail dentro da turma.
+      const alreadyEnrolled = (students as any[]).some(
+        s => s.turma_id === turma.id && !!email && s.email === email
       );
-      if (!enrolled) {
-        updateTurma(turma.id, {
-          students: [...current, { leadId: lead.id, name: leadName || companyName, enrolledAt: new Date().toISOString() }],
+      if (!alreadyEnrolled) {
+        addStudent({
+          turma_id: turma.id,
+          nome: leadName || companyName,
+          email: email || null,
+          telefone: phone || null,
+          status: "Ativo",
         });
         toast.success(`${leadName || companyName} matriculado em ${turma.nome || turma.name}!`);
       }
@@ -220,14 +229,16 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     const next = [...customTags, tag];
     setCustomTags(next);
     setNewTagInput("");
-    if (supabase) supabase.from("leads").update({ tags: next }).eq("id", lead.id).then(() => {});
+    // `leads` não tem coluna `tags` própria — guardamos dentro de `customFields`
+    // (jsonb), a mesma abordagem usada pra `productIds`.
+    updateLead(lead.id, { customFields: { ...(lead.customFields || {}), tags: next } });
     toast.success("Tag adicionada!");
   };
 
   const handleRemoveTag = (tag: string) => {
     const next = customTags.filter(t => t !== tag);
     setCustomTags(next);
-    if (supabase) supabase.from("leads").update({ tags: next }).eq("id", lead.id).then(() => {});
+    updateLead(lead.id, { customFields: { ...(lead.customFields || {}), tags: next } });
     toast.info("Tag removida.");
   };
 
@@ -322,21 +333,19 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     if (isAdding) {
       const product = availableProducts.find(p => p.id === prodId);
       if (product && isEducationProduct(product)) {
-        const existing = (turmas as any[]).find(
-          t => t.productId === prodId || t.curso === product.name
-        );
+        // `turmas` não tem coluna `productId` — o vínculo com o produto é feito por
+        // nome (`curso === product.name`), já que não existe FK própria pra isso.
+        const existing = (turmas as any[]).find(t => t.curso === product.name);
         if (!existing) {
           addTurma({
             nome: `Turma — ${product.name}`,
             curso: product.name,
             professor: "Não definido",
-            productId: prodId,
             vagas: 30,
             shift: "Manhã",
             data_inicio: new Date().toISOString().slice(0, 10),
             status: "Planejamento",
             progress: 0,
-            students: [],
           });
           toast.success(`Turma criada automaticamente para ${product.name}!`);
         }
@@ -446,9 +455,9 @@ export function useLeadDetails(lead: any, onClose: () => void) {
   const handleUpdateScore = (newScore: number, customTemp?: "Quente" | "Morno" | "Frio") => {
     const clampedScore = Math.max(0, Math.min(100, Math.round(newScore)));
     const derivedTemp: "Quente" | "Morno" | "Frio" = customTemp || (
-      clampedScore >= 71 ? "Quente" : clampedScore >= 41 ? "Morno" : "Frio"
+      clampedScore >= 70 ? "Quente" : clampedScore >= 40 ? "Morno" : "Frio"
     );
-    const newProb = clampedScore >= 71 ? 80 : clampedScore >= 41 ? 50 : 25;
+    const newProb = clampedScore >= 80 ? 85 : clampedScore >= 70 ? 70 : clampedScore >= 40 ? 45 : 20;
 
     setScore(clampedScore);
     setTemperature(derivedTemp);
@@ -456,7 +465,7 @@ export function useLeadDetails(lead: any, onClose: () => void) {
 
     updateLead(lead.id, {
       scoreIA: clampedScore,
-      temperature: derivedTemp,
+      temperature: derivedTemp.toLowerCase() as any,
       probability: newProb,
     });
 
@@ -464,7 +473,7 @@ export function useLeadDetails(lead: any, onClose: () => void) {
       supabase.from("leads").update({
         scoreIA: clampedScore,
         score_ia: clampedScore,
-        temperature: derivedTemp,
+        temperature: derivedTemp.toLowerCase(),
       }).eq("id", lead.id).then(() => {});
     }
 

@@ -91,12 +91,13 @@ export default function PainelVarejo() {
       const hojeInicio = new Date();
       hojeInicio.setHours(0, 0, 0, 0);
 
-      const { data: vendasRows } = await supabase
+      const { data: vendasRows, error: vendasError } = await supabase
         .from("vendas")
         .select("*, venda_items(*)")
         .eq("tenant_id", activeTenantId)
         .gte("created_at", hojeInicio.toISOString())
         .order("created_at", { ascending: false });
+      if (vendasError) console.error("[Supabase] fetch vendas (painel varejo) error:", vendasError.message);
       if (!cancelled && vendasRows) {
         setVendas(
           vendasRows.map((v: any): VendaFinalizada => ({
@@ -122,12 +123,13 @@ export default function PainelVarejo() {
         );
       }
 
-      const { data: comprasRows } = await supabase
+      const { data: comprasRows, error: comprasError } = await supabase
         .from("compras")
         .select("*")
         .eq("tenant_id", activeTenantId)
         .order("data", { ascending: false })
         .limit(10);
+      if (comprasError) console.error("[Supabase] fetch compras (painel varejo) error:", comprasError.message);
       if (!cancelled && comprasRows) {
         setCompras(comprasRows.map((c: any) => ({
           id: c.id,

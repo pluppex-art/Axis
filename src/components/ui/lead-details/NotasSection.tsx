@@ -23,6 +23,7 @@ import { Button } from "../button";
 import { Card } from "../card";
 import { Badge } from "../badge";
 import { cn } from "../../../lib/utils";
+import { calculateLeadScore } from "../../../lib/leadScore";
 
 interface Note {
   id: string;
@@ -160,9 +161,16 @@ export function NotasSection({
     await persist(updated);
     setSaving(false);
 
-    // If note has direct score impact, apply it
-    if (scoreImpact !== 0) {
-      applyScoreChange(scoreImpact, false);
+    // Recalcular Score IA do lead com base na etapa atual e no novo histórico de notas
+    const evalResult = calculateLeadScore(lead, null, null, updated);
+    if (handleUpdateScore) {
+      handleUpdateScore(evalResult.score, evalResult.temperature);
+    } else {
+      updateLead(lead.id, {
+        scoreIA: evalResult.score,
+        temperature: evalResult.temperature,
+        probability: evalResult.probability,
+      });
     }
 
     // AI Grammar & refinement check
@@ -192,6 +200,18 @@ export function NotasSection({
     setNotes(updated);
     await persist(updated);
     toast.info("Anotação removida.");
+
+    // Recalcular Score IA com as notas restantes e a etapa do lead
+    const evalResult = calculateLeadScore(lead, null, null, updated);
+    if (handleUpdateScore) {
+      handleUpdateScore(evalResult.score, evalResult.temperature);
+    } else {
+      updateLead(lead.id, {
+        scoreIA: evalResult.score,
+        temperature: evalResult.temperature,
+        probability: evalResult.probability,
+      });
+    }
   };
 
   const startRecording = () => {
@@ -242,7 +262,7 @@ export function NotasSection({
     setIsRecording(false);
   };
 
-  // Avaliação do Score baseado no histórico real de anotações
+  // Avaliação do Score baseado no histórico real de anotações E na etapa do lead no funil
   const handleAIEvaluateScore = () => {
     if (notes.length === 0 && !input.trim()) {
       toast.info("Adicione pelo menos uma nota para a IA analisar o perfil do lead.");
@@ -252,46 +272,28 @@ export function NotasSection({
     setIsAnalyzingIA(true);
 
     setTimeout(() => {
-      const fullCorpus = [input, ...notes.map(n => n.text)].join(" ").toLowerCase();
+      const candidateNotes = input.trim()
+        ? [{ text: input.trim(), category: activeCategory }, ...notes]
+        : notes;
 
-      let points = 50; // Base neutra
-      let reasons: string[] = [];
-
-      // Sinais Positivos (+pontos)
-      if (/fechar|contrato|orçamento|comprar|pagamento|aprovad|assin|investir|reunião agendada|decisor|diretor|urgente|interesse alto/.test(fullCorpus)) {
-        points += 30;
-        reasons.push("Sinais claros de intenção de compra identificados");
-      }
-      if (/gostou|elog|avançar|proposta aceita|alinhad|positivo/.test(fullCorpus)) {
-        points += 15;
-        reasons.push("Sentimento positivo na negociação");
-      }
-
-      // Sinais de Risco (-pontos)
-      if (/caro|sem verba|sem dinheiro|concorrente|desist|rejeit|não tem interesse|adiou|sumiu|sem retorno|bloqueou/.test(fullCorpus)) {
-        points -= 25;
-        reasons.push("Objeções financeiras ou concorrência detectadas");
-      }
-      if (/ocupado|retornar depois|ano que vem|mês que vem|avaliando/.test(fullCorpus)) {
-        points -= 10;
-        reasons.push("Ciclo de decisão postergado");
-      }
-
-      const finalCalculated = Math.max(10, Math.min(98, points));
-      const calcTemp: "Quente" | "Morno" | "Frio" =
-        finalCalculated >= 71 ? "Quente" : finalCalculated >= 41 ? "Morno" : "Frio";
+      const evalResult = calculateLeadScore(lead, null, null, candidateNotes);
 
       if (handleUpdateScore) {
-        handleUpdateScore(finalCalculated, calcTemp);
+        handleUpdateScore(evalResult.score, evalResult.temperature);
       } else {
-        updateLead(lead.id, { scoreIA: finalCalculated, temperature: calcTemp });
+        updateLead(lead.id, {
+          scoreIA: evalResult.score,
+          score_ia: evalResult.score,
+          temperature: evalResult.temperature,
+          probability: evalResult.probability,
+        });
       }
 
       setIsAnalyzingIA(false);
-      toast.success(`Score IA Recalculado: ${finalCalculated}/100 (${calcTemp})!`, {
-        description: reasons.join(" • ") || "Avaliação baseada no sentimento das anotações.",
+      toast.success(`Score IA Recalculado: ${evalResult.score}/100 (${evalResult.temperature})!`, {
+        description: evalResult.reasons.join(" • ") || "Avaliação calibrada considerando a etapa do funil e as anotações.",
       });
-    }, 600);
+    }, 500);
   };
 
   const tempIcon = temperature === "Quente"

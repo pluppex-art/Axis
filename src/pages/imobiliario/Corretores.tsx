@@ -377,23 +377,36 @@ export default function Corretores() {
     const slug = makeSlug(form.nome);
     const novo: Corretor = { ...form, id: Date.now().toString(), slug, imovisAtivos: 0, vendasMes: 0, totalVendas: 0, vgvMes: 0, avaliacao: 5.0, status: "Ativo" };
     setCorretores(prev => [novo, ...prev]);
-    toast.success("Corretor cadastrado!");
     if (supabase) {
       const { error } = await supabase.from("imobiliario_corretores").insert({ nome: form.nome, creci: form.creci, telefone: form.telefone, email: form.email, especialidade: form.especialidade, bio: form.bio, slug, meta: form.meta, comissao_pct: form.comissaoPct, id: novo.id });
-      if (error) console.error("[Supabase]", error.message);
+      if (error) {
+        console.error("[Supabase]", error.message);
+        toast.error(`Erro ao cadastrar corretor: ${error.message}`);
+        setCorretores(prev => prev.filter(c => c.id !== novo.id));
+        return;
+      }
     }
+    toast.success("Corretor cadastrado!");
   };
 
   const handleEdit = async (form: any) => {
     if (!editCorretor) return;
+    const previous = editCorretor;
     const updated = { ...editCorretor, ...form };
     setCorretores(prev => prev.map(c => c.id === editCorretor.id ? updated : c));
     if (selectedCorretor?.c.id === editCorretor.id) setSelectedCorretor({ c: updated, idx: selectedCorretor.idx });
-    toast.success("Corretor atualizado!");
     if (supabase) {
       const { error } = await supabase.from("imobiliario_corretores").update({ nome: form.nome, creci: form.creci, telefone: form.telefone, email: form.email, especialidade: form.especialidade, bio: form.bio, meta: form.meta, status: form.status, comissao_pct: form.comissaoPct }).eq("id", editCorretor.id);
-      if (error) console.error("[Supabase]", error.message);
+      if (error) {
+        console.error("[Supabase]", error.message);
+        toast.error(`Erro ao atualizar corretor: ${error.message}`);
+        setCorretores(prev => prev.map(c => c.id === previous.id ? previous : c));
+        if (selectedCorretor?.c.id === previous.id) setSelectedCorretor({ c: previous, idx: selectedCorretor.idx });
+        setEditCorretor(null);
+        return;
+      }
     }
+    toast.success("Corretor atualizado!");
     setEditCorretor(null);
   };
 
@@ -404,8 +417,16 @@ export default function Corretores() {
       description: `Excluir ${alvo?.nome || "este corretor"}? Essa ação não pode ser desfeita.`,
     }))) return;
     setCorretores(prev => prev.filter(c => c.id !== id));
+    if (supabase) {
+      const { error } = await supabase.from("imobiliario_corretores").delete().eq("id", id);
+      if (error) {
+        console.error("[Supabase]", error.message);
+        toast.error(`Erro ao remover corretor: ${error.message}`);
+        if (alvo) setCorretores(prev => [alvo, ...prev]);
+        return;
+      }
+    }
     toast.success("Corretor removido.");
-    if (supabase) await supabase.from("imobiliario_corretores").delete().eq("id", id);
   };
 
   const totalAtivos = corretores.filter(c => c.status === "Ativo").length;

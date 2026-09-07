@@ -36,8 +36,8 @@ export default function MarketingLandingPages() {
 
   const openTrackingModal = (page: any) => {
     setSelectedPage(page);
-    setPixelId(page.pixel || "");
-    setGtagId(page.gtag || "");
+    setPixelId(page.meta_pixel_id || "");
+    setGtagId(page.google_analytics_id || "");
     setIsTrackingModalOpen(true);
   };
 
@@ -45,10 +45,10 @@ export default function MarketingLandingPages() {
     e.preventDefault();
     if (!newName || !newSlug) { toast.error("Preencha todos os campos obrigatórios."); return; }
     addMarketingLandingPage({
-      id: Date.now(), name: newName,
+      name: newName,
       url: `lp.seussistema.com/${newSlug.replace(/\s+/g, "-").toLowerCase()}`,
-      status: "published", views: 0, conversions: 0, rate: "0%",
-      pixel: pixelId, gtag: gtagId
+      status: "published", views: 0, conversions: 0, conversion_rate: 0,
+      meta_pixel_id: pixelId, google_analytics_id: gtagId
     });
     toast.success("Landing Page criada e publicada com sucesso!");
     setIsCreateModalOpen(false);
@@ -65,10 +65,9 @@ export default function MarketingLandingPages() {
     toast.success("Página excluída com sucesso.");
   };
 
-  const handleSaveTracking = () => {
+  const handleSaveTracking = async () => {
     if (!selectedPage) return;
-    updateMarketingLandingPage(selectedPage.id, { pixel: pixelId, gtag: gtagId });
-    toast.success("Parâmetros de rastreamento salvos!");
+    await updateMarketingLandingPage(selectedPage.id, { meta_pixel_id: pixelId, google_analytics_id: gtagId });
     setIsTrackingModalOpen(false);
   };
 
@@ -127,8 +126,8 @@ export default function MarketingLandingPages() {
               setSelectedPage(p);
               setNewName(p.name);
               setNewSlug(p.url.split('/').pop() || "");
-              setPixelId(p.pixel || "");
-              setGtagId(p.gtag || "");
+              setPixelId(p.meta_pixel_id || "");
+              setGtagId(p.google_analytics_id || "");
               setIsCreateModalOpen(true);
             }}
             onDelete={handleDeletePage}

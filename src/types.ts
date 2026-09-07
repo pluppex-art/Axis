@@ -78,10 +78,12 @@ export interface Lead {
   lead_interesse_cliente?: string;
   pipelineId?: 'sdr' | 'comercial';
   scoreIA?: number;
+  /** Derivado do score (0-100) — sem coluna própria em `leads`; updateLead() o descarta antes de gravar. */
+  probability?: number;
   temperature?: 'frio' | 'morno' | 'quente';
   iaSummary?: string;
   timeIdle?: number;
-  customFields?: Record<string, string | number>;
+  customFields?: Record<string, any>;
   tenantName?: string;
   tenantId?: string;
   clientId?: string;
