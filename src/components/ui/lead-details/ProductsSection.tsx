@@ -871,6 +871,26 @@ export function ProductsSection({
                             {m}m
                           </button>
                         ))}
+                        <div className="flex items-center gap-0.5 pl-1 ml-0.5 border-l border-white/10">
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            placeholder="Outro"
+                            value={[1, 3, 6, 12, 24].includes(item.contractMonths) ? "" : item.contractMonths || ""}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              if (!val || val < 1) return;
+                              setItemMonths((prev) => ({
+                                ...prev,
+                                [item.id]: val,
+                              }));
+                            }}
+                            className="w-11 bg-transparent text-[9px] font-mono font-bold text-white placeholder:text-slate-500 focus:outline-none"
+                            title="Digitar vigência personalizada (em meses)"
+                          />
+                          <span className="text-slate-500 text-[9px] font-mono">m</span>
+                        </div>
                       </div>
                     )}
                   </div>
