@@ -330,10 +330,7 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
 
   router.get("/connect/start", requireUser, async (req: any, res) => {
     try {
-      if (!requireService(res)) return;
-      if (!GOOGLE_CLIENT_ID) {
-        return res.status(503).json({ error: "Credencial GOOGLE_CLIENT_ID não configurada no servidor." });
-      }
+      if (!requireService(res) || !requireGoogleEnv(res)) return;
       const tenantResult = await resolveTenantId(req);
       const tenantId = "tenantId" in tenantResult ? tenantResult.tenantId : "default";
 

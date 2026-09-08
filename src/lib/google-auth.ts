@@ -98,3 +98,39 @@ export function consumeGoogleCalendarRedirectResult(): GoogleCalendarRedirectRes
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   return { status, reason };
 }
+
+export function formatGoogleCalendarError(reason?: string): string {
+  if (!reason) return "Não foi possível conectar ao Google Calendar.";
+
+  if (reason.startsWith("token_exchange_failed")) {
+    const detail = reason.split(":")[1];
+    if (detail === "redirect_uri_mismatch") {
+      return "URL de redirecionamento divergente. Verifique se https://axis-crm.pluppex.com.br/api/google-calendar/oauth/callback está cadastrada nos 'URIs de redirecionamento autorizados' no Google Cloud Console.";
+    }
+    if (detail === "invalid_client") {
+      return "Credencial do Google inválida. Verifique GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no servidor (Easypanel) e garanta que o cliente OAuth seja do tipo 'Aplicativo da Web'.";
+    }
+    if (detail === "invalid_grant") {
+      return "O código de autorização expirou ou já foi utilizado. Tente conectar novamente.";
+    }
+    if (detail === "unauthorized_client") {
+      return "Cliente OAuth não autorizado para este fluxo. Verifique se o tipo no Google Cloud Console é 'Aplicativo da Web'.";
+    }
+    return `Falha na troca de tokens com o Google (${detail || "verifique GOOGLE_CLIENT_SECRET e deploy do servidor"}).`;
+  }
+
+  switch (reason) {
+    case "missing_refresh_token":
+      return "O Google não retornou o token permanente. Remova o acesso ao Axis na sua Conta Google (Segurança > Apps de terceiros) e tente conectar novamente.";
+    case "access_denied":
+      return "Acesso cancelado na tela de login do Google.";
+    case "invalid_state":
+      return "Sessão de autenticação expirou. Tente novamente.";
+    case "missing_code":
+      return "Nenhum código de autorização recebido do Google.";
+    case "save_failed":
+      return "Falha ao gravar conexão no banco de dados. Tente novamente.";
+    default:
+      return `Não foi possível conectar ao Google: ${reason}`;
+  }
+}
