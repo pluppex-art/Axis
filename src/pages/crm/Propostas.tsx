@@ -74,6 +74,7 @@ export default function Propostas() {
         onSearchChange={setSearch}
         onUpdateStatus={handleUpdateStatus}
         onDelete={(id) => { deleteProposal(id); toast.success("Proposta de venda excluída."); }}
+        updateProposal={updateProposal}
       />
 
       <NovaPropostaRapidaModal

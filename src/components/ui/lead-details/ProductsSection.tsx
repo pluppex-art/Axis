@@ -88,6 +88,8 @@ export function ProductsSection({
     addNotification,
     turmas,
     updateTurma,
+    proposals,
+    proposalItems,
   } = useData();
 
   // Mini PDV State
@@ -133,6 +135,51 @@ export function ProductsSection({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const categories = ["Todas", "Software", "Serviços", "Implantação", "Mentoria", "Curso/Turma", "Assinatura", "Físico"];
+
+  // Proposta comercial já existente vinculada a este lead — se houver, é
+  // mostrada acima do Mini PDV em vez de deixar o vendedor sem saber que já
+  // existe uma proposta e criar outra do zero sem querer.
+  const existingProposal = useMemo(() => {
+    if (!leadId) return null;
+    const linked = (proposals || []).filter((p: any) => p.lead_id === leadId);
+    if (linked.length === 0) return null;
+    return [...linked].sort((a: any, b: any) =>
+      new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    )[0];
+  }, [proposals, leadId]);
+
+  const existingProposalItems = useMemo(() => {
+    if (!existingProposal) return [];
+    return (proposalItems || []).filter((pi: any) => pi.proposal_id === existingProposal.id);
+  }, [proposalItems, existingProposal]);
+
+  const handleOpenExistingProposal = () => {
+    if (!existingProposal) return;
+    setCurrentProposalData({
+      id: existingProposal.id,
+      cliente: existingProposal.cliente,
+      titulo: existingProposal.titulo,
+      valor: existingProposal.valor,
+      validade: existingProposal.validade,
+      status: existingProposal.status,
+      vendedor: existingProposal.vendedor,
+      conteudo_texto: existingProposal.conteudo_texto,
+      view_token: existingProposal.view_token,
+      itens: existingProposalItems.map((i: any) => ({
+        product_name: i.product_name,
+        quantidade: i.quantidade,
+        preco_unitario: i.preco_unitario,
+      })),
+    });
+    setIsWordModalOpen(true);
+  };
+
+  const PROPOSAL_STATUS_VARIANT: Record<string, "success" | "info" | "warning" | "destructive" | "secondary"> = {
+    Aceita: "success",
+    Enviada: "info",
+    Aberta: "warning",
+    Recusada: "destructive",
+  };
 
   // Linked items with quantity, recurrence and implementation fee
   const linkedItems = useMemo(() => {
@@ -222,13 +269,13 @@ export function ProductsSection({
 
   const PAYMENT_OPTIONS = [
     { id: "Pix", label: "Pix", icon: QrCode },
-    { id: "Cartão de Crédito", label: "Cartão Crédito", icon: CreditCard },
+    { id: "Cartão de Crédito", label: "Crédito", icon: CreditCard },
     { id: "Boleto Bancário", label: "Boleto", icon: FileText },
-    { id: "Cartão de Débito", label: "Cartão Débito", icon: CreditCard },
+    { id: "Cartão de Débito", label: "Débito", icon: CreditCard },
     { id: "Dinheiro", label: "Dinheiro", icon: Banknote },
-    { id: "Transferência / TED", label: "TED / Transferência", icon: ArrowRightLeft },
-    { id: "Link de Pagamento", label: "Link de Pagamento", icon: Zap },
-    { id: "A Prazo (Crediário)", label: "A Prazo / Crediário", icon: Calendar },
+    { id: "Transferência / TED", label: "TED", icon: ArrowRightLeft },
+    { id: "Link de Pagamento", label: "Link Pgto.", icon: Zap },
+    { id: "A Prazo (Crediário)", label: "A Prazo", icon: Calendar },
   ] as const;
 
   // Filter available products
@@ -592,6 +639,49 @@ export function ProductsSection({
           )}
         </Button>
       </div>
+
+      {/* ── PROPOSTA COMERCIAL JÁ EXISTENTE (se houver, aparece acima do Mini PDV) ── */}
+      {existingProposal && (
+        <Card className="p-4 bg-[var(--color-surface-elevated)] border border-emerald-500/25 shadow-sm space-y-3">
+          <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-2.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <FileText className="w-3.5 h-3.5 text-emerald-400" /> Proposta Comercial Vinculada
+            </span>
+            <Badge
+              variant={PROPOSAL_STATUS_VARIANT[existingProposal.status] || "secondary"}
+              className="text-[10px] font-bold px-2 py-0.5"
+            >
+              {existingProposal.status || "—"}
+            </Badge>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-white truncate">{existingProposal.titulo}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {existingProposalItems.length} {existingProposalItems.length === 1 ? "item" : "itens"}
+                {existingProposal.validade && (
+                  <> · Válida até {new Date(existingProposal.validade + "T12:00:00").toLocaleDateString("pt-BR")}</>
+                )}
+              </p>
+            </div>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span className="text-sm font-mono font-black text-emerald-400">
+                R$ {(existingProposal.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleOpenExistingProposal}
+                className="h-8 text-xs font-bold gap-1.5 border-emerald-500/30 hover:bg-emerald-500/10 text-emerald-300 cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5" /> Ver / Editar Proposta
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* ── FORMULÁRIO DE CADASTRO RÁPIDO DE PRODUTO NO BANCO ── */}
       {showAddForm && (
@@ -1088,7 +1178,7 @@ export function ProductsSection({
                     )}
                   >
                     <Icon className={cn("w-4 h-4 shrink-0", isSelected ? "text-blue-400" : "text-slate-500")} />
-                    <span className="text-[11px] truncate">{method.label}</span>
+                    <span className="text-[11px] whitespace-nowrap">{method.label}</span>
                   </button>
                 );
               })}
@@ -1099,15 +1189,10 @@ export function ProductsSection({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1 border-t border-white/5">
             {/* 1. Data do Pagamento / Vencimento */}
             <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/5">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-blue-400" />
-                  Data Pagamento / Vencimento:
-                </label>
-                <span className="text-[10px] font-mono text-slate-400">
-                  {dataPagamento ? new Date(dataPagamento + "T12:00:00").toLocaleDateString("pt-BR") : "Não definida"}
-                </span>
-              </div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1.5">
+                <Calendar className="w-3 h-3 text-blue-400 shrink-0" />
+                <span className="truncate">Vencimento</span>
+              </label>
               <div className="space-y-1.5">
                 <input
                   type="date"
@@ -1188,8 +1273,8 @@ export function ProductsSection({
 
             {/* 3. Detalhes / Observação do Pagamento */}
             <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Detalhes / Observação:
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 truncate">
+                Observação
               </label>
               <input
                 type="text"

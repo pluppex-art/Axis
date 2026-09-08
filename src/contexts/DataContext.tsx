@@ -919,11 +919,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         console.error("Supabase add lead failed:", err);
       }
     }
-    setTimeout(() => { triggerScoreRecalculation(newLead.id); }, 400);
+    setTimeout(() => { triggerScoreRecalculation(newLead.id, [newLead]); }, 400);
   };
 
   const updateLead = async (id: string, updates: Partial<Lead>) => {
     let hasStatusOrStageChange = false;
+    // Capturado dentro do updater para repassar pro recálculo de score abaixo —
+    // sem isso, o setTimeout usava a variável `leads` do closure desta render
+    // (o estado ANTES deste update), e reescrevia o stageId antigo no Supabase
+    // ~400ms depois, revertendo silenciosamente qualquer mudança de coluna do
+    // Kanban (ex: soltar em "Ganho" e o lead voltar pra "Contrato" ao recarregar).
+    let mergedLead: Lead | undefined;
     setLeads(prev => {
       const target = prev.find(l => l.id === id);
       if (target && (
@@ -936,6 +942,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return prev.map(l => {
         if (l.id === id) {
           const updatedLead = { ...l, ...updates };
+          mergedLead = updatedLead;
           if (l.pipelineId === 'sdr' && updates.pipelineId === 'comercial') {
             const tempLabel = updatedLead.temperature ? updatedLead.temperature.toUpperCase() : 'Não avaliada';
             toast.success('Lead Qualificado!', {
@@ -991,7 +998,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
     }
     if (hasStatusOrStageChange) {
-      setTimeout(() => { triggerScoreRecalculation(id); }, 400);
+      setTimeout(() => { triggerScoreRecalculation(id, mergedLead ? [mergedLead] : undefined); }, 400);
     }
   };
 

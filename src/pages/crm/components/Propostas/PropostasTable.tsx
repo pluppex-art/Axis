@@ -68,9 +68,10 @@ interface PropostasTableProps {
   onSearchChange: (v: string) => void;
   onUpdateStatus: (id: string, status: Proposta["status"]) => void;
   onDelete: (id: string) => void;
+  updateProposal?: (id: string, updates: any) => Promise<void> | void;
 }
 
-export function PropostasTable({ propostas, proposalItems, search, onSearchChange, onUpdateStatus, onDelete }: PropostasTableProps) {
+export function PropostasTable({ propostas, proposalItems, search, onSearchChange, onUpdateStatus, onDelete, updateProposal }: PropostasTableProps) {
   const [editingProposal, setEditingProposal] = useState<PropostaEditorData | null>(null);
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
 
@@ -256,8 +257,19 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
         isOpen={isWordModalOpen}
         onClose={() => setIsWordModalOpen(false)}
         proposalData={editingProposal}
-        onSaveProposal={(updated) => {
+        onSaveProposal={async (updated) => {
           setEditingProposal(updated);
+          if (updated.id && updateProposal) {
+            await updateProposal(updated.id, {
+              titulo: updated.titulo,
+              cliente: updated.cliente,
+              vendedor: updated.vendedor,
+              valor: updated.valor,
+              validade: updated.validade,
+              status: updated.status,
+              conteudo_texto: updated.conteudo_texto,
+            });
+          }
         }}
       />
     </>
