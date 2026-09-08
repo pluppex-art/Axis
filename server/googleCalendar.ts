@@ -395,8 +395,13 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
       });
       if (!tokenRes.ok) {
         const body = await tokenRes.json().catch(() => ({}));
-        console.error("[google-calendar] token exchange falhou:", (body as any)?.error);
-        return redirectWithError("token_exchange_failed");
+        const googleErrCode = (body as any)?.error || "unknown";
+        const googleErrDesc = (body as any)?.error_description || "";
+        console.error("[google-calendar] token exchange falhou:", googleErrCode, googleErrDesc);
+        // Código de erro do OAuth do Google não é sensível (ex.: "redirect_uri_mismatch",
+        // "invalid_client") — expõe ele direto na URL de retorno pra não precisar caçar
+        // log do servidor toda vez que a troca falhar.
+        return redirectWithError(`token_exchange_failed:${googleErrCode}`);
       }
       const tokenData = await tokenRes.json();
 
