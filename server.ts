@@ -9,8 +9,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import axios from "axios";
-import { createGoogleCalendarRouter } from "./server/googleCalendar";
-import { getWhatsAppProvider, getActiveProviderName, isWahaConfigured } from "./server/whatsappProvider";
+import { createGoogleCalendarRouter } from "./server/googleCalendar.js";
+import { getWhatsAppProvider, getActiveProviderName, isWahaConfigured } from "./server/whatsappProvider.js";
 import nodemailer from "nodemailer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
