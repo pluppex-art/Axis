@@ -5,9 +5,11 @@
 // secret, app não verificado) virou um ponto de falha diferente — o GIS
 // popup já funciona de verdade pro usuário hoje, então Calendar passou a usar
 // o mesmo mecanismo, só com escopos diferentes (ver SCOPES_CALENDAR abaixo).
-// Token de curta duração (GIS implicit flow nunca dá refresh_token) vive só
-// em memória nesta aba — sem nenhuma persistência local — então um reload
-// exige reconectar a conta Google novamente.
+// O token do GIS (implicit flow) nunca vem com refresh_token — dura só até
+// expirar (~1h), não é possível ficar "conectado" para sempre sem reabrir o
+// popup. Mas o token em si (e seu prazo de validade) é persistido no
+// localStorage, então um reload de página dentro dessa 1h não te desconecta
+// mais — só quando o token realmente expira é que é preciso conectar de novo.
 declare global {
   interface Window { google: any; }
 }
@@ -41,6 +43,38 @@ interface CachedToken {
 // independentes (escopos diferentes), mesmo tendo o mesmo tenant.
 const cachedTokens = new Map<string, CachedToken>();
 const tokenKey = (tenantId: string, scope: string) => `${tenantId}:${scope}`;
+const storageKey = (key: string) => `axis_google_token:${key}`;
+
+function persistToken(key: string, token: CachedToken) {
+  try {
+    localStorage.setItem(storageKey(key), JSON.stringify(token));
+  } catch {
+    // localStorage indisponível (modo privado, quota etc.) — o token ainda
+    // funciona nesta aba via cachedTokens, só não sobrevive a um reload.
+  }
+}
+
+function clearPersistedToken(key: string) {
+  try {
+    localStorage.removeItem(storageKey(key));
+  } catch {}
+}
+
+function readPersistedToken(key: string): CachedToken | null {
+  try {
+    const raw = localStorage.getItem(storageKey(key));
+    if (!raw) return null;
+    const token = JSON.parse(raw) as CachedToken;
+    if (!token?.access_token || !token?.expires_at) return null;
+    if (token.expires_at <= Date.now() + 60_000) {
+      clearPersistedToken(key);
+      return null;
+    }
+    return token;
+  } catch {
+    return null;
+  }
+}
 
 function isGISLoaded(): boolean {
   return (
@@ -93,7 +127,9 @@ export const googleSignIn = async (tenantId: string, scope: string = SCOPES_TASK
             if (r.ok) email = (await r.json())?.email ?? null;
           } catch {}
           const token: CachedToken = { access_token: response.access_token, expires_at: expiresAt, email: email ?? undefined };
-          cachedTokens.set(tokenKey(tenantId, scope), token);
+          const key = tokenKey(tenantId, scope);
+          cachedTokens.set(key, token);
+          persistToken(key, token);
           resolve({ user: { email, displayName: null }, accessToken: response.access_token });
         },
         error_callback: (err: any) => {
@@ -117,19 +153,30 @@ export const googleSignIn = async (tenantId: string, scope: string = SCOPES_TASK
 
 export const getAccessToken = async (tenantId: string, scope: string = SCOPES_TASKS): Promise<string | null> => {
   const key = tokenKey(tenantId, scope);
-  const cached = cachedTokens.get(key);
+  let cached = cachedTokens.get(key);
+  if (!cached || cached.expires_at <= Date.now() + 60_000) {
+    // Ao recarregar a página, cachedTokens começa vazio (é só memória) —
+    // antes de considerar desconectado, tenta reidratar do localStorage.
+    const persisted = readPersistedToken(key);
+    if (persisted) {
+      cached = persisted;
+      cachedTokens.set(key, persisted);
+    }
+  }
   if (cached && cached.expires_at > Date.now() + 60_000) return cached.access_token;
   cachedTokens.delete(key);
+  clearPersistedToken(key);
   return null;
 };
 
 export const logout = async (tenantId: string, scope: string = SCOPES_TASKS) => {
   const key = tokenKey(tenantId, scope);
-  const cached = cachedTokens.get(key);
+  const cached = cachedTokens.get(key) || readPersistedToken(key);
   if (cached?.access_token && isGISLoaded()) {
     try { window.google.accounts.oauth2.revoke(cached.access_token, () => {}); } catch {}
   }
   cachedTokens.delete(key);
+  clearPersistedToken(key);
 };
 
 export const initAuth = (
