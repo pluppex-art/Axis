@@ -14,7 +14,6 @@ import {
   TrendingUp,
   DollarSign,
   Layers,
-  ChevronDown,
   ChevronUp,
   Sparkles,
   Zap,
@@ -27,6 +26,9 @@ import {
   QrCode,
   Calendar,
   ArrowRightLeft,
+  Receipt,
+  Percent,
+  TrendingDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
@@ -551,16 +553,16 @@ export function ProductsSection({
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       {/* ── HEADER DO MINI PDV ── */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-            <ShoppingCart className="w-4 h-4" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/25 ring-1 ring-white/10 shrink-0">
+            <ShoppingCart className="w-4.5 h-4.5" />
           </div>
-          <div>
-            <h4 className="text-xs font-black uppercase tracking-wider text-white">
+          <div className="min-w-0">
+            <h4 className="text-[13px] font-black uppercase tracking-wider text-white leading-tight">
               Mini PDV & Orçamento
             </h4>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
               Composição de itens e proposta comercial
             </p>
           </div>
@@ -571,7 +573,7 @@ export function ProductsSection({
           size="sm"
           variant={showAddForm ? "secondary" : "default"}
           onClick={() => setShowAddForm((v) => !v)}
-          className="text-[11px] font-bold h-7.5 gap-1.5 cursor-pointer"
+          className="text-[11px] font-bold h-8 gap-1.5 cursor-pointer shrink-0"
         >
           {showAddForm ? (
             <>
@@ -579,7 +581,7 @@ export function ProductsSection({
             </>
           ) : (
             <>
-              <Plus className="w-3.5 h-3.5" /> + Novo Produto
+              <Plus className="w-3.5 h-3.5" /> Novo Produto
             </>
           )}
         </Button>
@@ -766,24 +768,25 @@ export function ProductsSection({
       )}
 
       {/* ── ITENS DO PEDIDO / CHECKOUT (MINI PDV) ── */}
-      <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3">
-        <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-2.5">
+      <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3.5">
+        <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-3">
           <div className="flex items-center gap-2">
+            <Receipt className="w-3.5 h-3.5 text-blue-400" />
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
               Itens da Proposta Comercial ({linkedItems.length})
             </span>
           </div>
-          <Badge variant="success" className="font-mono text-xs font-bold px-2 py-0.5">
+          <Badge variant="success" className="font-mono text-xs font-bold px-2.5 py-1">
             Total: R$ {finalTotal.toLocaleString("pt-BR")}
           </Badge>
         </div>
 
         {linkedItems.length > 0 ? (
-          <div className="space-y-2.5 max-h-[300px] overflow-y-auto scrollbar-thin pr-1">
+          <div className="space-y-2.5 max-h-[320px] overflow-y-auto scrollbar-thin pr-1">
             {linkedItems.map((item) => (
               <div
                 key={item.id}
-                className="p-3 rounded-xl bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] hover:border-white/10 transition-all space-y-2.5"
+                className="p-3.5 rounded-xl bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] hover:border-white/10 transition-all space-y-3"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -843,7 +846,7 @@ export function ProductsSection({
                 </div>
 
                 {/* Controles de Recorrência, Vigência e Implantação do Item */}
-                <div className="pt-2 border-t border-white/[0.05] flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                <div className="pt-2.5 border-t border-white/[0.05] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
                   {/* Recorrente vs Pontual + Meses */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
@@ -855,45 +858,47 @@ export function ProductsSection({
                         }));
                       }}
                       className={cn(
-                        "px-2 py-0.5 rounded-md font-bold uppercase transition-colors cursor-pointer flex items-center gap-1 text-[9px]",
+                        "px-2.5 py-1 rounded-lg font-bold uppercase transition-colors cursor-pointer flex items-center gap-1.5 text-[10px] shrink-0",
                         item.isRecurring
                           ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
                           : "bg-white/5 text-slate-400 border border-white/10 hover:text-white"
                       )}
                     >
-                      <RefreshCw className="w-2.5 h-2.5" />
+                      <RefreshCw className="w-3 h-3" />
                       {item.isRecurring ? "Recorrente" : "Pontual"}
                     </button>
 
                     {item.isRecurring && (
-                      <div className="flex items-center gap-1 bg-[var(--color-surface-elevated)] px-2 py-0.5 rounded-md border border-white/5">
-                        <span className="text-slate-400 text-[9px] font-bold">Vigência:</span>
-                        {[1, 3, 6, 12, 24].map((m) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => {
-                              setItemMonths((prev) => ({
-                                ...prev,
-                                [item.id]: m,
-                              }));
-                              setCustomMonthsDraft((prev) => {
-                                const next = { ...prev };
-                                delete next[item.id];
-                                return next;
-                              });
-                            }}
-                            className={cn(
-                              "px-1.5 py-0.2 rounded font-mono font-bold text-[9px] transition-colors cursor-pointer",
-                              item.contractMonths === m
-                                ? "bg-blue-600 text-white"
-                                : "text-slate-400 hover:text-white"
-                            )}
-                          >
-                            {m}m
-                          </button>
-                        ))}
-                        <div className="flex items-center gap-0.5 pl-1 ml-0.5 border-l border-white/10">
+                      <div className="flex items-center gap-1.5 bg-[var(--color-surface-elevated)] pl-2.5 pr-1.5 py-1 rounded-lg border border-white/5">
+                        <span className="text-slate-400 text-[10px] font-bold shrink-0">Vigência:</span>
+                        <div className="flex items-center gap-0.5">
+                          {[1, 3, 6, 12, 24].map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => {
+                                setItemMonths((prev) => ({
+                                  ...prev,
+                                  [item.id]: m,
+                                }));
+                                setCustomMonthsDraft((prev) => {
+                                  const next = { ...prev };
+                                  delete next[item.id];
+                                  return next;
+                                });
+                              }}
+                              className={cn(
+                                "px-1.5 py-0.5 rounded-md font-mono font-bold text-[10px] transition-colors cursor-pointer",
+                                item.contractMonths === m
+                                  ? "bg-blue-600 text-white"
+                                  : "text-slate-400 hover:text-white hover:bg-white/5"
+                              )}
+                            >
+                              {m}m
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1 pl-1.5 ml-0.5 border-l border-white/10">
                           <input
                             type="number"
                             min="1"
@@ -920,22 +925,22 @@ export function ProductsSection({
                                 return next;
                               });
                             }}
-                            className="w-11 bg-transparent text-[9px] font-mono font-bold text-white placeholder:text-slate-500 focus:outline-none"
+                            className="w-10 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-[10px] text-center font-mono font-bold text-white placeholder:text-slate-500 placeholder:text-[8px] focus:outline-none focus:border-blue-500 focus:bg-white/10 transition-colors"
                             title="Digitar vigência personalizada (em meses)"
                           />
-                          <span className="text-slate-500 text-[9px] font-mono">m</span>
+                          <span className="text-slate-500 text-[9px] font-mono shrink-0">m</span>
                         </div>
                       </div>
                     )}
                   </div>
 
                   {/* Taxa de Implantação / Setup */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400 text-[9px] font-bold flex items-center gap-1">
-                      <Wrench className="w-2.5 h-2.5 text-amber-400" /> Setup:
+                  <div className="flex items-center gap-1.5 bg-[var(--color-surface-elevated)] pl-2.5 pr-1.5 py-1 rounded-lg border border-white/5 shrink-0">
+                    <span className="text-slate-400 text-[10px] font-bold flex items-center gap-1 shrink-0">
+                      <Wrench className="w-3 h-3 text-amber-400" /> Setup:
                     </span>
                     <div className="relative">
-                      <span className="absolute left-1.5 top-0.5 text-[9px] text-slate-500 font-mono">R$</span>
+                      <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-mono">R$</span>
                       <input
                         type="number"
                         min="0"
@@ -948,7 +953,7 @@ export function ProductsSection({
                             [item.id]: val,
                           }));
                         }}
-                        className="w-20 bg-[var(--color-surface-elevated)] border border-white/10 rounded pl-5 pr-1 py-0.5 text-[10px] text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-500"
+                        className="w-20 bg-white/5 border border-white/10 rounded px-1 pl-5 py-0.5 text-[10px] text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-500 focus:bg-white/10 transition-colors"
                         placeholder="0"
                       />
                     </div>
@@ -969,58 +974,79 @@ export function ProductsSection({
           </div>
         )}
 
-        {/* ── DETALHAMENTO FINANCEIRO DO PDV ── */}
-        <div className="bg-[var(--color-surface-sunken)] p-3 rounded-xl border border-[var(--color-border-subtle)] space-y-2.5">
-          <div className="flex items-center justify-between text-[10px] uppercase font-black text-slate-400 border-b border-white/5 pb-1.5">
-            <span>Composição Comercial & Financeira</span>
-            <span className="text-emerald-400 font-mono font-bold">Margem Líquida: {marginPercent}%</span>
+        {/* ── DETALHAMENTO FINANCEIRO DO PDV — borda de topo tracejada evoca o corte de um recibo ── */}
+        <div
+          className="bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3"
+          style={{ borderTopStyle: "dashed", borderTopWidth: "2px", borderTopColor: "rgba(148,163,184,0.35)" }}
+        >
+          <div className="flex items-center justify-between text-[10px] uppercase font-black text-slate-400 pb-0.5">
+            <span className="flex items-center gap-1.5">
+              <Receipt className="w-3.5 h-3.5 text-blue-400" /> Composição Comercial & Financeira
+            </span>
+            <span className="flex items-center gap-1 text-emerald-400 font-mono font-bold">
+              <Percent className="w-3 h-3" /> Margem Líquida: {marginPercent}%
+            </span>
           </div>
 
           {/* Linha 1: Métricas de Venda & Contrato */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-blue-500/20">
-              <span className="text-[9px] text-blue-400 block uppercase font-bold">1º Vencimento (Entrada)</span>
-              <span className="text-white font-black text-xs">R$ {firstPaymentTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-blue-500/20 space-y-1">
+              <span className="text-[9px] text-blue-400 flex items-center gap-1 uppercase font-bold">
+                <DollarSign className="w-2.5 h-2.5" /> 1º Vencimento
+              </span>
+              <span className="text-white font-black text-xs block">R$ {firstPaymentTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
 
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04]">
-              <span className="text-[9px] text-slate-400 block uppercase font-bold">Mensalidade (MRR)</span>
-              <span className="text-blue-300 font-bold text-xs">R$ {totalMonthlyMRR.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
+              <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
+                <RefreshCw className="w-2.5 h-2.5" /> Mensalidade (MRR)
+              </span>
+              <span className="text-blue-300 font-bold text-xs block">R$ {totalMonthlyMRR.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
 
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04]">
-              <span className="text-[9px] text-slate-400 block uppercase font-bold">Implantação / Setup</span>
-              <span className="text-amber-300 font-bold text-xs">R$ {totalImplementation.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
+              <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
+                <Layers className="w-2.5 h-2.5" /> Implantação
+              </span>
+              <span className="text-amber-300 font-bold text-xs block">R$ {totalImplementation.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
 
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-emerald-500/20">
-              <span className="text-[9px] text-emerald-400 block uppercase font-bold">Total Contrato (LTV)</span>
-              <span className="text-emerald-400 font-black text-xs">R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-emerald-500/20 space-y-1">
+              <span className="text-[9px] text-emerald-400 flex items-center gap-1 uppercase font-bold">
+                <TrendingUp className="w-2.5 h-2.5" /> Total Contrato (LTV)
+              </span>
+              <span className="text-emerald-400 font-black text-xs block">R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
 
           {/* Linha 2: Custos, Comissão e Lucro */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono pt-1 border-t border-white/5">
-            <div className="bg-[var(--color-surface-elevated)] p-1.5 rounded-lg border border-white/[0.04]">
-              <span className="text-[9px] text-slate-500 block uppercase">Custos Totais</span>
-              <span className="text-rose-400 font-bold text-[11px]">R$ {totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono pt-2 border-t border-white/5">
+            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
+              <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
+                <TrendingDown className="w-2.5 h-2.5" /> Custos Totais
+              </span>
+              <span className="text-rose-400 font-bold text-[11px] block">R$ {totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
 
-            <div className="bg-[var(--color-surface-elevated)] p-1.5 rounded-lg border border-white/[0.04]">
-              <span className="text-[9px] text-slate-500 block uppercase">Comissão Vendas</span>
-              <span className="text-amber-400 font-bold text-[11px]">R$ {totalCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
+              <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
+                <Percent className="w-2.5 h-2.5" /> Comissão Vendas
+              </span>
+              <span className="text-amber-400 font-bold text-[11px] block">R$ {totalCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
 
-            <div className="bg-[var(--color-surface-elevated)] p-1.5 rounded-lg border border-white/[0.04] col-span-2 sm:col-span-1">
-              <span className="text-[9px] text-slate-500 block uppercase">Lucro Líquido</span>
-              <span className="text-emerald-400 font-bold text-[11px]">R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] col-span-2 sm:col-span-1 space-y-0.5">
+              <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
+                <TrendingUp className="w-2.5 h-2.5" /> Lucro Líquido
+              </span>
+              <span className="text-emerald-400 font-bold text-[11px] block">R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
         </div>
 
         {/* ── FORMA DE PAGAMENTO & PARCELAS DO MINI PDV ── */}
-        <div className="bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3">
-          <div className="flex items-center justify-between text-[10px] uppercase font-black text-slate-400 border-b border-white/5 pb-1.5">
+        <div className="bg-[var(--color-surface-sunken)] p-4 rounded-xl border border-[var(--color-border-subtle)] space-y-3.5">
+          <div className="flex items-center justify-between text-[10px] uppercase font-black text-slate-400 border-b border-white/5 pb-2">
             <span className="flex items-center gap-1.5 text-blue-400">
               <CreditCard className="w-3.5 h-3.5" /> Condição de Pagamento & Parcelas (PDV)
             </span>
@@ -1031,10 +1057,10 @@ export function ProductsSection({
 
           {/* Seletor de Formas de Pagamento */}
           <div>
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
               Como foi o Pagamento:
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {PAYMENT_OPTIONS.map((method) => {
                 const isSelected = formaPagamento === method.id;
                 const Icon = method.icon;
@@ -1049,13 +1075,13 @@ export function ProductsSection({
                       }
                     }}
                     className={cn(
-                      "flex items-center gap-1.5 p-2 rounded-lg border text-left transition-all cursor-pointer",
+                      "flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all cursor-pointer",
                       isSelected
                         ? "bg-blue-600/20 border-blue-500 text-white font-bold shadow-sm shadow-blue-500/20 ring-1 ring-blue-500/40"
                         : "bg-[var(--color-surface-elevated)] border-white/[0.06] text-slate-400 hover:text-slate-200 hover:border-white/20"
                     )}
                   >
-                    <Icon className={cn("w-3.5 h-3.5 shrink-0", isSelected ? "text-blue-400" : "text-slate-500")} />
+                    <Icon className={cn("w-4 h-4 shrink-0", isSelected ? "text-blue-400" : "text-slate-500")} />
                     <span className="text-[11px] truncate">{method.label}</span>
                   </button>
                 );
@@ -1064,9 +1090,9 @@ export function ProductsSection({
           </div>
 
           {/* Seletor de Data, Parcelas e Observações */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 border-t border-white/5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1 border-t border-white/5">
             {/* 1. Data do Pagamento / Vencimento */}
-            <div>
+            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/5">
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                   <Calendar className="w-3 h-3 text-blue-400" />
@@ -1081,7 +1107,7 @@ export function ProductsSection({
                   type="date"
                   value={dataPagamento}
                   onChange={(e) => setDataPagamento(e.target.value)}
-                  className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none cursor-pointer [color-scheme:dark]"
+                  className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none cursor-pointer [color-scheme:dark]"
                 />
                 <div className="flex items-center gap-1">
                   <button
@@ -1131,10 +1157,10 @@ export function ProductsSection({
             </div>
 
             {/* 2. Quantidade de Parcelas */}
-            <div>
+            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/5">
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Quantidade de Parcelas:
+                  Parcelas:
                 </label>
                 <span className="text-xs font-mono font-black text-emerald-400">
                   {parcelas}x {parcelas === 1 ? "(À Vista)" : ""}
@@ -1143,7 +1169,7 @@ export function ProductsSection({
               <select
                 value={parcelas}
                 onChange={(e) => setParcelas(Number(e.target.value))}
-                className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none cursor-pointer"
+                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none cursor-pointer"
               >
                 <option value={1}>1x à vista (R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})</option>
                 {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map((num) => (
@@ -1155,7 +1181,7 @@ export function ProductsSection({
             </div>
 
             {/* 3. Detalhes / Observação do Pagamento */}
-            <div>
+            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                 Detalhes / Observação:
               </label>
@@ -1164,7 +1190,7 @@ export function ProductsSection({
                 value={detalhesPagamento}
                 onChange={(e) => setDetalhesPagamento(e.target.value)}
                 placeholder="Ex: Cartão Visa final 4022 / Pix confirmado"
-                className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
+                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
               />
             </div>
           </div>
@@ -1189,7 +1215,7 @@ export function ProductsSection({
         </div>
 
         {/* ── BOTÕES DE AÇÃO DO MINI PDV & AUTOMAÇÃO ── */}
-        <div className="space-y-2 pt-1">
+        <div className="space-y-2 pt-1.5">
           {/* Botão Principal: Processar e Automatizar Tudo */}
           <Button
             type="button"
@@ -1237,8 +1263,8 @@ export function ProductsSection({
       {/* ── CATÁLOGO DE PRODUTOS DISPONÍVEIS ── */}
       <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-            Catálogo de Produtos ({filteredCatalog.length})
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <Package className="w-3.5 h-3.5 text-blue-400" /> Catálogo de Produtos ({filteredCatalog.length})
           </span>
         </div>
 
