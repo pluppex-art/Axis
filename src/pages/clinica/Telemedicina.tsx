@@ -64,7 +64,7 @@ export default function TelemedicinaDashboard() {
     if (!activeTenantId) return;
     setIsConnecting(true);
     try {
-      await connectGoogleCalendar(activeTenantId, "/telemedicina");
+      await connectGoogleCalendar(activeTenantId, window.location.pathname);
       // connectGoogleCalendar navega a página inteira pro Google — o código
       // abaixo só roda se isso falhar antes de redirecionar.
     } catch (error: any) {

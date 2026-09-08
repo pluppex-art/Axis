@@ -95,7 +95,7 @@ export default function AgendaConfiguracoes() {
     if (!activeTenantId) return;
     setIsConnecting(true);
     try {
-      await connectGoogleCalendar(activeTenantId, "/agenda/configuracoes");
+      await connectGoogleCalendar(activeTenantId, window.location.pathname);
     } catch (err: any) {
       toast.error(err?.message || "Erro ao conectar ao Google.");
       setIsConnecting(false);

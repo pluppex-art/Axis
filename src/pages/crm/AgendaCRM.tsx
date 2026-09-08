@@ -185,7 +185,7 @@ export default function AgendaCRM() {
   const handleConnectGoogle = async () => {
     if (!activeTenantId) return;
     try {
-      await connectGoogleCalendar(activeTenantId, "/crm/agenda");
+      await connectGoogleCalendar(activeTenantId, window.location.pathname);
     } catch (err: any) {
       toast.error(err?.message || "Erro ao conectar ao Google.");
     }
