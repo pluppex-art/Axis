@@ -305,8 +305,12 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
     return true;
   }
 
+  // GOOGLE_OAUTH_REDIRECT_URI não entra aqui: tem fallback (baseOrigin +
+  // /oauth/callback) usado tanto em /connect/start quanto na troca de token
+  // abaixo — exigi-la aqui faria o callback falhar mesmo com CLIENT_ID/SECRET
+  // configurados, só porque essa variável opcional não foi setada.
   function requireGoogleEnv(res: any): boolean {
-    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_OAUTH_REDIRECT_URI) {
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
       res.status(503).json({ error: "Credenciais Google (server-side) não configuradas." });
       return false;
     }
