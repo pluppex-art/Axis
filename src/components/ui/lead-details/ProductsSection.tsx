@@ -98,6 +98,11 @@ export function ProductsSection({
   const [itemRecurrences, setItemRecurrences] = useState<Record<string, boolean>>({});
   const [itemMonths, setItemMonths] = useState<Record<string, number>>({});
   const [itemImplFees, setItemImplFees] = useState<Record<string, number>>({});
+  // Rascunho do input "Outro" de vigência — separado de itemMonths porque o
+  // valor exibido não pode ser derivado direto de contractMonths: como "1" é
+  // um dos presets, digitar "15" dígito a dígito faria o campo esvaziar após
+  // o primeiro caractere (contractMonths viraria 1, que já tem botão próprio).
+  const [customMonthsDraft, setCustomMonthsDraft] = useState<Record<string, string>>({});
 
   // Payment & Installment State (Mini PDV)
   const [formaPagamento, setFormaPagamento] = useState<
@@ -105,6 +110,7 @@ export function ProductsSection({
   >("Pix");
   const [parcelas, setParcelas] = useState<number>(1);
   const [detalhesPagamento, setDetalhesPagamento] = useState<string>("");
+  const [dataPagamento, setDataPagamento] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
   // Word Editor Modal State
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
@@ -226,7 +232,7 @@ export function ProductsSection({
   const filteredCatalog = useMemo(() => {
     return availableProducts.filter((p) => {
       const matchName = (p.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (p.category || "").toLowerCase().includes(searchTerm.toLowerCase());
+        (p.category || "").toLowerCase().includes(searchTerm.toLowerCase());
       const matchCat = selectedCategory === "Todas" || p.category === selectedCategory;
       return matchName && matchCat;
     });
@@ -367,19 +373,21 @@ export function ProductsSection({
         })),
       });
 
-      // 2. Criar lançamento financeiro no Contas a Receber com forma de pagamento e parcelamento
-      const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      // 2. Criar lançamento financeiro no Contas a Receber com forma de pagamento, parcelamento e data
+      const dueDate = dataPagamento || new Date().toISOString().slice(0, 10);
+      const isInstantPayment = formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito";
+      const formattedDate = new Date(dueDate + "T12:00:00").toLocaleDateString("pt-BR");
       const installmentInfo = parcelas > 1
         ? ` (${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
         : " (À Vista)";
-      const paymentInfoStr = `Forma: ${formaPagamento}${installmentInfo}${detalhesPagamento ? ` - Obs: ${detalhesPagamento}` : ""}`;
+      const paymentInfoStr = `Forma: ${formaPagamento}${installmentInfo} | Data: ${formattedDate}${detalhesPagamento ? ` - Obs: ${detalhesPagamento}` : ""}`;
 
       await addFinanceEntry({
         description: `Venda PDV — ${clientName} | ${paymentInfoStr} (${linkedItems.length} soluções: 1º Vencimento R$ ${firstPaymentTotal.toLocaleString("pt-BR")} | Total R$ ${finalTotal.toLocaleString("pt-BR")})`,
         category: "Vendas / Serviços",
         value: finalTotal,
         type: "Receber",
-        status: (formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito") ? "Pago" : "A Vencer",
+        status: isInstantPayment ? "Pago" : "A Vencer",
         date: dueDate,
       });
 
@@ -391,6 +399,15 @@ export function ProductsSection({
           status: "Fechado",
           scoreIA: 100,
           temperature: "quente",
+          customFields: {
+            tags: ["Venda PDV", formaPagamento, `${parcelas}x`],
+            formaPagamento,
+            parcelas,
+            valorParcela,
+            dataPagamento: dueDate,
+            detalhesPagamento,
+            quantities: productQuantities,
+          },
         });
       }
 
@@ -426,7 +443,7 @@ export function ProductsSection({
         {
           id: Date.now().toString(),
           author: seller || "Mini PDV",
-          desc: `⚡ Pedido de R$ ${finalTotal.toLocaleString("pt-BR")} concluído via ${formaPagamento}${installmentInfo}: Proposta gerada, Contas a Receber lançado e Lead atualizado.`,
+          desc: `⚡ Pedido de R$ ${finalTotal.toLocaleString("pt-BR")} concluído via ${formaPagamento}${installmentInfo} (Data: ${formattedDate}): Proposta gerada, Contas a Receber lançado e Lead atualizado.`,
           time: "Agora",
         },
         ...prev,
@@ -434,7 +451,7 @@ export function ProductsSection({
 
       addNotification({
         title: `🎉 Venda Concluída no PDV: ${clientName}`,
-        desc: `Venda de R$ ${finalTotal.toLocaleString("pt-BR")} processada via ${formaPagamento}${installmentInfo}. Proposta vinculada e receita provisionada no financeiro.`,
+        desc: `Venda de R$ ${finalTotal.toLocaleString("pt-BR")} processada via ${formaPagamento}${installmentInfo} para ${formattedDate}. Proposta vinculada e receita provisionada no financeiro.`,
         type: "success",
         category: "CRM & Vendas",
         link: "/app/crm/propostas",
@@ -860,6 +877,11 @@ export function ProductsSection({
                                 ...prev,
                                 [item.id]: m,
                               }));
+                              setCustomMonthsDraft((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
                             }}
                             className={cn(
                               "px-1.5 py-0.2 rounded font-mono font-bold text-[9px] transition-colors cursor-pointer",
@@ -877,14 +899,26 @@ export function ProductsSection({
                             min="1"
                             step="1"
                             placeholder="Outro"
-                            value={[1, 3, 6, 12, 24].includes(item.contractMonths) ? "" : item.contractMonths || ""}
+                            value={
+                              customMonthsDraft[item.id] ??
+                              ([1, 3, 6, 12, 24].includes(item.contractMonths) ? "" : item.contractMonths || "")
+                            }
                             onChange={(e) => {
-                              const val = parseInt(e.target.value, 10);
+                              const raw = e.target.value;
+                              setCustomMonthsDraft((prev) => ({ ...prev, [item.id]: raw }));
+                              const val = parseInt(raw, 10);
                               if (!val || val < 1) return;
                               setItemMonths((prev) => ({
                                 ...prev,
                                 [item.id]: val,
                               }));
+                            }}
+                            onBlur={() => {
+                              setCustomMonthsDraft((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
                             }}
                             className="w-11 bg-transparent text-[9px] font-mono font-bold text-white placeholder:text-slate-500 focus:outline-none"
                             title="Digitar vigência personalizada (em meses)"
@@ -1008,7 +1042,12 @@ export function ProductsSection({
                   <button
                     key={method.id}
                     type="button"
-                    onClick={() => setFormaPagamento(method.id as any)}
+                    onClick={() => {
+                      setFormaPagamento(method.id as any);
+                      if (method.id === "Pix" || method.id === "Dinheiro" || method.id === "Cartão de Débito") {
+                        setDataPagamento(new Date().toISOString().slice(0, 10));
+                      }
+                    }}
                     className={cn(
                       "flex items-center gap-1.5 p-2 rounded-lg border text-left transition-all cursor-pointer",
                       isSelected
@@ -1024,8 +1063,74 @@ export function ProductsSection({
             </div>
           </div>
 
-          {/* Seletor de Parcelas e Observações */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-white/5">
+          {/* Seletor de Data, Parcelas e Observações */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 border-t border-white/5">
+            {/* 1. Data do Pagamento / Vencimento */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-blue-400" />
+                  Data Pagamento / Vencimento:
+                </label>
+                <span className="text-[10px] font-mono text-slate-400">
+                  {dataPagamento ? new Date(dataPagamento + "T12:00:00").toLocaleDateString("pt-BR") : "Não definida"}
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                <input
+                  type="date"
+                  value={dataPagamento}
+                  onChange={(e) => setDataPagamento(e.target.value)}
+                  className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none cursor-pointer [color-scheme:dark]"
+                />
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDataPagamento(new Date().toISOString().slice(0, 10))}
+                    className={cn(
+                      "px-1.5 py-0.5 rounded text-[9px] font-semibold transition-colors cursor-pointer",
+                      dataPagamento === new Date().toISOString().slice(0, 10)
+                        ? "bg-blue-600 text-white"
+                        : "bg-white/5 text-slate-400 hover:text-white"
+                    )}
+                  >
+                    Hoje
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date(Date.now() + 7 * 86400000);
+                      setDataPagamento(d.toISOString().slice(0, 10));
+                    }}
+                    className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    +7d
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date(Date.now() + 15 * 86400000);
+                      setDataPagamento(d.toISOString().slice(0, 10));
+                    }}
+                    className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    +15d
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date(Date.now() + 30 * 86400000);
+                      setDataPagamento(d.toISOString().slice(0, 10));
+                    }}
+                    className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    +30d
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Quantidade de Parcelas */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -1049,9 +1154,10 @@ export function ProductsSection({
               </select>
             </div>
 
+            {/* 3. Detalhes / Observação do Pagamento */}
             <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Detalhes / Observação do Pagamento:
+                Detalhes / Observação:
               </label>
               <input
                 type="text"
@@ -1063,12 +1169,17 @@ export function ProductsSection({
             </div>
           </div>
 
-          {/* Resumo da Parcela */}
-          <div className="p-2 bg-[var(--color-surface-elevated)] rounded-lg border border-white/[0.05] flex items-center justify-between text-xs">
+          {/* Resumo da Condição */}
+          <div className="p-2 bg-[var(--color-surface-elevated)] rounded-lg border border-white/[0.05] flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[11px] text-slate-300">
                 Resumo da Condição: <strong className="text-white">{formaPagamento}</strong>
+                {dataPagamento && (
+                  <span className="text-slate-400 ml-1">
+                    • Data: <strong className="text-blue-300">{new Date(dataPagamento + "T12:00:00").toLocaleDateString("pt-BR")}</strong>
+                  </span>
+                )}
               </span>
             </div>
             <span className="text-xs font-mono font-black text-emerald-400">
@@ -1227,3 +1338,4 @@ export function ProductsSection({
     </div>
   );
 }
+

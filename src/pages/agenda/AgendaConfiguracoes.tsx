@@ -30,7 +30,7 @@ const SETTING_KEY = "agenda_configuracoes";
 
 export default function AgendaConfiguracoes() {
   const { activeTenantId } = useAuth();
-  const { appSettings, appSettingsLoaded, saveAppSetting } = useData();
+  const { appSettings, appSettingsLoaded, saveAppSetting, reunioes, deleteReuniao } = useData();
 
   const [config, setConfig] = useState<AgendaConfig>(DEFAULT_CONFIG);
 
@@ -96,7 +96,17 @@ export default function AgendaConfiguracoes() {
     try {
       await googleLogout(activeTenantId, SCOPES_CALENDAR);
       setGoogleEmail(null);
-      toast.success("Conta Google desconectada.");
+      // Remove da agenda tudo que veio sincronizado do Google, senão os
+      // compromissos importados continuam aparecendo mesmo desconectado.
+      const googleSynced = (reunioes || []).filter((r: any) => !!r.googleEventId);
+      for (const r of googleSynced) {
+        deleteReuniao(r.id);
+      }
+      toast.success(
+        googleSynced.length > 0
+          ? `Conta Google desconectada. ${googleSynced.length} compromisso(s) importado(s) removido(s) da agenda.`
+          : "Conta Google desconectada."
+      );
     } catch (err: any) {
       toast.error(err?.message || "Erro ao desconectar a conta Google.");
     } finally {

@@ -149,6 +149,37 @@ export default function AgendaCRM() {
   // do fluxo server-side (server/googleCalendar.ts) porque cada ambiente novo
   // (redirect_uri, client secret, app não verificado) virava um ponto de
   // falha diferente — este caminho evita tudo isso.
+
+  // Nem todo evento do Google Calendar é uma reunião comercial (almoço,
+  // aniversário, compromisso pessoal também aparecem na agenda) — só vira
+  // Reunião no CRM quem tem cara de reunião de verdade: link de
+  // videochamada, mais de um convidado, ou palavra-chave de reunião/trabalho
+  // no título. Compromissos claramente pessoais ficam de fora mesmo que
+  // batam num dos critérios acima.
+  const MEETING_KEYWORDS = [
+    "reunião", "reuniao", "meeting", "call", "daily", "sync", "alinhamento",
+    "alinhar", "kickoff", "kick-off", "apresentação", "apresentacao",
+    "proposta", "negociação", "negociacao", "onboarding", "treinamento",
+    "planejamento", "follow-up", "followup", "demo", "demonstração",
+    "demonstracao", "fechamento", "closer", "venda", "cliente", "1:1",
+    "one on one", "standup", "stand-up", "retro", "review",
+  ];
+  const PERSONAL_KEYWORDS = [
+    "almoço", "almoco", "jantar", "café", "cafe", "aniversário", "aniversario",
+    "dentista", "médico", "medico", "consulta", "academia", "gym", "pessoal",
+    "folga", "férias", "ferias", "viagem", "escola", "filho", "filha",
+    "casamento", "festa", "lazer",
+  ];
+  const isRealMeeting = (event: any): boolean => {
+    const text = `${event.summary || ""} ${event.description || ""}`.toLowerCase();
+    if (PERSONAL_KEYWORDS.some((k) => text.includes(k))) return false;
+    const hasMeetLink = !!(event.hangoutLink || event.conferenceData?.entryPoints?.length);
+    const attendees = event.attendees || [];
+    const hasOtherAttendees = attendees.filter((a: any) => !a.self).length > 0;
+    const hasMeetingKeyword = MEETING_KEYWORDS.some((k) => text.includes(k));
+    return hasMeetLink || hasOtherAttendees || hasMeetingKeyword;
+  };
+
   const mapGoogleEventToReuniao = (event: any): Omit<Reuniao, "id" | "createdAt"> => {
     const startISO = event.start?.dateTime
       ? new Date(event.start.dateTime).toISOString()
@@ -212,6 +243,7 @@ export default function AgendaCRM() {
       let updated = 0;
       for (const ev of events) {
         if (ev.status === "cancelled") continue;
+        if (!isRealMeeting(ev)) continue;
         const mapped = mapGoogleEventToReuniao(ev);
         const existing = all.find((r) => r.googleEventId === ev.id);
         if (existing) {
@@ -254,7 +286,18 @@ export default function AgendaCRM() {
     if (!activeTenantId) return;
     await googleLogout(activeTenantId, SCOPES_CALENDAR);
     setGoogleUserEmail(null);
-    toast.success("Conta Google desconectada.");
+    // Ao desconectar, remove do CRM tudo que veio sincronizado do Google —
+    // senão os compromissos importados continuam aparecendo mesmo sem a
+    // conexão ativa, dando a impressão de que ainda está tudo sincronizado.
+    const googleSynced = all.filter((r) => !!r.googleEventId);
+    for (const r of googleSynced) {
+      deleteReuniao(r.id);
+    }
+    toast.success(
+      googleSynced.length > 0
+        ? `Conta Google desconectada. ${googleSynced.length} compromisso(s) importado(s) removido(s) da agenda.`
+        : "Conta Google desconectada."
+    );
   };
 
   // Reflete se já existe um token válido nesta aba pra este tenant (não
