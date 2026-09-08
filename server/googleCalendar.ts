@@ -28,6 +28,17 @@ const GOOGLE_OAUTH_REDIRECT_URI = process.env.GOOGLE_OAUTH_REDIRECT_URI || "";
 const STATE_SECRET = process.env.GOOGLE_OAUTH_STATE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "axis-state-secret";
 const SUCCESS_ORIGIN = process.env.GOOGLE_OAUTH_SUCCESS_ORIGIN || process.env.APP_URL || (process.env.SPY_CORS_ORIGIN || process.env.AXIS_CORS_ORIGIN || "").split(",")[0]?.trim() || "https://axis-crm.pluppex.com.br";
 
+// O Google exige que o redirect_uri seja IDÊNTICO entre a chamada que abre o
+// consentimento (/connect/start) e a troca do código por token
+// (/oauth/callback) — um só que fosse derivado da requisição (req.protocol +
+// req.get("host")) e o outro de env vars já causou token_exchange_failed
+// mesmo com client_id/secret corretos, porque os dois valores nem sempre
+// batiam. Uma função só, usada nos dois lugares, elimina esse risco.
+function getRedirectUri(): string {
+  if (GOOGLE_OAUTH_REDIRECT_URI) return GOOGLE_OAUTH_REDIRECT_URI;
+  return `${SUCCESS_ORIGIN}/api/google-calendar/oauth/callback`;
+}
+
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/calendar.readonly",
@@ -326,8 +337,7 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
       const tenantResult = await resolveTenantId(req);
       const tenantId = "tenantId" in tenantResult ? tenantResult.tenantId : "default";
 
-      const baseOrigin = SUCCESS_ORIGIN || process.env.APP_URL || "https://axis-crm.pluppex.com.br";
-      const redirectUri = GOOGLE_OAUTH_REDIRECT_URI || `${baseOrigin}/api/google-calendar/oauth/callback`;
+      const redirectUri = getRedirectUri();
 
       const state = signState({
         tenantId,
@@ -378,7 +388,7 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
         body: new URLSearchParams({
           client_id: GOOGLE_CLIENT_ID,
           client_secret: GOOGLE_CLIENT_SECRET,
-          redirect_uri: GOOGLE_OAUTH_REDIRECT_URI || `${req.protocol}://${req.get("host")}/api/google-calendar/oauth/callback`,
+          redirect_uri: getRedirectUri(),
           code,
           grant_type: "authorization_code",
         }),
