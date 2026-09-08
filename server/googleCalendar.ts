@@ -410,7 +410,24 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
 
       const expiresAt = new Date(Date.now() + (Number(tokenData.expires_in) || 3600) * 1000).toISOString();
 
-      await supabaseService!.from("google_calendar_connections").upsert(
+      // `refresh_token` é NOT NULL e sem default — se essa for a primeira conexão
+      // deste tenant/usuário (nenhuma linha existente pra herdar um refresh_token
+      // anterior) e o Google não devolver um novo, o upsert falharia (ou, pior,
+      // "conectaria" sem token nenhum pra manter o acesso depois que o
+      // access_token de curta duração expirar). Detecta esse caso antes de gravar.
+      const { data: existingConnection } = await supabaseService!
+        .from("google_calendar_connections")
+        .select("id")
+        .eq("tenant_id", payload.tenantId)
+        .eq("user_id", payload.userId)
+        .maybeSingle();
+
+      if (!tokenData.refresh_token && !existingConnection) {
+        console.error("[google-calendar] Google não devolveu refresh_token na primeira conexão — sem acesso offline possível.");
+        return redirectWithError("missing_refresh_token");
+      }
+
+      const { error: upsertError } = await supabaseService!.from("google_calendar_connections").upsert(
         {
           tenant_id: payload.tenantId,
           user_id: payload.userId,
@@ -426,6 +443,11 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
         },
         { onConflict: "tenant_id,user_id" }
       );
+
+      if (upsertError) {
+        console.error("[google-calendar] falha ao salvar conexão:", upsertError.message);
+        return redirectWithError("save_failed");
+      }
 
       await logAudit(supabaseService!, {
         tenantId: payload.tenantId,
