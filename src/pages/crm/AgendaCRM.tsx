@@ -38,6 +38,7 @@ import {
 import { toast } from "sonner";
 import { Reuniao } from "../../contexts/DataContextTypes";
 import { googleSignIn, getAccessToken, logout as googleLogout, initAuth, SCOPES_CALENDAR } from "../../lib/firebase";
+import { supabase } from "../../lib/supabase";
 
 type ViewMode = "mes" | "semana" | "dia" | "lista";
 type StatusFilter = "Todos" | "Agendada" | "Em Andamento" | "Concluída" | "Cancelada";
@@ -211,7 +212,7 @@ export default function AgendaCRM() {
   };
 
   const handleSyncGoogle = async () => {
-    if (!activeTenantId) return;
+    if (!activeTenantId || isSyncing) return;
     setIsSyncing(true);
     try {
       let token = await getAccessToken(activeTenantId, SCOPES_CALENDAR);
@@ -239,13 +240,31 @@ export default function AgendaCRM() {
       const data = await res.json();
       const events: any[] = data.items || [];
 
+      // Checa direto no banco quais googleEventId já existem — o array `all`
+      // vem do estado local (reunioes do DataContext), que pode ainda não ter
+      // terminado de carregar quando esta sincronização dispara logo ao
+      // montar a página (ex: token do Google já em cache). Confiar só nele
+      // fazia tentar inserir de novo reuniões que já existiam, batendo na
+      // constraint idx_reunioes_tenant_google_event e falhando em lote.
+      const existingGoogleIds = new Map<string, { id: string; scheduledAt: string; status: string }>();
+      if (supabase) {
+        const { data: existingRows } = await supabase
+          .from("reunioes")
+          .select('id, "googleEventId", "scheduledAt", status')
+          .eq("tenant_id", activeTenantId)
+          .not("googleEventId", "is", null);
+        (existingRows || []).forEach((r: any) => {
+          if (r.googleEventId) existingGoogleIds.set(r.googleEventId, r);
+        });
+      }
+
       let imported = 0;
       let updated = 0;
       for (const ev of events) {
         if (ev.status === "cancelled") continue;
         if (!isRealMeeting(ev)) continue;
         const mapped = mapGoogleEventToReuniao(ev);
-        const existing = all.find((r) => r.googleEventId === ev.id);
+        const existing = all.find((r) => r.googleEventId === ev.id) || existingGoogleIds.get(ev.id);
         if (existing) {
           if (existing.scheduledAt !== mapped.scheduledAt || existing.status !== mapped.status) {
             updateReuniao(existing.id, mapped);
