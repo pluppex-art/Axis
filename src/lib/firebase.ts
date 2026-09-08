@@ -1,19 +1,27 @@
-// Cliente Google Identity Services (GIS) dedicado à sincronização com Google
-// Tasks (useTarefas.ts) — API diferente do Google Calendar, não migrada pro
-// fluxo server-side em server/googleCalendar.ts nesta rodada (ver relatório
-// da auditoria multi-tenant do Google Calendar). Mantido isolado aqui, e não
-// mais reexportado de google-auth.ts, porque google-auth.ts agora só fala
-// com o backend e nunca guarda token nenhum no browser. O access_token de
-// curta duração (GIS implicit flow nunca dá refresh_token) vive só em memória
-// nesta aba — sem nenhuma persistência local — então um reload exige
-// reconectar a conta Google novamente.
+// Cliente Google Identity Services (GIS) — popup client-side, sem passar pelo
+// backend. Usado originalmente só por Google Tasks (useTarefas.ts); o Google
+// Calendar tentou um fluxo server-side com refresh_token em
+// server/googleCalendar.ts, mas cada ambiente novo (redirect_uri, client
+// secret, app não verificado) virou um ponto de falha diferente — o GIS
+// popup já funciona de verdade pro usuário hoje, então Calendar passou a usar
+// o mesmo mecanismo, só com escopos diferentes (ver SCOPES_CALENDAR abaixo).
+// Token de curta duração (GIS implicit flow nunca dá refresh_token) vive só
+// em memória nesta aba — sem nenhuma persistência local — então um reload
+// exige reconectar a conta Google novamente.
 declare global {
   interface Window { google: any; }
 }
 
-const SCOPES = [
+export const SCOPES_TASKS = [
   "https://www.googleapis.com/auth/tasks",
   "https://www.googleapis.com/auth/tasks.readonly",
+  "email",
+  "profile",
+].join(" ");
+
+export const SCOPES_CALENDAR = [
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.readonly",
   "email",
   "profile",
 ].join(" ");
@@ -29,7 +37,10 @@ interface CachedToken {
   email?: string;
 }
 
+// Chave = `${tenantId}:${scope}` — Tasks e Calendar guardam tokens
+// independentes (escopos diferentes), mesmo tendo o mesmo tenant.
 const cachedTokens = new Map<string, CachedToken>();
+const tokenKey = (tenantId: string, scope: string) => `${tenantId}:${scope}`;
 
 function isGISLoaded(): boolean {
   return (
@@ -52,7 +63,7 @@ async function waitForGIS(maxMs = 8000): Promise<boolean> {
   });
 }
 
-export const googleSignIn = async (tenantId: string): Promise<{ user: GoogleUser; accessToken: string }> => {
+export const googleSignIn = async (tenantId: string, scope: string = SCOPES_TASKS): Promise<{ user: GoogleUser; accessToken: string }> => {
   const loaded = await waitForGIS();
   if (!loaded) throw new Error("Google Identity Services não carregou. Verifique sua conexão e recarregue a página.");
 
@@ -63,7 +74,7 @@ export const googleSignIn = async (tenantId: string): Promise<{ user: GoogleUser
     try {
       const client = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: SCOPES,
+        scope,
         callback: async (response: any) => {
           if (response.error) {
             if (["access_denied", "user_cancelled"].includes(response.error)) {
@@ -82,7 +93,7 @@ export const googleSignIn = async (tenantId: string): Promise<{ user: GoogleUser
             if (r.ok) email = (await r.json())?.email ?? null;
           } catch {}
           const token: CachedToken = { access_token: response.access_token, expires_at: expiresAt, email: email ?? undefined };
-          cachedTokens.set(tenantId, token);
+          cachedTokens.set(tokenKey(tenantId, scope), token);
           resolve({ user: { email, displayName: null }, accessToken: response.access_token });
         },
         error_callback: (err: any) => {
@@ -104,28 +115,31 @@ export const googleSignIn = async (tenantId: string): Promise<{ user: GoogleUser
   });
 };
 
-export const getAccessToken = async (tenantId: string): Promise<string | null> => {
-  const cached = cachedTokens.get(tenantId);
+export const getAccessToken = async (tenantId: string, scope: string = SCOPES_TASKS): Promise<string | null> => {
+  const key = tokenKey(tenantId, scope);
+  const cached = cachedTokens.get(key);
   if (cached && cached.expires_at > Date.now() + 60_000) return cached.access_token;
-  cachedTokens.delete(tenantId);
+  cachedTokens.delete(key);
   return null;
 };
 
-export const logout = async (tenantId: string) => {
-  const cached = cachedTokens.get(tenantId);
+export const logout = async (tenantId: string, scope: string = SCOPES_TASKS) => {
+  const key = tokenKey(tenantId, scope);
+  const cached = cachedTokens.get(key);
   if (cached?.access_token && isGISLoaded()) {
     try { window.google.accounts.oauth2.revoke(cached.access_token, () => {}); } catch {}
   }
-  cachedTokens.delete(tenantId);
+  cachedTokens.delete(key);
 };
 
 export const initAuth = (
   tenantId: string,
   onAuthSuccess?: (user: GoogleUser, token: string) => void,
-  onAuthFailure?: () => void
+  onAuthFailure?: () => void,
+  scope: string = SCOPES_TASKS
 ): (() => void) => {
-  getAccessToken(tenantId).then((token) => {
-    const cached = cachedTokens.get(tenantId);
+  getAccessToken(tenantId, scope).then((token) => {
+    const cached = cachedTokens.get(tokenKey(tenantId, scope));
     if (token && cached) onAuthSuccess?.({ email: cached.email ?? null }, token);
     else onAuthFailure?.();
   });

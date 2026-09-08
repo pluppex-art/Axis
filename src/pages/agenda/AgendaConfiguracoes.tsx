@@ -8,13 +8,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
-import {
-  connectGoogleCalendar,
-  consumeGoogleCalendarRedirectResult,
-  disconnectGoogleCalendar,
-  getGoogleCalendarStatus,
-  type GoogleCalendarStatus,
-} from "../../lib/google-auth";
+import { googleSignIn, getAccessToken, logout as googleLogout, initAuth, SCOPES_CALENDAR } from "../../lib/firebase";
 
 type AgendaConfig = {
   autoInvite: boolean;
@@ -46,33 +40,24 @@ export default function AgendaConfiguracoes() {
     }
   }, [appSettings, appSettingsLoaded]);
 
-  // Estado real da conexão Google vem sempre do backend (server/googleCalendar.ts)
-  // via getGoogleCalendarStatus — nunca é um valor local/otimista, pra não mentir
-  // "Conectado" quando o backend não tem token nenhum guardado.
-  const [googleStatus, setGoogleStatus] = useState<GoogleCalendarStatus | null>(null);
+  // Mesmo mecanismo já usado (e funcionando) por Google Tasks
+  // (src/lib/firebase.ts): popup do Google Identity Services, token de acesso
+  // fica só na memória desta aba — não persiste entre reloads, então o status
+  // reflete apenas se já existe um token válido nesta sessão do navegador.
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
-  const refreshGoogleStatus = () => {
+  useEffect(() => {
     if (!activeTenantId) return;
-    getGoogleCalendarStatus(activeTenantId).then(setGoogleStatus);
-  };
-
-  useEffect(() => {
-    refreshGoogleStatus();
-  }, [activeTenantId]);
-
-  // Depois de voltar do consentimento do Google (redirect real pro backend e de
-  // volta), avisa o usuário e recarrega o status.
-  useEffect(() => {
-    const result = consumeGoogleCalendarRedirectResult();
-    if (!result) return;
-    if (result.status === "connected") {
-      toast.success("Conta Google conectada com sucesso!");
-      refreshGoogleStatus();
-    } else {
-      toast.error("Não foi possível conectar ao Google" + (result.reason ? ` (${result.reason})` : "."));
-    }
+    setGoogleEmail(null);
+    const unsubscribe = initAuth(
+      activeTenantId,
+      (user) => setGoogleEmail(user.email || "Conectado"),
+      () => setGoogleEmail(null),
+      SCOPES_CALENDAR
+    );
+    return () => unsubscribe();
   }, [activeTenantId]);
 
   const handleToggle = (key: keyof AgendaConfig) => {
@@ -95,9 +80,12 @@ export default function AgendaConfiguracoes() {
     if (!activeTenantId) return;
     setIsConnecting(true);
     try {
-      await connectGoogleCalendar(activeTenantId, window.location.pathname);
+      const result = await googleSignIn(activeTenantId, SCOPES_CALENDAR);
+      setGoogleEmail(result.user.email || "Conectado");
+      toast.success("Conta Google conectada com sucesso!");
     } catch (err: any) {
       toast.error(err?.message || "Erro ao conectar ao Google.");
+    } finally {
       setIsConnecting(false);
     }
   };
@@ -106,9 +94,9 @@ export default function AgendaConfiguracoes() {
     if (!activeTenantId) return;
     setIsDisconnecting(true);
     try {
-      await disconnectGoogleCalendar(activeTenantId);
+      await googleLogout(activeTenantId, SCOPES_CALENDAR);
+      setGoogleEmail(null);
       toast.success("Conta Google desconectada.");
-      refreshGoogleStatus();
     } catch (err: any) {
       toast.error(err?.message || "Erro ao desconectar a conta Google.");
     } finally {
@@ -116,7 +104,7 @@ export default function AgendaConfiguracoes() {
     }
   };
 
-  const isConnected = googleStatus?.connected ?? false;
+  const isConnected = !!googleEmail;
 
   return (
     <PageContainer
@@ -151,7 +139,7 @@ export default function AgendaConfiguracoes() {
                 </p>
                 <p className="text-[10px] text-[var(--color-text-muted)]">
                   {isConnected
-                    ? `Sincronizado com ${googleStatus?.email || "sua conta Google"}. Reuniões criadas geram links do Google Meet automaticamente.`
+                    ? `Sincronizado com ${googleEmail || "sua conta Google"}. Reuniões criadas geram links do Google Meet automaticamente.`
                     : "Conecte sua conta para habilitar sincronização em tempo real."}
                 </p>
               </div>
