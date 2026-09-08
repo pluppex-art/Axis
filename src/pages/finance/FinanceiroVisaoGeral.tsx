@@ -19,9 +19,19 @@ const CICLOS: { id: Ciclo; label: string }[] = [
   { id: "tudo", label: "Tudo" },
 ];
 
+// `finance_entries.date` nem sempre vem no formato legado DD/MM/AAAA — o
+// fluxo de vendas do PDV (finalizar_venda RPC) grava em ISO (AAAA-MM-DD).
+// Sem os dois formatos aqui, uma venda paga com data ISO desaparecia de
+// todos os totais/gráficos desta tela (só "Tudo" ignora isInCiclo).
 function parseEntryDate(dateStr?: string): Date | null {
-  const parts = dateStr?.split("/");
-  if (!parts || parts.length < 3) return null;
+  if (!dateStr) return null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+  if (iso) {
+    const d = new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const parts = dateStr.split("/");
+  if (parts.length < 3) return null;
   const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
   return isNaN(d.getTime()) ? null : d;
 }
@@ -77,12 +87,8 @@ export default function FinanceiroVisaoGeral() {
       const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
       const y = d.getFullYear(); const m = d.getMonth();
       const monthEntries = financeEntries.filter(f => {
-        try {
-          const parts = f.date?.split("/");
-          if (!parts || parts.length < 3) return false;
-          const fd = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-          return fd.getFullYear() === y && fd.getMonth() === m;
-        } catch { return false; }
+        const fd = parseEntryDate(f.date);
+        return !!fd && fd.getFullYear() === y && fd.getMonth() === m;
       });
       const rec = monthEntries.filter(f => f.type === "Receber" && f.status === "Pago").reduce((s, f) => s + f.value, 0);
       const des = monthEntries.filter(f => f.type === "Pagar"   && f.status === "Pago").reduce((s, f) => s + f.value, 0);
