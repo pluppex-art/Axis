@@ -82,6 +82,7 @@ export function ProductsSection({
 }: ProductsSectionProps) {
   const {
     createProposalWithItems,
+    updateProposal,
     addFinanceEntry,
     updateLead,
     addNotification,
@@ -357,7 +358,10 @@ export function ProductsSection({
       const propTitle = `Proposta Comercial — ${clientName}`;
       const detailedItems = getDetailedProposalItems();
 
-      // 1. Criar proposta com itens no Supabase
+      // 1. Criar proposta com itens no Supabase — se o usuário já customizou o
+      // documento no Editor Modo Word (Visualizar/Editar) antes de concluir a
+      // venda, esse conteúdo só existia em estado local até aqui e precisa
+      // ser levado para o registro definitivo, senão se perde no momento da venda.
       const proposalId = await createProposalWithItems({
         titulo: propTitle,
         cliente: clientName,
@@ -367,6 +371,7 @@ export function ProductsSection({
         vendedor: seller || "Consultor S.P.Y.",
         leadId: leadId || null,
         tipo: "itens",
+        conteudoTexto: currentProposalData?.conteudo_texto || null,
         itens: detailedItems.map((p) => ({
           productId: p.productId,
           descricao: p.descricao,
@@ -467,6 +472,7 @@ export function ProductsSection({
         vendedor: seller || "Consultor S.P.Y.",
         status: "Enviada",
         validade: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        conteudo_texto: currentProposalData?.conteudo_texto || null,
         itens: detailedItems.map((p) => ({
           product_name: p.product_name,
           quantidade: p.quantidade,
@@ -1357,8 +1363,23 @@ export function ProductsSection({
         isOpen={isWordModalOpen}
         onClose={() => setIsWordModalOpen(false)}
         proposalData={currentProposalData}
-        onSaveProposal={(updated) => {
+        onSaveProposal={async (updated) => {
           setCurrentProposalData(updated);
+          // Depois que a venda é concluída, a proposta já existe no banco
+          // (tem id real) — sem persistir aqui, editar o documento de novo
+          // no Modo Word só atualizava o estado local e se perdia ao
+          // fechar/recarregar a página.
+          if (updated.id && updateProposal) {
+            await updateProposal(updated.id, {
+              titulo: updated.titulo,
+              cliente: updated.cliente,
+              vendedor: updated.vendedor,
+              valor: updated.valor,
+              validade: updated.validade,
+              status: updated.status,
+              conteudo_texto: updated.conteudo_texto,
+            });
+          }
         }}
       />
     </div>
