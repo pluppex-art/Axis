@@ -635,7 +635,7 @@ export default function AgendaCRM() {
                             key={r.id}
                             className={`px-1.5 py-0.5 rounded border text-[10px] font-bold truncate flex items-center gap-1 ${
                               isGoogle
-                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                ? "bg-emerald-600 text-white border-emerald-700 shadow-2xs"
                                 : "bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)] border-[var(--color-primary-blue)]/20"
                             }`}
                             title={`${r.leadName || r.companyName} (${new Date(r.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })})`}
@@ -720,7 +720,7 @@ export default function AgendaCRM() {
                                 </h4>
                                 {getStatusBadge(r.status)}
                                 {isGoogle && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
                                     Google Calendar
                                   </span>
                                 )}
@@ -850,7 +850,7 @@ export default function AgendaCRM() {
                             </span>
                             {getStatusBadge(r.status)}
                             {isGoogle && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
                                 Google Calendar
                               </span>
                             )}
