@@ -7,3 +7,7 @@ coverage/
 .env*
 !.env.example
 Axis.git/
+
+# Projeto separado (repo próprio: pluppex-art/E-EMPREENDA-Plus) que vive
+# fisicamente dentro desta pasta — não faz parte do histórico do Axis.
+E-EMPREENDA+/
