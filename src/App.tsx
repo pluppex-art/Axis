@@ -85,6 +85,7 @@ import {
   ConfigCRMGatilhosIA,
   ConfigIntegracoesSMTP,
   ConfigSistemaBackups,
+  ConfigSistemaAuroraUso,
   ConfigIntegracoesSDR,
   ConfigFinanceiroSquads,
   ConfigRodizioLeads,
@@ -458,6 +459,7 @@ function AppContent() {
             <Route path="integracoes/sdr-webhooks" element={<ConfigIntegracoesSDR />} />
 
             <Route path="sistema/backups" element={<ConfigSistemaBackups />} />
+            <Route path="sistema/aurora" element={<ConfigSistemaAuroraUso />} />
 
             <Route path="*" element={<SettingsGenericForm />} />
           </Route>

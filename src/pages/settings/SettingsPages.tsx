@@ -8,6 +8,6 @@ export { ConfigIntegracoesApps, ConfigIntegracoesSMTP, ConfigIntegracoesSDR } fr
 export { ConfigNotificacoesPreferencias } from "./sections/SettingsNotificacoes";
 export { ConfigPerfilUsuario } from "./sections/usuario/ConfigPerfilUsuario";
 export { ConfigPreferenciasSistema } from "./sections/usuario/ConfigPreferenciasSistema";
-export { ConfigSistemaBackups } from "./sections/SettingsSistema";
+export { ConfigSistemaBackups, ConfigSistemaAuroraUso } from "./sections/SettingsSistema";
 export { ConfigRodizioLeads } from "./sections/SettingsRodizioLeads";
 export { ConfigKanbanBoards } from "./sections/SettingsKanbanBoards";

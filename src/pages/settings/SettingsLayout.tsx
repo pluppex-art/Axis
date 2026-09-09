@@ -5,7 +5,7 @@ import { Building, Plug, Columns3, Briefcase, Zap, Wallet, Bell, HardDrive } fro
 import { SectionSidebar, type SectionNavGroup } from "../../components/layout/SectionSidebar";
 
 export default function SettingsLayout() {
-  const { user } = useAuth();
+  const { user, isModuleEnabled } = useAuth();
 
   const [activeModules, setActiveModules] = useState<{ [key: string]: boolean }>({
     crm: true, educacao: true, produtividade: true, financeiro: true,
@@ -96,6 +96,7 @@ export default function SettingsLayout() {
       title: "Sistema",
       icon: HardDrive,
       items: [
+        ...(user?.isMaster && isModuleEnabled("aurora") ? [{ title: "Uso de Tokens (Aurora)", path: "/app/configuracoes/sistema/aurora" }] : []),
         { title: "Backups automáticos", path: "/app/configuracoes/sistema/backups" },
       ],
     },

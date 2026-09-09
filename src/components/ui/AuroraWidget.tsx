@@ -5,6 +5,8 @@ import { apiFetch } from "../../lib/apiClient";
 import { AuroraCore } from "./auroraCore/AuroraCore";
 import type { AuroraCoreMode } from "./auroraCore/auroraCoreStates";
 import { useAuroraVoice } from "../../hooks/useAuroraVoice";
+import { AuroraTokenMeter } from "./AuroraTokenMeter";
+import { useAuroraTokenUsage } from "../../hooks/useAuroraTokenUsage";
 
 interface AuroraMessage {
   id: string;
@@ -79,6 +81,11 @@ export function AuroraWidget() {
   };
 
   const voice = useAuroraVoice((text) => send(text));
+  const { usage: tokenUsage } = useAuroraTokenUsage();
+  const bubbleRingColor =
+    tokenUsage?.limitReached ? "rgba(244,63,94,0.65)" // rose-500
+    : (tokenUsage?.percentUsed ?? 0) >= 90 ? "rgba(245,158,11,0.6)" // amber-500
+    : null;
 
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
@@ -134,12 +141,15 @@ export function AuroraWidget() {
                 <p className="text-[9px] text-slate-500">G-TECH AI OS</p>
               </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="p-1.5 bg-white/[0.03] hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-all"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <AuroraTokenMeter />
+              <button
+                onClick={() => setIsOpen(false)}
+                className="p-1.5 bg-white/[0.03] hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-all"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Body */}
@@ -224,8 +234,15 @@ export function AuroraWidget() {
       {/* ── Botão flutuante (o próprio núcleo da Aurora) ── */}
       <button
         onClick={() => setIsOpen((v) => !v)}
+        style={bubbleRingColor ? { boxShadow: `0 8px 30px rgba(139,92,246,0.35), 0 0 0 2px ${bubbleRingColor}` } : undefined}
         className="fixed bottom-6 right-4 sm:right-6 z-50 w-14 h-14 rounded-full shadow-[0_8px_30px_rgba(139,92,246,0.35)] flex items-center justify-center transition-all hover:scale-105 overflow-hidden bg-black/20 backdrop-blur-sm"
-        title="Falar com a Aurora"
+        title={
+          tokenUsage?.limitReached
+            ? "Limite de tokens do ciclo atingido"
+            : (tokenUsage?.percentUsed ?? 0) >= 90
+            ? `Uso de tokens perto do limite (${tokenUsage?.percentUsed}%)`
+            : "Falar com a Aurora"
+        }
       >
         <AuroraCore mode={coreMode} size={56} />
         {isOpen && (
