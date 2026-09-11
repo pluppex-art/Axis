@@ -429,7 +429,7 @@ function AppContent() {
             <Route path="usuario/preferencias" element={<ConfigPreferenciasSistema />} />
             <Route path="usuario/notificacoes" element={<ConfigNotificacoesPreferencias />} />
             <Route path="empresa/dados" element={<ConfigEmpresaDados />} />
-            <Route path="empresa/modulos" element={<Navigate to="/app/admin?tab=modules" replace />} />
+            <Route path="empresa/modulos" element={<Navigate to="/app/admin?tab=tenants" replace />} />
             <Route path="empresa/filiais" element={<ConfigEmpresaFiliais />} />
             <Route path="empresa/nichos" element={<ConfigNichos />} />
             <Route path="empresa/equipe" element={<ConfigEmpresaEquipe />} />
