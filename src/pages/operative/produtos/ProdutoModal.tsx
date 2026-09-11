@@ -77,9 +77,8 @@ export interface ProdutoModalProps {
 export function ProdutoModal(props: ProdutoModalProps) {
   if (!props.isOpen) return null;
 
-  // Estoque só faz sentido pra um produto Físico — Assinatura/Curso/Imóvel
-  // etc. não têm o que controlar em "estoque mínimo/máximo".
-  const visibleTabs = TABS.filter(t => t.id !== "estoque" || props.formType === "Físico");
+  // Aba Estoque sempre disponível para permitir controle de unidades/licenças de qualquer produto
+  const visibleTabs = TABS;
   const tabIds = visibleTabs.map(t => t.id);
   const curIdx = tabIds.indexOf(props.activeTab);
 
@@ -99,11 +98,11 @@ export function ProdutoModal(props: ProdutoModalProps) {
               </h3>
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              Mapeamento fiscal e parâmetros comerciais integrados.
+              Mapeamento fiscal, controle de estoque, vigência recorrente e parâmetros comerciais integrados.
             </p>
           </div>
           <button type="button" onClick={props.onClose}
-            className="text-slate-400 hover:text-white p-1.5 bg-white/[0.03] hover:bg-white/5 rounded-lg transition-colors ml-4 shrink-0">
+            className="text-slate-300 hover:text-white p-2 bg-slate-800 border border-slate-700 hover:bg-slate-700 rounded-xl transition-colors ml-4 shrink-0 cursor-pointer shadow-sm">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -190,18 +189,18 @@ export function ProdutoModal(props: ProdutoModalProps) {
           <div className="flex gap-2 w-full sm:w-auto justify-end">
             {curIdx > 0 && (
               <Button type="button" onClick={() => props.setActiveTab(tabIds[curIdx - 1])}
-                className="flex-1 sm:flex-initial h-9 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs rounded-xl px-4 gap-1.5">
+                className="flex-1 sm:flex-initial h-9 bg-slate-800 hover:bg-slate-700 border border-slate-600 !text-white font-black text-xs rounded-xl px-4 gap-1.5 shadow-sm cursor-pointer">
                 <ArrowLeft className="w-3.5 h-3.5" /> Voltar
               </Button>
             )}
             {curIdx < tabIds.length - 1 ? (
               <Button type="button" onClick={() => props.setActiveTab(tabIds[curIdx + 1])}
-                className="flex-1 sm:flex-initial h-9 bg-[#2563EB] hover:bg-blue-600 text-white font-bold text-xs rounded-xl px-4 gap-1.5">
+                className="flex-1 sm:flex-initial h-9 bg-[#2563EB] hover:bg-blue-600 !text-white font-black text-xs rounded-xl px-4 gap-1.5 shadow-md shadow-blue-500/25 cursor-pointer">
                 Avançar <ArrowRight className="w-3.5 h-3.5" />
               </Button>
             ) : (
               <Button type="submit" form="produto-erp-form"
-                className="flex-1 sm:flex-initial h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl px-5 gap-1.5">
+                className="flex-1 sm:flex-initial h-9 bg-emerald-600 hover:bg-emerald-500 !text-white font-black text-xs rounded-xl px-5 gap-1.5 shadow-md shadow-emerald-600/25 cursor-pointer">
                 <Check className="w-4 h-4" /> Salvar Produto ERP
               </Button>
             )}

@@ -19,7 +19,13 @@ export default function FinanceiroDRE() {
   const [despesaAdmin, setDespesaAdmin] = useState(0);
   const [hydrated, setHydrated] = useState(false);
 
-  const [period, setPeriod] = useState<"mensal" | "trimestral" | "anual">("mensal");
+  const [period, setPeriod] = useState<"mensal" | "trimestral" | "semestral" | "anual" | "personalizado">("mensal");
+  const [customStartDate, setCustomStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [customEndDate, setCustomEndDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
   // Hidrata do Supabase (app_settings) uma vez quando os dados do tenant chegam
   useEffect(() => {
@@ -44,29 +50,52 @@ export default function FinanceiroDRE() {
 
   // Aggregate current actuals from the data provider
   const parsedData = useMemo(() => {
-    const receitaBrutaPaid = financeEntries
-      .filter(f => f.type === "Receber" && f.status === "Pago")
-      .reduce((sum, f) => sum + f.value, 0);
+    let scaleFactor = 1;
+    let filteredReceitas = financeEntries.filter(f => f.type === "Receber" && f.status === "Pago");
+    let filteredDespesas = financeEntries.filter(f => f.type === "Pagar" && f.status === "Pago");
 
-    const finalReceitaBruta = receitaBrutaPaid;
+    if (period === "mensal") {
+      scaleFactor = 1;
+    } else if (period === "trimestral") {
+      scaleFactor = 3;
+    } else if (period === "semestral") {
+      scaleFactor = 6;
+    } else if (period === "anual") {
+      scaleFactor = 12;
+    } else if (period === "personalizado") {
+      if (customStartDate) {
+        filteredReceitas = filteredReceitas.filter(f => !f.date || f.date >= customStartDate);
+        filteredDespesas = filteredDespesas.filter(f => !f.date || f.date >= customStartDate);
+      }
+      if (customEndDate) {
+        filteredReceitas = filteredReceitas.filter(f => !f.date || f.date <= customEndDate);
+        filteredDespesas = filteredDespesas.filter(f => !f.date || f.date <= customEndDate);
+      }
+      if (customStartDate && customEndDate) {
+        const start = new Date(customStartDate);
+        const end = new Date(customEndDate);
+        const diffDays = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        scaleFactor = Math.max(0.1, parseFloat((diffDays / 30.4375).toFixed(2)));
+      }
+    }
 
-    const scaleFactor = period === "mensal" ? 1 : period === "trimestral" ? 3 : 12;
-    const scaledReceitaBruta = finalReceitaBruta * scaleFactor;
+    const receitaBrutaPaid = filteredReceitas.reduce((sum, f) => sum + f.value, 0);
+    const scaledReceitaBruta = period === "personalizado" ? receitaBrutaPaid : receitaBrutaPaid * scaleFactor;
 
     const impostos = scaledReceitaBruta * (impostoPct / 100);
     const receitaLiquida = scaledReceitaBruta - impostos;
     const cpv = receitaLiquida * (cpvPct / 100);
     const lucroBruto = receitaLiquida - cpv;
 
-    const fixedExpensesPaid = financeEntries
-      .filter(f => f.type === "Pagar" && f.status === "Pago")
-      .reduce((sum, f) => sum + f.value, 0) * scaleFactor;
+    const actualFixedExpenses = filteredDespesas.reduce((sum, f) => sum + f.value, 0);
+    const fixedExpensesPaid = period === "personalizado" ? actualFixedExpenses : actualFixedExpenses * scaleFactor;
 
     const despesasOp = fixedExpensesPaid + (despesaPessoal + despesaMarketing + despesaAdmin) * scaleFactor;
     const ebitda = lucroBruto - despesasOp;
     const lucroLiquido = ebitda;
 
     return {
+      scaleFactor,
       receitaBruta: scaledReceitaBruta,
       impostos,
       receitaLiquida,
@@ -76,7 +105,7 @@ export default function FinanceiroDRE() {
       ebitda,
       lucroLiquido
     };
-  }, [financeEntries, impostoPct, cpvPct, despesaPessoal, despesaMarketing, despesaAdmin, period]);
+  }, [financeEntries, impostoPct, cpvPct, despesaPessoal, despesaMarketing, despesaAdmin, period, customStartDate, customEndDate]);
 
   const fmt = (v: number) => {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
@@ -95,9 +124,9 @@ export default function FinanceiroDRE() {
     { name: "2. RECEITA OPERACIONAL LÍQUIDA", value: fmt(parsedData.receitaLiquida), isTotal: true },
     { name: "(-) Custos dos Produtos / Serviços (CPV)", value: `(${fmt(parsedData.cpv)})`, isSub: true, indent: true },
     { name: "3. LUCRO BRUTO", value: fmt(parsedData.lucroBruto), isTotal: true },
-    { name: "(-) Despesas com Pessoal & Folha", value: `(${fmt(despesaPessoal * (period === 'mensal' ? 1 : period === 'trimestral' ? 3 : 12))})`, isSub: true, indent: true },
-    { name: "(-) Despesas com Marketing & Tráfego", value: `(${fmt(despesaMarketing * (period === 'mensal' ? 1 : period === 'trimestral' ? 3 : 12))})`, isSub: true, indent: true },
-    { name: "(-) Despesas Administrativas & Infra", value: `(${fmt(despesaAdmin * (period === 'mensal' ? 1 : period === 'trimestral' ? 3 : 12))})`, isSub: true, indent: true },
+    { name: "(-) Despesas com Pessoal & Folha", value: `(${fmt(despesaPessoal * parsedData.scaleFactor)})`, isSub: true, indent: true },
+    { name: "(-) Despesas com Marketing & Tráfego", value: `(${fmt(despesaMarketing * parsedData.scaleFactor)})`, isSub: true, indent: true },
+    { name: "(-) Despesas Administrativas & Infra", value: `(${fmt(despesaAdmin * parsedData.scaleFactor)})`, isSub: true, indent: true },
     { name: "4. DESPESAS OPERACIONAIS TOTAIS", value: `(${fmt(parsedData.despesasOp)})`, isTotal: true },
     { name: "5. EBITDA / LAJIDA", value: fmt(parsedData.ebitda), isTotal: true, isEbitda: true },
     { name: "6. RESULTADO LÍQUIDO DO EXERCÍCIO", value: fmt(parsedData.lucroLiquido), isTotal: true },
@@ -137,7 +166,9 @@ export default function FinanceiroDRE() {
             {[
               { id: "mensal", label: "Mensal" },
               { id: "trimestral", label: "Trimestral" },
-              { id: "anual", label: "Anual" }
+              { id: "semestral", label: "Semestral" },
+              { id: "anual", label: "Anual" },
+              { id: "personalizado", label: "Personalizado" },
             ].map(p => (
               <button
                 key={p.id}
@@ -151,6 +182,25 @@ export default function FinanceiroDRE() {
               </button>
             ))}
           </div>
+
+          {period === "personalizado" && (
+            <div className="flex items-center gap-1.5 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-2.5 h-9 text-xs">
+              <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">De:</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="bg-transparent text-xs text-white font-mono focus:outline-none"
+              />
+              <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase ml-1">Até:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="bg-transparent text-xs text-white font-mono focus:outline-none"
+              />
+            </div>
+          )}
 
           <Button 
             onClick={handleExportXLS}
@@ -296,8 +346,13 @@ export default function FinanceiroDRE() {
         <Card className="bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] p-6 overflow-hidden shadow-sm">
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-[var(--color-border-subtle)]">
              <div>
-                <h3 className="text-base font-bold text-[var(--color-text-primary)] flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-[var(--color-primary-blue)]" /> Demonstração Consolidada ({period === "mensal" ? "Mês Atual" : period === "trimestral" ? "Trimestre" : "Anual"})
+                 <h3 className="text-base font-bold text-[var(--color-text-primary)] flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-[var(--color-primary-blue)]" /> Demonstração Consolidada ({
+                    period === "mensal" ? "Mês Atual" :
+                    period === "trimestral" ? "Trimestre" :
+                    period === "semestral" ? "Semestre" :
+                    period === "anual" ? "Anual" : "Período Personalizado"
+                  })
                 </h3>
              </div>
              <span className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 rounded-lg text-[var(--color-primary-blue)]">

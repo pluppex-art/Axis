@@ -15,6 +15,7 @@ import {
   DollarSign,
   Layers,
   ChevronUp,
+  ChevronDown,
   Sparkles,
   Zap,
   Edit3,
@@ -57,6 +58,7 @@ interface ProductsSectionProps {
     contractMonths?: number;
     hasImplementation?: boolean;
     implementationFee?: number;
+    currentStock?: number;
   }) => Promise<string>;
   toggleProductLink: (id: string) => void;
   seller: string;
@@ -121,11 +123,15 @@ export function ProductsSection({
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
   const [currentProposalData, setCurrentProposalData] = useState<PropostaEditorData | null>(null);
 
+  // Collapsible state for Composição Comercial & Financeira
+  const [isFinancialBreakdownOpen, setIsFinancialBreakdownOpen] = useState(true);
+
   // New Product Form State
   const [newProdName, setNewProdName] = useState("");
   const [newProdPrice, setNewProdPrice] = useState("");
   const [newProdCost, setNewProdCost] = useState("");
   const [newProdCommission, setNewProdCommission] = useState("5");
+  const [newProdStock, setNewProdStock] = useState("10");
   const [newProdCategory, setNewProdCategory] = useState("Software");
   const [newProdType, setNewProdType] = useState("Digital");
   const [newProdIsRecurring, setNewProdIsRecurring] = useState(false);
@@ -318,6 +324,7 @@ export function ProductsSection({
           contractMonths: newProdIsRecurring ? (parseInt(newProdMonths) || 12) : 1,
           hasImplementation: newProdHasImpl,
           implementationFee: newProdHasImpl ? (parseFloat(newProdImplFee.replace(",", ".")) || 0) : 0,
+          currentStock: parseInt(newProdStock) || 0,
         });
       } else {
         toast.info("Produto adicionado localmente.");
@@ -328,6 +335,7 @@ export function ProductsSection({
       setNewProdPrice("");
       setNewProdCost("");
       setNewProdCommission("5");
+      setNewProdStock("10");
       setNewProdIsRecurring(false);
       setNewProdMonths("12");
       setNewProdHasImpl(false);
@@ -711,7 +719,7 @@ export function ProductsSection({
               />
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
                   Preço Venda (R$) *
@@ -749,6 +757,19 @@ export function ProductsSection({
                   onChange={(e) => setNewProdCommission(e.target.value)}
                   placeholder="5"
                   className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-3 py-1.5 text-xs text-amber-400 font-mono font-bold focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Estoque Inicial
+                </label>
+                <input
+                  type="number"
+                  value={newProdStock}
+                  onChange={(e) => setNewProdStock(e.target.value)}
+                  placeholder="10"
+                  className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-3 py-1.5 text-xs text-blue-300 font-mono font-bold focus:outline-none focus:border-blue-500"
                 />
               </div>
 
@@ -1072,72 +1093,111 @@ export function ProductsSection({
 
         {/* ── DETALHAMENTO FINANCEIRO DO PDV — borda de topo tracejada evoca o corte de um recibo ── */}
         <div
-          className="bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3"
+          className="bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3 transition-all duration-200"
           style={{ borderTopStyle: "dashed", borderTopWidth: "2px", borderTopColor: "rgba(148,163,184,0.35)" }}
         >
           <div className="flex items-center justify-between text-[10px] uppercase font-black text-slate-400 pb-0.5">
             <span className="flex items-center gap-1.5">
               <Receipt className="w-3.5 h-3.5 text-blue-400" /> Composição Comercial & Financeira
             </span>
-            <span className="flex items-center gap-1 text-emerald-400 font-mono font-bold">
-              <Percent className="w-3 h-3" /> Margem Líquida: {marginPercent}%
-            </span>
-          </div>
-
-          {/* Linha 1: Métricas de Venda & Contrato */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-blue-500/20 space-y-1">
-              <span className="text-[9px] text-blue-400 flex items-center gap-1 uppercase font-bold">
-                <DollarSign className="w-2.5 h-2.5" /> 1º Vencimento
+            <div className="flex items-center gap-2.5">
+              <span className="flex items-center gap-1 text-emerald-400 font-mono font-bold">
+                <Percent className="w-3 h-3" /> Margem: {marginPercent}%
               </span>
-              <span className="text-white font-black text-xs block">R$ {firstPaymentTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
-
-            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
-              <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
-                <RefreshCw className="w-2.5 h-2.5" /> Mensalidade (MRR)
-              </span>
-              <span className="text-blue-300 font-bold text-xs block">R$ {totalMonthlyMRR.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
-
-            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
-              <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
-                <Layers className="w-2.5 h-2.5" /> Implantação
-              </span>
-              <span className="text-amber-300 font-bold text-xs block">R$ {totalImplementation.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
-
-            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-emerald-500/20 space-y-1">
-              <span className="text-[9px] text-emerald-400 flex items-center gap-1 uppercase font-bold">
-                <TrendingUp className="w-2.5 h-2.5" /> Total Contrato (LTV)
-              </span>
-              <span className="text-emerald-400 font-black text-xs block">R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+              <button
+                type="button"
+                onClick={() => setIsFinancialBreakdownOpen((prev) => !prev)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[var(--color-surface-elevated)] border border-white/10 hover:border-white/20 text-white hover:text-blue-300 font-sans font-bold text-[10px] transition-all cursor-pointer shadow-sm"
+                title={isFinancialBreakdownOpen ? "Esconder Composição" : "Abrir Composição"}
+              >
+                {isFinancialBreakdownOpen ? (
+                  <>
+                    <span>Esconder</span>
+                    <ChevronUp className="w-3 h-3 text-blue-400" />
+                  </>
+                ) : (
+                  <>
+                    <span>Abrir</span>
+                    <ChevronDown className="w-3 h-3 text-blue-400" />
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Linha 2: Custos, Comissão e Lucro */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono pt-2 border-t border-white/5">
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
-              <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
-                <TrendingDown className="w-2.5 h-2.5" /> Custos Totais
-              </span>
-              <span className="text-rose-400 font-bold text-[11px] block">R$ {totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
+          {isFinancialBreakdownOpen ? (
+            <div className="space-y-3 animate-in fade-in duration-200">
+              {/* Linha 1: Métricas de Venda & Contrato */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-blue-500/20 space-y-1">
+                  <span className="text-[9px] text-blue-400 flex items-center gap-1 uppercase font-bold">
+                    <DollarSign className="w-2.5 h-2.5" /> 1º Vencimento
+                  </span>
+                  <span className="text-white font-black text-xs block">R$ {firstPaymentTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
 
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
-              <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
-                <Percent className="w-2.5 h-2.5" /> Comissão Vendas
-              </span>
-              <span className="text-amber-400 font-bold text-[11px] block">R$ {totalCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
+                <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
+                  <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
+                    <RefreshCw className="w-2.5 h-2.5" /> Mensalidade (MRR)
+                  </span>
+                  <span className="text-blue-300 font-bold text-xs block">R$ {totalMonthlyMRR.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
 
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] col-span-2 sm:col-span-1 space-y-0.5">
-              <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
-                <TrendingUp className="w-2.5 h-2.5" /> Lucro Líquido
-              </span>
-              <span className="text-emerald-400 font-bold text-[11px] block">R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
+                  <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
+                    <Layers className="w-2.5 h-2.5" /> Implantação
+                  </span>
+                  <span className="text-amber-300 font-bold text-xs block">R$ {totalImplementation.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
+
+                <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-emerald-500/20 space-y-1">
+                  <span className="text-[9px] text-emerald-400 flex items-center gap-1 uppercase font-bold">
+                    <TrendingUp className="w-2.5 h-2.5" /> Total Contrato (LTV)
+                  </span>
+                  <span className="text-emerald-400 font-black text-xs block">R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              {/* Linha 2: Custos, Comissão e Lucro */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono pt-2 border-t border-white/5">
+                <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
+                  <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
+                    <TrendingDown className="w-2.5 h-2.5" /> Custos Totais
+                  </span>
+                  <span className="text-rose-400 font-bold text-[11px] block">R$ {totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
+
+                <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
+                  <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
+                    <Percent className="w-2.5 h-2.5" /> Comissão Vendas
+                  </span>
+                  <span className="text-amber-400 font-bold text-[11px] block">R$ {totalCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
+
+                <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] col-span-2 sm:col-span-1 space-y-0.5">
+                  <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
+                    <TrendingUp className="w-2.5 h-2.5" /> Lucro Líquido
+                  </span>
+                  <span className="text-emerald-400 font-bold text-[11px] block">R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] font-mono bg-[var(--color-surface-elevated)] px-3 py-2 rounded-lg border border-white/5 animate-in fade-in">
+              <span className="text-slate-400">
+                1º Venc: <strong className="text-white">R$ {firstPaymentTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+              </span>
+              <span className="text-slate-400">
+                MRR: <strong className="text-blue-300">R$ {totalMonthlyMRR.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+              </span>
+              <span className="text-slate-400">
+                LTV: <strong className="text-emerald-400">R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+              </span>
+              <span className="text-slate-400">
+                Lucro: <strong className="text-emerald-400">R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* ── FORMA DE PAGAMENTO & PARCELAS DO MINI PDV ── */}

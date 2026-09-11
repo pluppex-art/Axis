@@ -384,6 +384,9 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     contractMonths?: number;
     hasImplementation?: boolean;
     implementationFee?: number;
+    currentStock?: number;
+    stockMin?: number;
+    stockMax?: number;
   }) => {
     const sku = data.sku?.trim() || `PROD-${Math.floor(1000 + Math.random() * 9000)}`;
     const priceNum = Number(data.price) || 0;
@@ -402,9 +405,9 @@ export function useLeadDetails(lead: any, onClose: () => void) {
       margin: marginRatio,
       commission: commNum,
       active: true,
-      stockMin: 1,
-      stockMax: 100,
-      currentStock: 10,
+      stockMin: data.stockMin !== undefined ? data.stockMin : 1,
+      stockMax: data.stockMax !== undefined ? data.stockMax : 100,
+      currentStock: data.currentStock !== undefined ? data.currentStock : 10,
       description: data.description || "",
       provider: seller || "Interno",
       tags: ["crm", "lead"],

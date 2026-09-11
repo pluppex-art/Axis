@@ -8,9 +8,11 @@ import { useData } from "../../contexts/DataContext";
 import { downloadCsv } from "../../lib/csvExport";
 import {
   Plus, X, Trash2, Download, Handshake, CheckCircle2, Clock, XCircle, DollarSign,
+  UserPlus, Share2, Copy, ExternalLink, QrCode, Send, MessageCircle, Link, Check, Users
 } from "lucide-react";
 
 const DEFAULT_COMMISSION_KEY = "indicacao_comissao_padrao";
+const AFFILIATES_KEY = "afiliados_sistema";
 
 const currency = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
@@ -42,10 +44,15 @@ function statusIcon(status: string) {
 export default function Indicacoes() {
   const {
     indicacoes, addIndicacao, updateIndicacao, deleteIndicacao,
-    colaboradores, clienteBase, appSettings, saveAppSetting,
+    colaboradores, clienteBase, appSettings, saveAppSetting, addLead
   } = useData();
 
+  // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAffiliateModalOpen, setIsAffiliateModalOpen] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+
+  // Manual Indicação Form
   const [referrerType, setReferrerType] = useState<"colaborador" | "cliente">("colaborador");
   const [referrerId, setReferrerId] = useState("");
   const [referredName, setReferredName] = useState("");
@@ -53,9 +60,42 @@ export default function Indicacoes() {
   const [commissionValue, setCommissionValue] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Default Commission State
   const defaultCommission = Number(appSettings?.[DEFAULT_COMMISSION_KEY] ?? 0);
   const [editingDefault, setEditingDefault] = useState(false);
   const [defaultDraft, setDefaultDraft] = useState(String(defaultCommission || ""));
+
+  // Affiliate Cadastro Form
+  const [affName, setAffName] = useState("");
+  const [affEmail, setAffEmail] = useState("");
+  const [affPhone, setAffPhone] = useState("");
+  const [affPix, setAffPix] = useState("");
+  const [affCode, setAffCode] = useState("");
+  const [affCommission, setAffCommission] = useState("");
+
+  // Public Form Preview inside Link Modal
+  const [previewLeadName, setPreviewLeadName] = useState("");
+  const [previewLeadPhone, setPreviewLeadPhone] = useState("");
+  const [previewLeadEmail, setPreviewLeadEmail] = useState("");
+  const [previewLeadCompany, setPreviewLeadCompany] = useState("");
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  // Selected affiliate in Link modal
+  const affiliates: any[] = useMemo(() => {
+    return Array.isArray(appSettings?.[AFFILIATES_KEY]) ? appSettings[AFFILIATES_KEY] : [];
+  }, [appSettings]);
+
+  const [selectedAffiliateCode, setSelectedAffiliateCode] = useState<string>("");
+
+  const currentAffiliate = useMemo(() => {
+    return affiliates.find((a: any) => a.code === selectedAffiliateCode) || affiliates[0] || null;
+  }, [affiliates, selectedAffiliateCode]);
+
+  const currentReferralUrl = useMemo(() => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://app.axis.com";
+    const code = currentAffiliate ? currentAffiliate.code : "oficial";
+    return `${origin}/indicacao?ref=${encodeURIComponent(code)}`;
+  }, [currentAffiliate]);
 
   const kpis = useMemo(() => {
     const total = indicacoes.length;
@@ -113,8 +153,117 @@ export default function Indicacoes() {
       notes: notes.trim() || null,
     });
 
-    toast.success("Indicação registrada!");
+    toast.success("Indicação registrada com sucesso!");
     setIsModalOpen(false);
+  };
+
+  const handleSaveAffiliate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!affName.trim() || !affCode.trim()) {
+      toast.error("Preencha ao menos o Nome e o Código do Afiliado.");
+      return;
+    }
+
+    const cleanCode = affCode.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    const newAff = {
+      id: crypto.randomUUID(),
+      name: affName.trim(),
+      email: affEmail.trim(),
+      phone: affPhone.trim(),
+      pix: affPix.trim(),
+      code: cleanCode,
+      commission: parseFloat(affCommission.replace(",", ".")) || defaultCommission || 100,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updated = [...affiliates, newAff];
+    await saveAppSetting(AFFILIATES_KEY, updated);
+
+    toast.success(`🎉 Afiliado "${newAff.name}" cadastrado! Link gerado: ref=${cleanCode}`);
+    setSelectedAffiliateCode(cleanCode);
+    setAffName("");
+    setAffEmail("");
+    setAffPhone("");
+    setAffPix("");
+    setAffCode("");
+    setAffCommission("");
+    setIsAffiliateModalOpen(false);
+    setIsLinkModalOpen(true);
+  };
+
+  const handleCopyLink = () => {
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(currentReferralUrl);
+      setCopiedLink(true);
+      toast.success("Link copiado para a área de transferência!");
+      setTimeout(() => setCopiedLink(false), 2000);
+    }
+  };
+
+  const handleShareWhatsApp = () => {
+    const text = `Olá! Conheça as soluções da nossa empresa através do meu link exclusivo de indicação: ${currentReferralUrl}`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
+  };
+
+  const handleShareInstagram = () => {
+    if (navigator?.clipboard) {
+      const bioText = `🚀 Garanta sua consultoria pelo meu link oficial de parceiro: ${currentReferralUrl}`;
+      navigator.clipboard.writeText(bioText);
+      toast.success("Texto pronto para Bio/Stories do Instagram copiado!");
+    }
+  };
+
+  // Simulação / Teste do formulário público de indicação
+  const handleTestSubmitForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!previewLeadName.trim() || !previewLeadPhone.trim()) {
+      toast.error("Preencha nome e WhatsApp.");
+      return;
+    }
+
+    const affiliateName = currentAffiliate?.name || "Afiliado Externo";
+    const affiliateComm = currentAffiliate?.commission || defaultCommission || 100;
+
+    // 1. Cadastra no módulo de Indicações
+    addIndicacao({
+      referrer_type: "colaborador",
+      referrer_colaborador_id: null,
+      referrer_cliente_id: null,
+      referrer_name: `[Afiliado] ${affiliateName}`,
+      referred_name: previewLeadName.trim(),
+      referred_contact: `${previewLeadPhone.trim()} · ${previewLeadEmail.trim()}`,
+      commission_value: Number(affiliateComm),
+      status: "Pendente",
+      date_indicated: new Date().toISOString().split("T")[0],
+      notes: `Lead cadastrado via formulário de indicação online. Empresa: ${previewLeadCompany || "Não informada"}. Ref: ${currentAffiliate?.code || "oficial"}`,
+    });
+
+    // 2. Se a função addLead estiver disponível, adiciona ao CRM
+    if (addLead) {
+      addLead({
+        name: previewLeadName.trim(),
+        phone: previewLeadPhone.trim(),
+        email: previewLeadEmail.trim(),
+        company: previewLeadCompany.trim() || "Indicação",
+        source: `Indicação (${affiliateName})`,
+        stageId: "1",
+        status: "Lead Qualificado",
+        title: `Indicação - ${previewLeadCompany.trim() || previewLeadName.trim()}`,
+        value: 0,
+        date: new Date().toISOString().split("T")[0],
+        seller: "Equipe Comercial",
+      });
+    }
+
+    toast.success("✅ Lead registrado via formulário de indicação!", {
+      description: `Comissão provisionada para ${affiliateName}.`,
+    });
+
+    setPreviewLeadName("");
+    setPreviewLeadPhone("");
+    setPreviewLeadEmail("");
+    setPreviewLeadCompany("");
+    setIsLinkModalOpen(false);
   };
 
   const handleCycleStatus = (item: (typeof indicacoes)[number]) => {
@@ -142,35 +291,54 @@ export default function Indicacoes() {
         i.referrer_name,
         i.referrer_type === "colaborador" ? "Colaborador" : "Cliente",
         i.referred_name,
-        i.referred_contact || "-",
-        i.commission_value,
+        i.referred_contact || "",
+        Number(i.commission_value || 0).toFixed(2),
         i.status,
-        i.date_indicated,
+        i.date_indicated || "",
       ])
     );
+    toast.success("Arquivo CSV exportado com sucesso!");
   };
 
   return (
     <div className="space-y-6">
+      {/* Header Principal com os Dois Novos Botões em Destaque */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
-            <Handshake className="w-5 h-5 text-[var(--color-primary-blue)]" /> Indicações
+            <Handshake className="w-5 h-5 text-[var(--color-primary-blue)]" /> Programa de Indicações & Afiliados
           </h1>
           <p className="text-sm text-[var(--color-text-muted)]">
-            Colaboradores e clientes que indicam novos clientes ganham um valor de comissão por indicação.
+            Cadastre afiliados, gere links rastreáveis com formulário para Instagram/WhatsApp e controle comissões.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={openModal} className="h-9 px-4 text-xs font-bold gap-1.5 shadow-xs">
-            <Plus className="w-3.5 h-3.5" /> Nova Indicação
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Botão 1 Solicitado: Cadastrar Afiliado */}
+          <Button
+            onClick={() => setIsAffiliateModalOpen(true)}
+            className="h-9 px-4 text-xs font-black gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 !text-white shadow-md shadow-purple-600/20 cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" /> Cadastrar Afiliado
           </Button>
-          <Button variant="outline" onClick={handleExport} className="h-9 px-4 text-xs font-bold gap-1.5 border-[var(--color-border-default)]">
+
+          {/* Botão 2 Solicitado: Link & Formulário de Indicação */}
+          <Button
+            onClick={() => setIsLinkModalOpen(true)}
+            className="h-9 px-4 text-xs font-black gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 !text-white shadow-md shadow-emerald-600/20 cursor-pointer"
+          >
+            <Share2 className="w-4 h-4" /> Link & Formulário
+          </Button>
+
+          <Button onClick={openModal} variant="outline" className="h-9 px-3 text-xs font-bold gap-1.5 border-[var(--color-border-default)]">
+            <Plus className="w-3.5 h-3.5" /> Indicação Manual
+          </Button>
+          <Button variant="outline" onClick={handleExport} className="h-9 px-3 text-xs font-bold gap-1.5 border-[var(--color-border-default)]">
             <Download className="w-3.5 h-3.5" /> Exportar
           </Button>
         </div>
       </div>
 
+      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-1">Total de Indicações</p>
@@ -190,6 +358,7 @@ export default function Indicacoes() {
         </Card>
       </div>
 
+      {/* Configuração de Comissão Padrão */}
       <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
           <DollarSign className="w-4 h-4 text-[var(--color-primary-blue)]" />
@@ -220,118 +389,305 @@ export default function Indicacoes() {
         )}
       </Card>
 
-      <Card className="bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left hidden md:table">
-            <thead className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-text-muted)] bg-[var(--color-surface-sunken)] border-b border-[var(--color-border-subtle)]">
-              <tr>
-                <th className="px-6 py-3.5">Indicador</th>
-                <th className="px-6 py-3.5">Cliente Indicado</th>
-                <th className="px-6 py-3.5">Data</th>
-                <th className="px-6 py-3.5">Status</th>
-                <th className="px-6 py-3.5 text-right">Comissão</th>
-                <th className="px-6 py-3.5 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-border-subtle)]">
-              {indicacoes.length === 0 ? (
+      {/* Tabela de Indicações */}
+      <Card className="p-0 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-[var(--color-border-subtle)] flex items-center justify-between">
+          <h3 className="text-sm font-bold text-[var(--color-text-primary)]">Histórico de Indicações ({indicacoes.length})</h3>
+          <span className="text-[10px] text-[var(--color-text-muted)] uppercase font-mono">Clique no status para avançar o fluxo</span>
+        </div>
+
+        {indicacoes.length === 0 ? (
+          <div className="p-12 text-center text-xs text-[var(--color-text-muted)]">
+            Nenhuma indicação registrada ainda. Cadastre afiliados ou compartilhe o link público de formulário.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] uppercase text-[10px] tracking-wider border-b border-[var(--color-border-subtle)]">
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-[var(--color-text-muted)]">
-                    Nenhuma indicação registrada ainda.
-                  </td>
+                  <th className="p-3">Indicador / Afiliado</th>
+                  <th className="p-3">Cliente Indicado</th>
+                  <th className="p-3">Contato</th>
+                  <th className="p-3">Comissão</th>
+                  <th className="p-3">Data</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3 text-right">Ações</th>
                 </tr>
-              ) : (
-                indicacoes.map((item) => (
-                  <tr key={item.id} className="hover:bg-[var(--color-surface-sunken)]/50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <p className="font-bold text-[var(--color-text-primary)]">{item.referrer_name}</p>
-                      <p className="text-[10px] text-[var(--color-text-faint)] uppercase font-semibold">
-                        {item.referrer_type === "colaborador" ? "Colaborador" : "Cliente"}
-                      </p>
+              </thead>
+              <tbody className="divide-y divide-[var(--color-border-subtle)] text-[var(--color-text-primary)] font-medium">
+                {indicacoes.map((item) => (
+                  <tr key={item.id} className="hover:bg-white/[0.02] transition-colors">
+                    <td className="p-3 font-bold flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center text-[10px] font-bold">
+                        {item.referrer_name.charAt(0).toUpperCase()}
+                      </span>
+                      {item.referrer_name}
                     </td>
-                    <td className="px-6 py-4">
-                      <p className="text-[var(--color-text-primary)] font-semibold">{item.referred_name}</p>
-                      {item.referred_contact && <p className="text-[10px] text-[var(--color-text-faint)]">{item.referred_contact}</p>}
-                    </td>
-                    <td className="px-6 py-4 text-[var(--color-text-muted)] font-mono">
-                      {item.date_indicated ? new Date(item.date_indicated + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
-                    </td>
-                    <td className="px-6 py-4">
+                    <td className="p-3 text-white font-bold">{item.referred_name}</td>
+                    <td className="p-3 text-[var(--color-text-muted)]">{item.referred_contact || "—"}</td>
+                    <td className="p-3 font-mono font-bold text-emerald-400">{currency(Number(item.commission_value || 0))}</td>
+                    <td className="p-3 text-[var(--color-text-muted)] font-mono">{item.date_indicated || "—"}</td>
+                    <td className="p-3">
                       <button
-                        type="button"
                         onClick={() => handleCycleStatus(item)}
-                        className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${statusStyle(item.status)}`}
-                        title="Clique para avançar o status"
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border cursor-pointer hover:brightness-110 transition-all ${statusStyle(item.status)}`}
                       >
                         {statusIcon(item.status)}
                         {item.status}
                       </button>
                     </td>
-                    <td className="px-6 py-4 text-right font-mono font-bold text-[var(--color-text-primary)]">
-                      {currency(Number(item.commission_value))}
-                    </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="p-3 text-right">
                       <button
-                        type="button"
                         onClick={() => handleDelete(item)}
-                        className="p-1.5 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Excluir indicação"
+                        className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                        title="Excluir"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-
-          {/* Mobile Cards */}
-          <div className="md:hidden p-4 space-y-3">
-            {indicacoes.length === 0 ? (
-              <p className="text-center text-xs text-[var(--color-text-muted)] py-8">Nenhuma indicação registrada ainda.</p>
-            ) : indicacoes.map((item) => (
-              <div key={item.id} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] p-4 rounded-xl flex flex-col gap-3 relative">
-                <button
-                  type="button"
-                  onClick={() => handleDelete(item)}
-                  className="absolute top-3 right-3 text-[var(--color-text-faint)] hover:text-rose-500 p-1"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-                <div>
-                  <p className="font-bold text-[var(--color-text-primary)] text-xs mb-0.5 pr-6">{item.referred_name}</p>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">
-                    Indicado por {item.referrer_name} ({item.referrer_type === "colaborador" ? "Colaborador" : "Cliente"})
-                  </p>
-                </div>
-                <div className="flex items-center justify-between border-t border-[var(--color-border-subtle)] pt-2.5">
-                  <button
-                    type="button"
-                    onClick={() => handleCycleStatus(item)}
-                    className={`inline-flex items-center px-2 py-0.5 text-[9px] font-bold rounded-md border ${statusStyle(item.status)}`}
-                  >
-                    {statusIcon(item.status)}
-                    {item.status}
-                  </button>
-                  <p className="font-mono font-bold text-xs text-[var(--color-text-primary)]">{currency(Number(item.commission_value))}</p>
-                </div>
-              </div>
-            ))}
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+        )}
       </Card>
 
+      {/* ── MODAL 1: CADASTRAR AFILIADO / INDICADOR ── */}
       <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Nova Indicação"
-        description="Registre quem indicou e o valor de comissão devido para comissionamento transparente."
-        maxWidth="max-w-lg"
+        isOpen={isAffiliateModalOpen}
+        onClose={() => setIsAffiliateModalOpen(false)}
+        title="Cadastrar Afiliado / Indicador Oficial"
       >
+        <form onSubmit={handleSaveAffiliate} className="space-y-3.5">
+          <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
+            Cadastre parceiros, influenciadores, clientes ou colaboradores como afiliados para que recebam comissão por cada cliente indicado.
+          </p>
+
+          <div>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Nome do Afiliado / Parceiro *</label>
+            <input
+              type="text"
+              required
+              placeholder="Ex: Carlos Mendonça ou Agência Impacto"
+              value={affName}
+              onChange={(e) => {
+                setAffName(e.target.value);
+                if (!affCode) {
+                  const slug = e.target.value.toLowerCase().trim().split(" ")[0].replace(/[^a-z0-9]/g, "");
+                  setAffCode(slug);
+                }
+              }}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">WhatsApp / Telefone</label>
+              <input
+                type="text"
+                placeholder="(11) 99999-9999"
+                value={affPhone}
+                onChange={(e) => setAffPhone(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">E-mail</label>
+              <input
+                type="email"
+                placeholder="afiliado@email.com"
+                value={affEmail}
+                onChange={(e) => setAffEmail(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Código / Slug do Link *</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-xs">ref=</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="carlos"
+                  value={affCode}
+                  onChange={(e) => setAffCode(e.target.value.toLowerCase().replace(/\s+/g, "-"))}
+                  className="w-full pl-11 bg-[var(--color-surface-sunken)] text-white font-mono font-bold border border-[var(--color-border-default)] rounded-[var(--radius-control)] pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Comissão por Venda (R$)</label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder={String(defaultCommission || "100,00")}
+                value={affCommission}
+                onChange={(e) => setAffCommission(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-emerald-400 font-mono font-bold border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Chave Pix para Pagamentos</label>
+            <input
+              type="text"
+              placeholder="CPF, E-mail, Telefone ou Chave Aleatória"
+              value={affPix}
+              onChange={(e) => setAffPix(e.target.value)}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-[var(--color-border-subtle)]">
+            <Button type="button" variant="outline" onClick={() => setIsAffiliateModalOpen(false)} className="h-9 px-4 text-xs font-bold">
+              Cancelar
+            </Button>
+            <Button type="submit" className="h-9 px-5 text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-xs">
+              Salvar Afiliado
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ── MODAL 2: LINK & FORMULÁRIO DE INDICAÇÃO ── */}
+      <Modal
+        isOpen={isLinkModalOpen}
+        onClose={() => setIsLinkModalOpen(false)}
+        title="Link & Formulário de Indicação / Afiliados"
+      >
+        <div className="space-y-4">
+          {/* Seletor de Afiliado */}
+          {affiliates.length > 0 && (
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Selecione o Afiliado:</label>
+              <select
+                value={selectedAffiliateCode}
+                onChange={(e) => setSelectedAffiliateCode(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-white border border-[var(--color-border-default)] rounded-xl px-3 py-2 text-xs font-bold focus:outline-none"
+              >
+                {affiliates.map((a: any) => (
+                  <option key={a.code} value={a.code}>
+                    {a.name} (ref={a.code} — R$ {a.commission})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Card com o Link Gerado */}
+          <div className="p-3.5 rounded-xl bg-[var(--color-surface-sunken)] border border-emerald-500/25 space-y-2.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 block">
+              Link de Indicação Rastreável
+            </span>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={currentReferralUrl}
+                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none"
+              />
+              <Button
+                type="button"
+                onClick={handleCopyLink}
+                className="h-9 px-3 text-xs font-bold gap-1 bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedLink ? "Copiado!" : "Copiar"}
+              </Button>
+            </div>
+
+            {/* Ações de Compartilhamento WhatsApp e Instagram */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Button
+                type="button"
+                onClick={handleShareWhatsApp}
+                className="h-8 text-[11px] font-bold gap-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-black"
+              >
+                <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+              </Button>
+              <Button
+                type="button"
+                onClick={handleShareInstagram}
+                className="h-8 text-[11px] font-bold gap-1.5 bg-gradient-to-r from-pink-600 via-rose-500 to-amber-500 text-white hover:brightness-110"
+              >
+                <Share2 className="w-3.5 h-3.5" /> Instagram (Bio)
+              </Button>
+            </div>
+          </div>
+
+          {/* Visualização / Teste do Formulário que o Cliente / Indicado vê */}
+          <div className="p-4 rounded-xl bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] space-y-3">
+            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+              <span className="text-[11px] font-black uppercase text-white flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-blue-400" /> Formulário de Cadastro do Indicado
+              </span>
+              <span className="text-[10px] text-emerald-400 font-mono font-bold">Rastreio: {currentAffiliate ? currentAffiliate.name : "Geral"}</span>
+            </div>
+
+            <p className="text-[11px] text-slate-400 leading-tight">
+              Quando o indicado acessa pelo WhatsApp ou Instagram, ele preenche este formulário e entra automaticamente no CRM:
+            </p>
+
+            <form onSubmit={handleTestSubmitForm} className="space-y-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="Nome do indicado *"
+                  value={previewLeadName}
+                  onChange={(e) => setPreviewLeadName(e.target.value)}
+                  className="bg-[var(--color-surface-sunken)] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  required
+                  placeholder="WhatsApp com DDD *"
+                  value={previewLeadPhone}
+                  onChange={(e) => setPreviewLeadPhone(e.target.value)}
+                  className="bg-[var(--color-surface-sunken)] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="email"
+                  placeholder="E-mail"
+                  value={previewLeadEmail}
+                  onChange={(e) => setPreviewLeadEmail(e.target.value)}
+                  className="bg-[var(--color-surface-sunken)] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Nome da Empresa"
+                  value={previewLeadCompany}
+                  onChange={(e) => setPreviewLeadCompany(e.target.value)}
+                  className="bg-[var(--color-surface-sunken)] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <Button type="submit" className="h-8 px-4 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white gap-1.5">
+                  <Send className="w-3 h-3" /> Testar Envio do Formulário
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── MODAL INDICAÇÃO MANUAL ── */}
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Nova Indicação Manual">
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
-            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Quem indicou? *</label>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Quem Indicou? *</label>
             <div className="grid grid-cols-2 gap-2 mb-2">
               <button
                 type="button"

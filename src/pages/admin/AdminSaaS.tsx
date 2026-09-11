@@ -10,6 +10,7 @@ import { AdminOverviewTab } from "./components/AdminOverviewTab";
 import { AdminTenantsTab } from "./components/AdminTenantsTab";
 import { AdminBillingTab } from "./components/AdminBillingTab";
 import { AdminLogsTab } from "./components/AdminLogsTab";
+import { NovoTenantModal } from "./components/NovoTenantModal";
 
 const TABS = [
   { id: "overview", label: "Visão Geral", icon: Activity },
@@ -33,6 +34,7 @@ export const CustomTooltip = ({ active, payload, label }: any) => {
 export default function AdminSaaS() {
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
+  const [isCreateTenantOpen, setIsCreateTenantOpen] = useState(false);
   const [crmEnabled, setCrmEnabled] = useState(true);
   const [sdrEnabled, setSdrEnabled] = useState(false);
   const [advDashboardEnabled, setAdvDashboardEnabled] = useState(false);
@@ -80,10 +82,13 @@ export default function AdminSaaS() {
       description="Controle centralizado de instâncias, faturamento e saúde global da plataforma."
       actions={
         <div className="flex gap-2">
-          <Button variant="outline" className="h-10 px-4" disabled>
+          <Button variant="outline" className="h-10 px-4 border-slate-700 bg-slate-800 text-slate-300 hover:text-white" disabled>
             <Bell className="w-4 h-4 mr-2" /> Alertas
           </Button>
-          <Button className="h-10 px-4" disabled>
+          <Button
+            onClick={() => setIsCreateTenantOpen(true)}
+            className="h-10 px-4 bg-blue-600 hover:bg-blue-500 text-white font-black shadow-lg"
+          >
             <Plus className="w-4 h-4 mr-2" /> Novo Tenant
           </Button>
         </div>
@@ -111,7 +116,12 @@ export default function AdminSaaS() {
       {activeTab === "overview" && (
         <AdminOverviewTab globalMrr={globalMrr} revenueData={revenueData} CustomTooltip={CustomTooltip} />
       )}
-      {activeTab === "tenants" && <AdminTenantsTab />}
+      {activeTab === "tenants" && (
+        <AdminTenantsTab
+          onConfigureModules={handleOpenModules}
+          onOpenNewTenant={() => setIsCreateTenantOpen(true)}
+        />
+      )}
       {activeTab === "billing" && (
         <AdminBillingTab revenueData={revenueData} CustomTooltip={CustomTooltip} />
       )}
@@ -130,6 +140,14 @@ export default function AdminSaaS() {
           handleSaveModules={handleSaveModules}
         />
       )}
+
+      <NovoTenantModal
+        isOpen={isCreateTenantOpen}
+        onClose={() => setIsCreateTenantOpen(false)}
+        onCreated={() => {
+          toast.success("Novo Tenant cadastrado com sucesso!");
+        }}
+      />
     </PageContainer>
   );
 }
