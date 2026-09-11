@@ -110,16 +110,19 @@ export default function AdminSaaS() {
         </div>
       }
     >
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-[var(--color-border-default)] mb-8 pb-2 overflow-x-auto scrollbar-none">
+      {/* Tabs Bar */}
+      <div className="flex items-center gap-1.5 p-1.5 bg-slate-900 border border-slate-800 rounded-2xl mb-8 overflow-x-auto scrollbar-none shadow-sm">
         {TABS.map((tab) => {
           const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === tab.id ? "bg-blue-600/10 text-blue-600 border border-blue-600/20" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)]"
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+                isActive
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                  : "text-slate-400 hover:text-white hover:bg-slate-800"
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -134,7 +137,7 @@ export default function AdminSaaS() {
       )}
       {activeTab === "modules" && (
         <div className="pt-1">
-          <ConfigModulosDemos />
+          <ConfigModulosDemos embedded={true} />
         </div>
       )}
       {activeTab === "tenants" && (

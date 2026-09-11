@@ -770,7 +770,7 @@ export default function ConfigModulosDemos({ embedded = false }: { embedded?: bo
                 </p>
               </div>
               <span className="text-[11px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-sunken)] px-3 py-1 rounded-full border border-[var(--color-border-default)] shrink-0 self-start sm:self-auto">
-                <strong className="text-[var(--color-primary-blue)]">{activeModulesCount}</strong> de 13 módulos ativos
+                <strong className="text-[var(--color-primary-blue)]">{activeModulesCount}</strong> de 16 módulos ativos
               </span>
             </div>
 
@@ -889,8 +889,8 @@ export default function ConfigModulosDemos({ embedded = false }: { embedded?: bo
                     onClick={() => handleToggleModule(mod.id)}
                     className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-3.5 cursor-pointer select-none ${
                       isEnabled
-                        ? 'bg-[var(--color-surface)] border-[var(--color-primary-blue)]/50 shadow-xs'
-                        : 'bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] opacity-60 hover:opacity-100'
+                        ? 'bg-[var(--color-surface)] border-[var(--color-primary-blue)]/50 shadow-xs ring-1 ring-[var(--color-primary-blue)]/20'
+                        : 'bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] opacity-50 hover:opacity-90'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
@@ -909,10 +909,10 @@ export default function ConfigModulosDemos({ embedded = false }: { embedded?: bo
 
                     {/* Switch Toggle */}
                     <div className="shrink-0">
-                      <div className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
-                        isEnabled ? 'bg-[var(--color-primary-blue)] justify-end' : 'bg-slate-400 dark:bg-slate-700 justify-start'
+                      <div className={`w-10 h-6 rounded-full p-0.5 transition-all flex items-center ${
+                        isEnabled ? 'bg-[var(--color-primary-blue)] justify-end shadow-xs' : 'bg-slate-300 dark:bg-slate-700 justify-start'
                       }`}>
-                        <div className="w-4 h-4 rounded-full bg-white transition-transform shadow-xs" />
+                        <div className="w-5 h-5 rounded-full bg-white transition-transform shadow-xs" />
                       </div>
                     </div>
                   </div>
