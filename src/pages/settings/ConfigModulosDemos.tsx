@@ -15,11 +15,20 @@ import {
   fetchTenants,
   fetchTenantsDetailed,
   updateTenantInfo,
+  updateTenantPlan,
   deactivateTenant,
   fetchTenantAdminUser,
   updateTenantUserCredentials
 } from "../../lib/supabase";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { useToolRegistry, type PlanTier } from "../../hooks/useToolRegistry";
+
+const PLAN_TIERS: { key: PlanTier; label: string; order: number }[] = [
+  { key: "start", label: "START", order: 0 },
+  { key: "autopilot", label: "AUTOPILOT", order: 1 },
+  { key: "autonomous", label: "AUTONOMOUS", order: 2 },
+];
+const TIER_ORDER: Record<PlanTier, number> = { start: 0, autopilot: 1, autonomous: 2 };
 
 // Fallback só usado se o Supabase estiver inacessível — a lista real vem de
 // public.nichos (globais, tenant_id null) via fetchGlobalNiches().
@@ -145,7 +154,10 @@ export default function ConfigModulosDemos() {
   const [reloading, setReloading] = useState(false);
 
   // Edit/Delete partner state
-  const [tenantDetails, setTenantDetails] = useState<{ id: string; name: string; niche: string }[]>([]);
+  const [tenantDetails, setTenantDetails] = useState<{ id: string; name: string; niche: string; plan: string | null }[]>([]);
+  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const { tools: allTools } = useToolRegistry();
   const [showEditTenant, setShowEditTenant] = useState(false);
   const [editTenantName, setEditTenantName] = useState("");
   const [editTenantNiche, setEditTenantNiche] = useState("Parceira");
@@ -408,6 +420,37 @@ export default function ConfigModulosDemos() {
   const selectedTenantDetail = useMemo(() => {
     return tenantDetails.find(t => t.name === selectedTenant);
   }, [tenantDetails, selectedTenant]);
+
+  const currentPlan: PlanTier = useMemo(() => {
+    const raw = selectedTenantDetail?.plan;
+    return raw === 'autopilot' || raw === 'autonomous' ? raw : 'start';
+  }, [selectedTenantDetail]);
+
+  const currentPlanOrder = TIER_ORDER[currentPlan];
+
+  const agentsByInclusion = useMemo(() => {
+    const withTier = allTools.filter(t => t.minPlanTier !== null);
+    const included = withTier.filter(t => TIER_ORDER[t.minPlanTier as PlanTier] <= currentPlanOrder);
+    const locked = withTier.filter(t => TIER_ORDER[t.minPlanTier as PlanTier] > currentPlanOrder);
+    return { included, locked };
+  }, [allTools, currentPlanOrder]);
+
+  const handleChangePlan = async (newPlan: PlanTier) => {
+    const current = tenantDetails.find(t => t.name === selectedTenant);
+    if (!current) {
+      toast.error("Empresa não encontrada no banco de dados.");
+      return;
+    }
+    setSavingPlan(true);
+    const result = await updateTenantPlan(current.id, newPlan);
+    if (result.success) {
+      setTenantDetails(prev => prev.map(t => t.id === current.id ? { ...t, plan: newPlan } : t));
+      toast.success(`Plano de "${selectedTenant}" alterado para ${newPlan.toUpperCase()}.`);
+    } else {
+      toast.error(`Erro ao trocar plano: ${result.error}`);
+    }
+    setSavingPlan(false);
+  };
 
   return (
     <div className="space-y-6 max-w-6xl pb-24 animate-in fade-in duration-300">
@@ -878,38 +921,123 @@ export default function ConfigModulosDemos() {
                 { id: 'dev', title: "Engenharia & Sprint Dev", desc: "Quadro de sprints, releases e demandas tech", icon: Code2, color: "text-slate-500 bg-slate-500/10 border-slate-500/20" },
               ].map((mod) => {
                 const isEnabled = activeModules[mod.id] ?? true;
+                const isAurora = mod.id === 'aurora';
+                const isExpanded = isAurora && expandedModuleId === 'aurora';
+
                 return (
                   <div
                     key={mod.id}
-                    onClick={() => handleToggleModule(mod.id)}
-                    className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-3.5 cursor-pointer select-none ${
+                    className={`rounded-2xl border transition-all overflow-hidden ${
                       isEnabled
                         ? 'bg-[var(--color-surface)] border-[var(--color-primary-blue)]/50 shadow-xs'
                         : 'bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] opacity-60 hover:opacity-100'
-                    }`}
+                    } ${isAurora ? 'sm:col-span-2 lg:col-span-3' : ''}`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`p-2.5 rounded-xl border shrink-0 ${mod.color}`}>
-                        <mod.icon className="w-4 h-4" />
+                    <div
+                      onClick={() => handleToggleModule(mod.id)}
+                      className="p-4 flex items-center justify-between gap-3.5 cursor-pointer select-none"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`p-2.5 rounded-xl border shrink-0 ${mod.color}`}>
+                          <mod.icon className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-[var(--color-text-primary)] block truncate">
+                            {mod.title}
+                          </span>
+                          <span className="text-[10px] text-[var(--color-text-muted)] block truncate mt-0.5">
+                            {mod.desc}
+                          </span>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <span className="text-xs font-bold text-[var(--color-text-primary)] block truncate">
-                          {mod.title}
-                        </span>
-                        <span className="text-[10px] text-[var(--color-text-muted)] block truncate mt-0.5">
-                          {mod.desc}
-                        </span>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isAurora && (
+                          <button
+                            type="button"
+                            title="Ver agentes por plano"
+                            onClick={(e) => { e.stopPropagation(); setExpandedModuleId(isExpanded ? null : 'aurora'); }}
+                            className="p-1.5 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
+                          >
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? "rotate-180" : ""}`} />
+                          </button>
+                        )}
+                        {/* Switch Toggle */}
+                        <div className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
+                          isEnabled ? 'bg-[var(--color-primary-blue)] justify-end' : 'bg-slate-400 dark:bg-slate-700 justify-start'
+                        }`}>
+                          <div className="w-4 h-4 rounded-full bg-white transition-transform shadow-xs" />
+                        </div>
                       </div>
                     </div>
 
-                    {/* Switch Toggle */}
-                    <div className="shrink-0">
-                      <div className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
-                        isEnabled ? 'bg-[var(--color-primary-blue)] justify-end' : 'bg-slate-400 dark:bg-slate-700 justify-start'
-                      }`}>
-                        <div className="w-4 h-4 rounded-full bg-white transition-transform shadow-xs" />
+                    {isAurora && isExpanded && (
+                      <div className="border-t border-[var(--color-border-subtle)] p-4 sm:p-5 space-y-4 bg-[var(--color-surface-sunken)]/50 animate-in fade-in duration-200">
+                        {/* Seletor de plano */}
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
+                            Plano de "{selectedTenant}":
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {PLAN_TIERS.map((tier) => {
+                              const isActive = currentPlan === tier.key;
+                              return (
+                                <button
+                                  key={tier.key}
+                                  type="button"
+                                  disabled={savingPlan}
+                                  onClick={(e) => { e.stopPropagation(); handleChangePlan(tier.key); }}
+                                  className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all cursor-pointer disabled:opacity-50 ${
+                                    isActive
+                                      ? 'bg-[var(--color-primary-blue)] text-white border-[var(--color-primary-blue)]'
+                                      : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border-default)] hover:text-[var(--color-text-primary)]'
+                                  }`}
+                                >
+                                  {tier.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Agentes inclusos no plano atual */}
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3 h-3" /> {agentsByInclusion.included.length} agentes ativos neste plano
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                            {agentsByInclusion.included.map((tool) => (
+                              <div key={tool.workflowId} className="flex items-center gap-2 text-[11px] text-[var(--color-text-primary)] bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                <span className="truncate">{tool.name.replace(/^\[G-TECH AI OS\]\s*/, '')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Agentes de planos superiores (bloqueados) */}
+                        {agentsByInclusion.locked.length > 0 && (
+                          <div className="space-y-1.5 pt-2 border-t border-[var(--color-border-subtle)]">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-faint)]">
+                              {agentsByInclusion.locked.length} agentes de planos superiores (não inclusos)
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                              {agentsByInclusion.locked.map((tool) => (
+                                <div key={tool.workflowId} className="flex items-center gap-2 text-[11px] text-[var(--color-text-faint)] bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5 opacity-70">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-faint)] shrink-0" />
+                                  <span className="truncate">{tool.name.replace(/^\[G-TECH AI OS\]\s*/, '')}</span>
+                                  <span className="ml-auto text-[8px] font-black uppercase tracking-wider shrink-0">{tool.minPlanTier}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <p className="text-[9px] text-[var(--color-text-faint)] leading-relaxed">
+                          Esta lista é informativa por enquanto — mudar o plano aqui ainda não bloqueia o uso dos agentes na Aurora, só reflete o que está contratado.
+                        </p>
                       </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}

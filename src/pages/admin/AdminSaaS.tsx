@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Activity, Server, DollarSign, TerminalSquare, Bell, Plus } from "lucide-react";
+import { Activity, Server, DollarSign, TerminalSquare, Bell, Plus, LayoutGrid, Wrench } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { PageContainer } from "../../components/PageContainer";
 import { useAuth } from "../../contexts/AuthContext";
@@ -10,11 +10,15 @@ import { AdminOverviewTab } from "./components/AdminOverviewTab";
 import { AdminTenantsTab } from "./components/AdminTenantsTab";
 import { AdminBillingTab } from "./components/AdminBillingTab";
 import { AdminLogsTab } from "./components/AdminLogsTab";
+import { AdminModulesTab } from "./components/AdminModulesTab";
+import { AdminToolsTab } from "./components/AdminToolsTab";
 
 const TABS = [
   { id: "overview", label: "Visão Geral", icon: Activity },
   { id: "tenants", label: "Tenants & Instâncias", icon: Server },
   { id: "billing", label: "Faturamento", icon: DollarSign },
+  { id: "modules", label: "Módulos (Manifest)", icon: LayoutGrid },
+  { id: "tools", label: "Ferramentas (Registry)", icon: Wrench },
   { id: "logs", label: "Logs do Sistema", icon: TerminalSquare },
 ];
 
@@ -115,6 +119,8 @@ export default function AdminSaaS() {
       {activeTab === "billing" && (
         <AdminBillingTab revenueData={revenueData} CustomTooltip={CustomTooltip} />
       )}
+      {activeTab === "modules" && <AdminModulesTab />}
+      {activeTab === "tools" && <AdminToolsTab />}
       {activeTab === "logs" && <AdminLogsTab />}
 
       {selectedTenant && (

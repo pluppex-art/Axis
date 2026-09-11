@@ -388,16 +388,16 @@ export async function createTenantAdmin(
  * empresas parceiras (editar/excluir), que precisa do id (não só do nome
  * usado por fetchTenants) e do nicho para pré-preencher o formulário de edição.
  */
-export async function fetchTenantsDetailed(): Promise<{ id: string; name: string; niche: string; primary_color: string | null }[]> {
+export async function fetchTenantsDetailed(): Promise<{ id: string; name: string; niche: string; primary_color: string | null; plan: string | null }[]> {
   if (!supabase) return [];
   try {
     const { data, error } = await supabase
       .from('tenants')
-      .select('id, name, niche, primary_color')
+      .select('id, name, niche, primary_color, plan')
       .eq('status', 'Active')
       .order('name', { ascending: true });
     if (error || !data) return [];
-    return data as { id: string; name: string; niche: string; primary_color: string | null }[];
+    return data as { id: string; name: string; niche: string; primary_color: string | null; plan: string | null }[];
   } catch {
     return [];
   }
@@ -413,6 +413,25 @@ export async function updateTenantInfo(
   if (!supabase) return { success: false, error: 'Supabase não configurado' };
   try {
     const { error } = await supabase.from('tenants').update(updates).eq('id', tenantId);
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Erro desconhecido' };
+  }
+}
+
+/**
+ * Atualiza o plano (start/autopilot/autonomous) de um tenant — usado pela tela de Modulos
+ * pra controlar quais agentes da Aurora aparecem como inclusos no plano atual do tenant.
+ * Ver useToolRegistry (min_plan_tier) e memoria gtech_aurora_spi_evolution_audit.
+ */
+export async function updateTenantPlan(
+  tenantId: string,
+  plan: 'start' | 'autopilot' | 'autonomous'
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'Supabase não configurado' };
+  try {
+    const { error } = await supabase.from('tenants').update({ plan }).eq('id', tenantId);
     if (error) throw error;
     return { success: true };
   } catch (err: any) {

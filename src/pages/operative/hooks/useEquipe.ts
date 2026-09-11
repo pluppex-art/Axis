@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useData } from "../../../contexts/DataContext";
+import { useAuroraAuditLog } from "../../../hooks/useAuroraAuditLog";
 import { toast } from "sonner";
 
 export interface TeamMember {
@@ -50,7 +51,22 @@ export function useEquipe() {
   const [newSquadExpanded, setNewSquadExpanded] = useState(false);
   const [newSquadData, setNewSquadData] = useState({ name: "", leader: "" });
   const [expandedSquads, setExpandedSquads] = useState<string[]>([]);
+
+  // Log de movimentacao de squad: antes era so estado local (perdido a cada reload). Agora persiste
+  // e le de verdade em aurora_audit_log (action="squad_member_moved"), escopado ao tenant ativo.
+  const { entries: auditEntries, logEvent } = useAuroraAuditLog({ actionPrefix: "squad_member_moved" });
   const [logs, setLogs] = useState<AuditLog[]>([]);
+
+  useEffect(() => {
+    setLogs(
+      auditEntries.map((e) => ({
+        name: e.details?.name ?? "",
+        from: e.details?.from ?? "",
+        to: e.details?.to ?? "",
+        date: e.createdAt.split("T")[0],
+      }))
+    );
+  }, [auditEntries]);
 
   // Squads come from DataContext (single source of truth)
   const squads: Squad[] = dataSquads.map(s => ({
@@ -134,7 +150,10 @@ export function useEquipe() {
   const moveMember = (name: string, newSquad: string) => {
     const member = team.find(m => m.name === name);
     if (!member || member.squad === newSquad) return;
-    setLogs(prev => [{ name, from: member.squad, to: newSquad, date: new Date().toISOString().split('T')[0] }, ...prev]);
+    const from = member.squad;
+    // Otimista: aparece na hora, sem esperar a volta do insert.
+    setLogs(prev => [{ name, from, to: newSquad, date: new Date().toISOString().split('T')[0] }, ...prev]);
+    void logEvent("squad_member_moved", { name, from, to: newSquad });
   };
 
   return {
