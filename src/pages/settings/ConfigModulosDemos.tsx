@@ -5,7 +5,7 @@ import {
   Cpu, Activity, Layers, Database, UserCheck,
   Target, Award, DollarSign, Package, MessageSquare, Users, Columns3, Clock, Code2,
   Plus, X, Building2, RefreshCw, ChevronDown, Megaphone, Pencil, Trash2, AlertTriangle,
-  Sparkles, Search, CheckCircle2, ShieldCheck, ArrowRight, HeartPulse, Home, Sun, ShoppingCart, Car
+  Sparkles, Search, CheckCircle2, ShieldCheck, ArrowRight, HeartPulse, Home, Sun, ShoppingCart, Car, Server
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
@@ -104,7 +104,15 @@ const CredentialFields = memo(function CredentialFields({
   );
 });
 
-export default function ConfigModulosDemos({ embedded = false }: { embedded?: boolean }) {
+export default function ConfigModulosDemos({ 
+  embedded = false,
+  onOpenNewTenant,
+  reloadTrigger
+}: { 
+  embedded?: boolean;
+  onOpenNewTenant?: () => void;
+  reloadTrigger?: number;
+}) {
   const { login, user, allTenantModules, updateTenantModules, getTenantModules } = useAuth();
   const { setSidebarModules } = useData();
 
@@ -182,6 +190,12 @@ export default function ConfigModulosDemos({ embedded = false }: { embedded?: bo
   useEffect(() => {
     setTenantOptions(Object.keys(allTenantModules));
   }, [allTenantModules]);
+
+  useEffect(() => {
+    if (reloadTrigger !== undefined && reloadTrigger > 0) {
+      handleReloadTenants(true);
+    }
+  }, [reloadTrigger]);
 
   useEffect(() => {
     const modules = getTenantModules(selectedTenant);
@@ -507,7 +521,15 @@ export default function ConfigModulosDemos({ embedded = false }: { embedded?: bo
 
               <button
                 type="button"
-                onClick={() => { setShowAddTenant(v => !v); setShowEditTenant(false); setConfirmingDelete(false); }}
+                onClick={() => {
+                  if (onOpenNewTenant) {
+                    onOpenNewTenant();
+                  } else {
+                    setShowAddTenant(v => !v);
+                    setShowEditTenant(false);
+                    setConfirmingDelete(false);
+                  }
+                }}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-[var(--color-primary-blue)] hover:opacity-90 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs cursor-pointer"
               >
                 {showAddTenant ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
@@ -516,11 +538,14 @@ export default function ConfigModulosDemos({ embedded = false }: { embedded?: bo
 
               <button
                 type="button"
-                onClick={() => setShowTenantList(v => !v)}
+                onClick={() => {
+                  const el = document.getElementById("tenant-directory-section");
+                  if (el) el.scrollIntoView({ behavior: "smooth" });
+                }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] rounded-xl transition-all cursor-pointer"
               >
-                {showTenantList ? "Ocultar Lista" : `Ver Todas (${tenantOptions.length})`}
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTenantList ? "rotate-180" : ""}`} />
+                <Server className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" />
+                Instâncias ({tenantOptions.length})
               </button>
             </div>
           </div>

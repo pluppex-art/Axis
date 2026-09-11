@@ -16,8 +16,7 @@ import ConfigModulosDemos from "../settings/ConfigModulosDemos";
 
 const TABS = [
   { id: "overview", label: "Visão Geral", icon: Activity },
-  { id: "modules", label: "Módulos & Demos", icon: Cpu },
-  { id: "tenants", label: "Tenants & Instâncias", icon: Server },
+  { id: "tenants", label: "Tenants & Módulos", icon: Server },
   { id: "billing", label: "Faturamento", icon: DollarSign },
   { id: "logs", label: "Logs do Sistema", icon: TerminalSquare },
 ];
@@ -37,16 +36,24 @@ export const CustomTooltip = ({ active, payload, label }: any) => {
 export default function AdminSaaS() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
-  const [activeTab, setActiveTab] = useState(tabFromUrl || "overview");
+  const normalizedTab = useMemo(() => {
+    if (tabFromUrl === "modules" || tabFromUrl === "tenants" || tabFromUrl === "tenants_modules") {
+      return "tenants";
+    }
+    return tabFromUrl || "overview";
+  }, [tabFromUrl]);
+
+  const [activeTab, setActiveTab] = useState(normalizedTab);
   const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
   const [isCreateTenantOpen, setIsCreateTenantOpen] = useState(false);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
   const [crmEnabled, setCrmEnabled] = useState(true);
 
   useEffect(() => {
-    if (tabFromUrl && tabFromUrl !== activeTab) {
-      setActiveTab(tabFromUrl);
+    if (normalizedTab && normalizedTab !== activeTab) {
+      setActiveTab(normalizedTab);
     }
-  }, [tabFromUrl]);
+  }, [normalizedTab]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -135,16 +142,14 @@ export default function AdminSaaS() {
       {activeTab === "overview" && (
         <AdminOverviewTab globalMrr={globalMrr} revenueData={revenueData} CustomTooltip={CustomTooltip} />
       )}
-      {activeTab === "modules" && (
+      {(activeTab === "tenants" || activeTab === "modules") && (
         <div className="pt-1">
-          <ConfigModulosDemos embedded={true} />
+          <ConfigModulosDemos 
+            embedded={true} 
+            onOpenNewTenant={() => setIsCreateTenantOpen(true)}
+            reloadTrigger={reloadTrigger}
+          />
         </div>
-      )}
-      {activeTab === "tenants" && (
-        <AdminTenantsTab
-          onConfigureModules={handleOpenModules}
-          onOpenNewTenant={() => setIsCreateTenantOpen(true)}
-        />
       )}
       {activeTab === "billing" && (
         <AdminBillingTab revenueData={revenueData} CustomTooltip={CustomTooltip} />
@@ -170,6 +175,7 @@ export default function AdminSaaS() {
         onClose={() => setIsCreateTenantOpen(false)}
         onCreated={() => {
           toast.success("Novo Tenant cadastrado com sucesso!");
+          setReloadTrigger(v => v + 1);
         }}
       />
     </PageContainer>
