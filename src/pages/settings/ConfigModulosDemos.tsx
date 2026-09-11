@@ -104,7 +104,7 @@ const CredentialFields = memo(function CredentialFields({
   );
 });
 
-export default function ConfigModulosDemos() {
+export default function ConfigModulosDemos({ embedded = false }: { embedded?: boolean }) {
   const { login, user, allTenantModules, updateTenantModules, getTenantModules } = useAuth();
   const { setSidebarModules } = useData();
 
@@ -134,6 +134,7 @@ export default function ConfigModulosDemos() {
   const [tenantOptions, setTenantOptions] = useState<string[]>(Object.keys(allTenantModules));
   const [searchTenant, setSearchTenant] = useState("");
   const [simulationRole, setSimulationRole] = useState("Administrador / Sócio");
+  const [showTenantList, setShowTenantList] = useState(false);
 
   // Add partner state
   const [showAddTenant, setShowAddTenant] = useState(false);
@@ -412,91 +413,117 @@ export default function ConfigModulosDemos() {
   return (
     <div className="space-y-6 max-w-6xl pb-24 animate-in fade-in duration-300">
 
-      {/* Hero Header Card */}
-      <div className="border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] p-6 sm:p-7 rounded-3xl relative overflow-hidden shadow-sm">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-[var(--color-primary-blue)]/5 blur-3xl rounded-full pointer-events-none" />
+      {/* Hero Header Card (shown only if not embedded) */}
+      {!embedded && (
+        <div className="border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] p-6 sm:p-7 rounded-3xl relative overflow-hidden shadow-sm">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-[var(--color-primary-blue)]/5 blur-3xl rounded-full pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 rounded-full text-[10px] text-[var(--color-primary-blue)] font-bold uppercase tracking-wider">
-              <Cpu className="w-3.5 h-3.5" /> Arquitetura Multitenant Modular
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-[var(--color-text-primary)] tracking-tight">
-              Gestão de Empresas & Módulos
-            </h1>
-            <p className="text-xs sm:text-sm text-[var(--color-text-muted)] max-w-2xl leading-relaxed">
-              Cadastre e gerencie as empresas parceiras da plataforma e configure os módulos visíveis para cada operação.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] p-4 rounded-2xl shrink-0 shadow-xs">
-            <div className="w-12 h-12 rounded-xl bg-[var(--color-primary-blue)] flex items-center justify-center text-white shadow-xs">
-              <Database className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider">Tenant Ativo</span>
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 rounded-full text-[10px] text-[var(--color-primary-blue)] font-bold uppercase tracking-wider">
+                <Cpu className="w-3.5 h-3.5" /> Arquitetura Multitenant Modular
               </div>
-              <h4 className="text-sm font-black text-[var(--color-text-primary)] max-w-[220px] truncate mt-0.5">
-                {user?.tenantName || "G-Tech Master"}
-              </h4>
-              <span className="inline-block text-[9px] font-extrabold uppercase tracking-widest text-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 px-2 py-0.5 rounded-md mt-1 border border-[var(--color-primary-blue)]/20">
-                Nicho: {user?.tenantNiche || "Master"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* EMPRESAS PARCEIRAS — Central de Gerenciamento */}
-      {user?.isMaster && (
-        <Card className="border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] rounded-3xl p-6 sm:p-7 space-y-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-[var(--color-primary-blue)]" /> Empresas Parceiras
-              </h2>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                Selecione a empresa para personalizar seus módulos ou crie novos acessos corporativos.
+              <h1 className="text-2xl sm:text-3xl font-black text-[var(--color-text-primary)] tracking-tight">
+                Gestão de Empresas & Módulos
+              </h1>
+              <p className="text-xs sm:text-sm text-[var(--color-text-muted)] max-w-2xl leading-relaxed">
+                Cadastre e gerencie as empresas parceiras da plataforma e configure os módulos visíveis para cada operação.
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-4 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] p-4 rounded-2xl shrink-0 shadow-xs">
+              <div className="w-12 h-12 rounded-xl bg-[var(--color-primary-blue)] flex items-center justify-center text-white shadow-xs">
+                <Database className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider">Tenant Ativo</span>
+                </div>
+                <h4 className="text-sm font-black text-[var(--color-text-primary)] max-w-[220px] truncate mt-0.5">
+                  {user?.tenantName || "G-Tech Master"}
+                </h4>
+                <span className="inline-block text-[9px] font-extrabold uppercase tracking-widest text-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 px-2 py-0.5 rounded-md mt-1 border border-[var(--color-primary-blue)]/20">
+                  Nicho: {user?.tenantNiche || "Master"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EMPRESAS PARCEIRAS — Central de Gerenciamento & Seletor Rápido */}
+      {user?.isMaster && (
+        <Card className="border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] rounded-3xl p-5 sm:p-6 space-y-5 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 flex items-center justify-center text-[var(--color-primary-blue)] shrink-0">
+                <Building2 className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] block">
+                  Empresa / Tenant Selecionado
+                </span>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <select
+                    value={selectedTenant}
+                    onChange={e => setSelectedTenant(e.target.value)}
+                    className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2 text-xs font-black text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-blue)] cursor-pointer"
+                  >
+                    {tenantOptions.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 px-2.5 py-1 rounded-lg">
+                    Nicho: {selectedTenantDetail?.niche || (selectedTenant === "G-Tech Master" ? "Infraestrutura" : "Parceira")}
+                  </span>
+                  <span className="text-[10px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] px-2.5 py-1 rounded-lg">
+                    <strong className="text-[var(--color-primary-blue)]">{activeModulesCount}</strong> de 16 módulos ativos
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => handleReloadTenants()}
                 disabled={reloading}
                 title="Recarregar parceiros do banco"
-                className="p-2.5 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
+                className="p-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
               >
                 <RefreshCw className={`w-4 h-4 ${reloading ? 'animate-spin' : ''}`} />
               </button>
 
+              {selectedTenant !== "G-Tech Master" && (
+                <button
+                  type="button"
+                  onClick={() => openEditTenant(selectedTenant)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] text-xs font-bold text-[var(--color-text-primary)] rounded-xl transition-all cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Editar Empresa
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => { setShowAddTenant(v => !v); setShowEditTenant(false); setConfirmingDelete(false); }}
-                className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-primary-blue)] hover:opacity-90 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-[var(--color-primary-blue)] hover:opacity-90 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs cursor-pointer"
               >
                 {showAddTenant ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                 {showAddTenant ? "Cancelar" : "Nova Empresa"}
               </button>
+
+              <button
+                type="button"
+                onClick={() => setShowTenantList(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] rounded-xl transition-all cursor-pointer"
+              >
+                {showTenantList ? "Ocultar Lista" : `Ver Todas (${tenantOptions.length})`}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTenantList ? "rotate-180" : ""}`} />
+              </button>
             </div>
           </div>
-
-          {/* Search bar when multiple tenants exist */}
-          {tenantOptions.length > 3 && (
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
-              <input
-                type="text"
-                placeholder="Buscar empresa por nome..."
-                value={searchTenant}
-                onChange={e => setSearchTenant(e.target.value)}
-                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl pl-10 pr-4 py-2.5 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)]"
-              />
-            </div>
-          )}
 
           {/* Form: Cadastrar Nova Empresa */}
           {showAddTenant && (
@@ -666,92 +693,70 @@ export default function ConfigModulosDemos() {
             </div>
           )}
 
-          {/* Tenants List Grid */}
-          <div className="grid grid-cols-1 gap-2.5">
-            {filteredTenants.map((name) => {
-              const detail = tenantDetails.find(t => t.name === name);
-              const isMaster = name === "G-Tech Master";
-              const isSelected = selectedTenant === name;
-
-              return (
-                <div
-                  key={name}
-                  className={`flex items-center justify-between gap-3 p-3.5 rounded-2xl border transition-all ${
-                    isSelected
-                      ? 'bg-[var(--color-primary-blue)]/5 border-[var(--color-primary-blue)] ring-1 ring-[var(--color-primary-blue)]/40 shadow-xs'
-                      : 'bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] hover:border-[var(--color-border-default)] hover:bg-[var(--color-surface)]'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTenant(name)}
-                    className="flex-1 min-w-0 flex items-center gap-3.5 text-left cursor-pointer border-none bg-transparent"
-                  >
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black shrink-0 transition-all ${
-                      isSelected
-                        ? 'bg-[var(--color-primary-blue)] text-white shadow-xs'
-                        : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border-default)]'
-                    }`}>
-                      {name[0].toUpperCase()}
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs sm:text-sm font-bold text-[var(--color-text-primary)] truncate">
-                          {name}
-                        </p>
-                        {isMaster && (
-                          <span className="text-[9px] font-black uppercase tracking-wider text-purple-500 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
-                            Master Admin
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider mt-0.5">
-                        Nicho: {isMaster ? "Infraestrutura" : detail?.niche || "Parceira"}
-                      </p>
-                    </div>
-                  </button>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    {isSelected ? (
-                      <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/30 px-3 py-1 rounded-full">
-                        <CheckCircle2 className="w-3 h-3" /> Gerenciando
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTenant(name)}
-                        className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] px-3 py-1 rounded-full border border-[var(--color-border-default)] hover:bg-[var(--color-surface-elevated)] transition-all cursor-pointer"
-                      >
-                        Selecionar
-                      </button>
-                    )}
-
-                    {!isMaster && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => openEditTenant(name)}
-                          title="Editar empresa e credenciais"
-                          className="p-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openDeleteConfirm(name)}
-                          title="Desativar empresa"
-                          className="p-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 rounded-xl text-rose-500 hover:text-rose-600 transition-all cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
+          {/* Collapsible Tenants List */}
+          {showTenantList && (
+            <div className="pt-4 border-t border-[var(--color-border-subtle)] space-y-3 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[var(--color-text-primary)]">
+                  Todas as Empresas Cadastradas ({tenantOptions.length})
+                </span>
+              </div>
+              {tenantOptions.length > 3 && (
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por nome..."
+                    value={searchTenant}
+                    onChange={e => setSearchTenant(e.target.value)}
+                    className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl pl-10 pr-4 py-2 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)]"
+                  />
                 </div>
-              );
-            })}
-          </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                {filteredTenants.map((name) => {
+                  const detail = tenantDetails.find(t => t.name === name);
+                  const isMaster = name === "G-Tech Master";
+                  const isSelected = selectedTenant === name;
+
+                  return (
+                    <div
+                      key={name}
+                      onClick={() => setSelectedTenant(name)}
+                      className={`flex items-center justify-between gap-2.5 p-3 rounded-xl border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[var(--color-primary-blue)]/10 border-[var(--color-primary-blue)] ring-1 ring-[var(--color-primary-blue)]/30'
+                          : 'bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] hover:border-[var(--color-border-default)] hover:bg-[var(--color-surface)]'
+                      }`}
+                    >
+                      <div className="min-w-0 flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${
+                          isSelected ? 'bg-[var(--color-primary-blue)] text-white' : 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'
+                        }`}>
+                          {name[0].toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[var(--color-text-primary)] truncate">{name}</p>
+                          <p className="text-[9px] text-[var(--color-text-muted)] truncate">{isMaster ? "Master" : detail?.niche || "Parceira"}</p>
+                        </div>
+                      </div>
+                      {isSelected ? (
+                        <CheckCircle2 className="w-4 h-4 text-[var(--color-primary-blue)] shrink-0" />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setSelectedTenant(name); }}
+                          className="text-[9px] font-bold uppercase tracking-wider text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] px-2 py-0.5 rounded border border-[var(--color-border-default)]"
+                        >
+                          Ativar
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Module Configuration for Selected Tenant */}
           <div className="pt-6 border-t border-[var(--color-border-subtle)] space-y-6">
