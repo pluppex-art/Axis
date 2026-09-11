@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from "react";
-import { Activity, Server, DollarSign, TerminalSquare, Bell, Plus } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Activity, Server, DollarSign, TerminalSquare, Bell, Plus, Cpu } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { PageContainer } from "../../components/PageContainer";
 import { useAuth } from "../../contexts/AuthContext";
@@ -11,9 +12,11 @@ import { AdminTenantsTab } from "./components/AdminTenantsTab";
 import { AdminBillingTab } from "./components/AdminBillingTab";
 import { AdminLogsTab } from "./components/AdminLogsTab";
 import { NovoTenantModal } from "./components/NovoTenantModal";
+import ConfigModulosDemos from "../settings/ConfigModulosDemos";
 
 const TABS = [
   { id: "overview", label: "Visão Geral", icon: Activity },
+  { id: "modules", label: "Módulos & Demos", icon: Cpu },
   { id: "tenants", label: "Tenants & Instâncias", icon: Server },
   { id: "billing", label: "Faturamento", icon: DollarSign },
   { id: "logs", label: "Logs do Sistema", icon: TerminalSquare },
@@ -32,10 +35,23 @@ export const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function AdminSaaS() {
-  const [activeTab, setActiveTab] = useState("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState(tabFromUrl || "overview");
   const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
   const [isCreateTenantOpen, setIsCreateTenantOpen] = useState(false);
   const [crmEnabled, setCrmEnabled] = useState(true);
+
+  useEffect(() => {
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    setSearchParams({ tab: tabId });
+  };
   const [sdrEnabled, setSdrEnabled] = useState(false);
   const [advDashboardEnabled, setAdvDashboardEnabled] = useState(false);
 
@@ -101,7 +117,7 @@ export default function AdminSaaS() {
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.id ? "bg-blue-600/10 text-blue-600 border border-blue-600/20" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)]"
               }`}
@@ -115,6 +131,11 @@ export default function AdminSaaS() {
 
       {activeTab === "overview" && (
         <AdminOverviewTab globalMrr={globalMrr} revenueData={revenueData} CustomTooltip={CustomTooltip} />
+      )}
+      {activeTab === "modules" && (
+        <div className="pt-1">
+          <ConfigModulosDemos />
+        </div>
       )}
       {activeTab === "tenants" && (
         <AdminTenantsTab

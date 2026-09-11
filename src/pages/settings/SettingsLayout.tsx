@@ -36,7 +36,7 @@ export default function SettingsLayout() {
       icon: Building,
       items: [
         { title: "Dados da empresa", path: "/app/configuracoes/empresa/dados" },
-        ...(user?.isMaster ? [{ title: "Módulos & Demos", path: "/app/configuracoes/empresa/modulos" }] : []),
+        ...(user?.isMaster ? [{ title: "Módulos & SaaS (Admin)", path: "/app/admin?tab=modules" }] : []),
         { title: "Filiais / Unidades", path: "/app/configuracoes/empresa/filiais" },
         { title: "Nichos", path: "/app/configuracoes/empresa/nichos" },
         { title: "Equipe & convites", path: "/app/configuracoes/empresa/equipe" },
