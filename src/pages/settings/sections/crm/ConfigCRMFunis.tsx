@@ -74,10 +74,15 @@ export function ConfigCRMFunis() {
     });
   };
 
-  const handleStageDelete = (funilId: string, idx: number) => {
+  const handleStageDelete = async (funilId: string, idx: number) => {
     const f = funis.find(x => x.id === funilId);
     if (!f) return;
     const configs = initStageConfigs(f.etapas, f.etapasConfig);
+    const stageName = configs[idx]?.nome || f.etapas[idx];
+    if (!(await confirmDialog({
+      title: "Excluir etapa",
+      description: `Excluir a etapa "${stageName}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     updateFunil(funilId, { etapas: f.etapas.filter((_, i) => i !== idx), etapasConfig: configs.filter((_, i) => i !== idx) });
   };
 

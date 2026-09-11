@@ -37,8 +37,8 @@ export function TurmaDetalhesKanban({ students }: TurmaDetalhesKanbanProps) {
               <Card key={student.id} className="p-5 bg-[var(--color-surface-elevated)] border-white/5 hover:border-blue-500/30 transition-all cursor-move group">
                 <div className="flex justify-between items-start mb-4">
                   <div className="text-xs font-bold text-white group-hover:text-blue-400 transition-colors uppercase tracking-tight">{student.name}</div>
-                  <button className="opacity-0 group-hover:opacity-100 transition-opacity">
-                    <MoreVertical className="w-3.5 h-3.5 text-slate-600" />
+                  <button className="p-1 rounded-lg bg-white/5 border border-white/10 opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all">
+                    <MoreVertical className="w-3.5 h-3.5 text-slate-400" />
                   </button>
                 </div>
                 <div className="space-y-3">

@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface HomologacaoItem {
   id: string;
@@ -108,11 +109,15 @@ export default function HomologacoesSolar() {
     setPrazoConcessionaria("");
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (item: HomologacaoItem) => {
     if (!supabase) return;
-    const { error } = await supabase.from("solar_homologacoes").delete().eq("id", id);
+    if (!(await confirmDialog({
+      title: "Excluir protocolo",
+      description: `Excluir o protocolo "${item.protocolo}" de "${item.cliente}"? Essa ação não pode ser desfeita.`,
+    }))) return;
+    const { error } = await supabase.from("solar_homologacoes").delete().eq("id", item.id);
     if (error) { toast.error("Erro ao remover protocolo."); return; }
-    setProtocolos(prev => prev.filter(p => p.id !== id));
+    setProtocolos(prev => prev.filter(p => p.id !== item.id));
     toast.info("Protocolo removido.");
   };
 
@@ -263,7 +268,7 @@ export default function HomologacoesSolar() {
                 <option value="Concluído">Concluído</option>
               </select>
 
-              <Button size="sm" variant="ghost" onClick={() => handleDelete(p.id)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-500/10 rounded-xl">
+              <Button size="sm" variant="ghost" onClick={() => handleDelete(p)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-500/10 rounded-xl">
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </div>

@@ -589,7 +589,7 @@ export default function MarketingAutomacoes() {
                     <button
                       type="button"
                       onClick={() => handleRemoveStep(idx)}
-                      className="text-slate-500 hover:text-rose-400 p-1 rounded transition-colors"
+                      className="bg-white/5 border border-white/10 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/25 p-1 rounded transition-colors"
                       title="Remover etapa"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

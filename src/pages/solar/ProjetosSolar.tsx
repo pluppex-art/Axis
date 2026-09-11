@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface ProjetoSolarItem {
   id: string;
@@ -125,11 +126,15 @@ export default function ProjetosSolar() {
     setCidade("");
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (item: ProjetoSolarItem) => {
     if (!supabase) return;
-    const { error } = await supabase.from("solar_projetos").delete().eq("id", id);
+    if (!(await confirmDialog({
+      title: "Excluir projeto",
+      description: `Excluir o projeto de "${item.cliente}"? Essa ação não pode ser desfeita.`,
+    }))) return;
+    const { error } = await supabase.from("solar_projetos").delete().eq("id", item.id);
     if (error) { toast.error("Erro ao remover projeto."); return; }
-    setProjetos(prev => prev.filter(p => p.id !== id));
+    setProjetos(prev => prev.filter(p => p.id !== item.id));
     toast.info("Projeto removido.");
   };
 
@@ -297,7 +302,7 @@ export default function ProjetosSolar() {
                 <option value="Conectado à Rede">Conectado à Rede</option>
               </select>
 
-              <Button size="sm" variant="ghost" onClick={() => handleDelete(p.id)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-500/10 rounded-xl">
+              <Button size="sm" variant="ghost" onClick={() => handleDelete(p)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-500/10 rounded-xl">
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </div>

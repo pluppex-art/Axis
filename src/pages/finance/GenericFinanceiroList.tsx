@@ -1,7 +1,7 @@
 import { Card } from "../../components/ui/card";
-import { 
-  Download, Calendar, CheckCircle2, 
-  Clock, AlertTriangle, Plus, Trash2, X, DollarSign 
+import {
+  Download, Calendar, CheckCircle2,
+  Clock, AlertTriangle, Plus, Trash2, X, DollarSign, Pencil, Lock
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
@@ -20,12 +20,20 @@ interface GenericProps {
 export default function GenericFinanceiroList({ title, desc, type }: GenericProps) {
   const { financeEntries, addFinanceEntry, deleteFinanceEntry, updateFinanceEntry } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
+
   // New entry form
   const [newDesc, setNewDesc] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [newValue, setNewValue] = useState("");
   const [newDate, setNewDate] = useState("");
+
+  // Edit entry form
+  const [editingItem, setEditingItem] = useState<(typeof financeEntries)[number] | null>(null);
+  const [editDesc, setEditDesc] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editValue, setEditValue] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editStatus, setEditStatus] = useState<"Pago" | "A Vencer" | "Atrasado">("A Vencer");
 
   const data = useMemo(() => {
     return financeEntries.filter(f => f.type === type);
@@ -70,6 +78,39 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
     }))) return;
     deleteFinanceEntry(item.id);
     toast.success("Lançamento excluído.");
+  };
+
+  const openEdit = (item: (typeof data)[number]) => {
+    setEditingItem(item);
+    setEditDesc(item.description);
+    setEditCategory(item.category);
+    setEditValue(String(item.value));
+    setEditDate(item.date);
+    setEditStatus((item.status as "Pago" | "A Vencer" | "Atrasado") || "A Vencer");
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem || !editDesc || !editValue) return;
+
+    const statusChanged = editStatus !== editingItem.status;
+    if (statusChanged && !(await confirmDialog({
+      title: "Alterar status do lançamento",
+      description: `Confirmar alteração de status de "${editingItem.description}" para "${editStatus}"?`,
+      confirmText: "Confirmar",
+    }))) {
+      return;
+    }
+
+    updateFinanceEntry(editingItem.id, {
+      description: editDesc,
+      category: editCategory || "Geral",
+      value: parseFloat(editValue),
+      date: editDate,
+      status: editStatus,
+    });
+    toast.success("Lançamento atualizado.");
+    setEditingItem(null);
   };
 
   const getStatusIcon = (status: string) => {
@@ -150,31 +191,37 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                     <td className="px-6 py-4 text-[var(--color-text-muted)]">{item.category}</td>
                     <td className="px-6 py-4 text-[var(--color-text-muted)] font-mono">{item.date}</td>
                     <td className="px-6 py-4">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          const nextStatus = item.status === 'Pago' ? 'A Vencer' : 'Pago';
-                          updateFinanceEntry(item.id, { status: nextStatus });
-                          toast.success(`Lançamento marcado como ${nextStatus}`);
-                        }}
-                        className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${getStatusColor(item.status)}`}
+                      <span
+                        title="Status travado — use o lápis para editar"
+                        className={`inline-flex items-center px-2.5 py-1 text-[10px] font-bold rounded-lg border cursor-default ${getStatusColor(item.status)}`}
                       >
                         {getStatusIcon(item.status)}
                         {item.status}
-                      </button>
+                        <Lock className="w-2.5 h-2.5 ml-1.5 opacity-60" />
+                      </span>
                     </td>
                     <td className={`px-6 py-4 text-right font-mono font-bold ${type === 'Pagar' ? 'text-rose-500' : 'text-emerald-500'}`}>
                       {type === 'Pagar' ? '-' : '+'} {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(item)}
-                        className="p-1.5 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                        title="Excluir lançamento"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(item)}
+                          className="p-1.5 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10 rounded-lg transition-colors cursor-pointer"
+                          title="Editar lançamento"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item)}
+                          className="p-1.5 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                          title="Excluir lançamento"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -195,32 +242,40 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
           <div className="md:hidden p-4 space-y-3">
             {data.map((item) => (
               <div key={item.id} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] p-4 rounded-xl flex flex-col gap-3 relative">
-                <button
-                  type="button"
-                  onClick={() => handleDelete(item)}
-                  className="absolute top-3 right-3 text-[var(--color-text-faint)] hover:text-rose-500 p-1"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="absolute top-3 right-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(item)}
+                    className="rounded-lg bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10 hover:border-[var(--color-primary-blue)]/25 p-1 transition-colors"
+                    title="Editar lançamento"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(item)}
+                    className="rounded-lg bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-rose-500 hover:bg-rose-500/10 hover:border-rose-500/25 p-1 transition-colors"
+                    title="Excluir lançamento"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
                 <div>
-                  <p className="font-bold text-[var(--color-text-primary)] text-xs mb-1 pr-6">{item.description}</p>
+                  <p className="font-bold text-[var(--color-text-primary)] text-xs mb-1 pr-12">{item.description}</p>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase">{item.category}</span>
                     <span className="text-[10px] text-[var(--color-text-faint)] font-mono">{item.date}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between border-t border-[var(--color-border-subtle)] pt-2.5">
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      const nextStatus = item.status === 'Pago' ? 'A Vencer' : 'Pago';
-                      updateFinanceEntry(item.id, { status: nextStatus });
-                    }}
-                    className={`inline-flex items-center px-2 py-0.5 text-[9px] font-bold rounded-md border ${getStatusColor(item.status)}`}
+                  <span
+                    title="Status travado — use o lápis para editar"
+                    className={`inline-flex items-center px-2 py-0.5 text-[9px] font-bold rounded-md border cursor-default ${getStatusColor(item.status)}`}
                   >
                     {getStatusIcon(item.status)}
                     {item.status}
-                  </button>
+                    <Lock className="w-2.5 h-2.5 ml-1 opacity-60" />
+                  </span>
                   <p className={`font-mono font-bold text-xs ${type === 'Pagar' ? 'text-rose-500' : 'text-emerald-500'}`}>
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)}
                   </p>
@@ -302,6 +357,98 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
               className="h-9 px-5 text-xs font-bold shadow-xs"
             >
               Confirmar Lançamento
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal
+        isOpen={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        title="Editar Lançamento"
+        description="Atualize os dados e o status deste lançamento financeiro."
+        maxWidth="max-w-lg"
+      >
+        <form onSubmit={handleSaveEdit} className="space-y-4">
+          <div>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Descrição do Lançamento *</label>
+            <input
+              type="text"
+              required
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Categoria Financeira</label>
+            <input
+              type="text"
+              value={editCategory}
+              onChange={(e) => setEditCategory(e.target.value)}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Valor (R$) *</label>
+              <input
+                type="number"
+                required
+                step="0.01"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Data de Vencimento</label>
+              <input
+                type="text"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                placeholder="dd/mm/aaaa"
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 flex items-center gap-1.5">
+              Status
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-[var(--color-text-faint)]">
+                <Lock className="w-2.5 h-2.5" /> só muda por aqui
+              </span>
+            </label>
+            <select
+              value={editStatus}
+              onChange={(e) => setEditStatus(e.target.value as "Pago" | "A Vencer" | "Atrasado")}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+            >
+              <option value="A Vencer">A Vencer</option>
+              <option value="Pago">Pago</option>
+              <option value="Atrasado">Atrasado</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-[var(--color-border-subtle)]">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditingItem(null)}
+              className="h-9 px-4 text-xs font-bold border-[var(--color-border-default)]"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              className="h-9 px-5 text-xs font-bold shadow-xs"
+            >
+              Salvar Alterações
             </Button>
           </div>
         </form>

@@ -103,7 +103,7 @@ export default function Projetos() {
                   </div>
                   <h3 className="font-black text-white text-sm truncate">{project.name}</h3>
                 </div>
-                <button className="text-slate-600 hover:text-white shrink-0">
+                <button className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 shrink-0 transition-colors">
                   <MoreHorizontal className="w-4 h-4" />
                 </button>
               </div>

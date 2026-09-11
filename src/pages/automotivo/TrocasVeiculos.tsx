@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 // Status alinhado ao CHECK constraint real de veiculo_financiamentos —
 // não existe um "Contrato Assinado" separado no banco; usamos os mesmos
@@ -153,6 +154,11 @@ export default function TrocasVeiculos() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const troca = trocas.find(t => t.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir troca",
+      description: `Excluir a negociação de troca de "${troca?.cliente || "este cliente"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("veiculo_financiamentos").delete().eq("id", id);
     if (error) { toast.error(`Erro ao remover troca: ${error.message}`); return; }
     setTrocas(prev => prev.filter(t => t.id !== id));

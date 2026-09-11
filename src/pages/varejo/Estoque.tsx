@@ -654,7 +654,7 @@ export default function VarejoEstoque() {
 
                               <button
                                 onClick={() => handleOpenEditarProduto(p)}
-                                className="p-1.5 rounded-lg hover:bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                                className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-elevated)] hover:border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
                                 title="Editar Produto"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
@@ -662,7 +662,7 @@ export default function VarejoEstoque() {
 
                               <button
                                 onClick={() => handleDeleteProduto(p)}
-                                className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors"
+                                className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] hover:bg-red-500/10 hover:border-red-500/25 text-red-400 hover:text-red-300 transition-colors"
                                 title="Excluir Produto"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />

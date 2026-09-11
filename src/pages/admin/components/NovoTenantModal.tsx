@@ -75,12 +75,12 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
       onClose={handleClose}
       title={
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mt-0.5">
-            <Building2 className="w-5 h-5 text-blue-400" />
+          <div className="w-10 h-10 rounded-xl bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 flex items-center justify-center mt-0.5">
+            <Building2 className="w-5 h-5 text-[var(--color-primary-blue)]" />
           </div>
           <div>
-            <h3 className="text-base font-black text-white">Criar Novo Tenant / Instância</h3>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
+            <h3 className="text-base font-black text-[var(--color-text-primary)]">Criar Novo Tenant / Instância</h3>
+            <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-text-muted)] mt-0.5">
               Provisionamento Multi-Tenant com isolamento RLS
             </p>
           </div>
@@ -88,14 +88,14 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
       }
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={handleClose} disabled={loading} className="text-slate-400 hover:text-white">
+          <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
             Cancelar
           </Button>
           <Button
             type="submit"
             form="novo-tenant-form"
             disabled={loading}
-            className="bg-blue-600 hover:bg-blue-500 text-white font-black px-6 shadow-lg"
+            className="px-6 font-black"
           >
             {loading ? "Provisionando..." : "Provisionar Tenant"}
           </Button>
@@ -104,7 +104,7 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
     >
       <form id="novo-tenant-form" onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+          <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
             Nome da Organização / Empresa *
           </label>
           <input
@@ -113,21 +113,21 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="Ex: Alfa Energia Solar S/A"
-            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-500"
+            className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-4 py-2.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] focus:ring-1 focus:ring-[var(--color-primary-blue)] outline-none placeholder-[var(--color-text-faint)]"
           />
         </div>
 
         <div>
-          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+          <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
             Nicho / Vertical de Negócio
           </label>
           <select
             value={niche}
             onChange={e => setNiche(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+            className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-4 py-2.5 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] focus:ring-1 focus:ring-[var(--color-primary-blue)] outline-none cursor-pointer"
           >
             {NICHES.map(n => (
-              <option key={n} value={n} className="bg-slate-900 text-white">
+              <option key={n} value={n}>
                 {n}
               </option>
             ))}
@@ -136,7 +136,7 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
           <div>
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
               E-mail do Admin Inicial *
             </label>
             <input
@@ -145,12 +145,12 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
               value={adminEmail}
               onChange={e => setAdminEmail(e.target.value)}
               placeholder="admin@empresa.com"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-500"
+              className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] focus:ring-1 focus:ring-[var(--color-primary-blue)] outline-none placeholder-[var(--color-text-faint)]"
             />
           </div>
 
           <div>
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
               Senha de Acesso *
             </label>
             <input
@@ -159,13 +159,13 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
               value={adminPassword}
               onChange={e => setAdminPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none placeholder-slate-500"
+              className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] focus:ring-1 focus:ring-[var(--color-primary-blue)] outline-none placeholder-[var(--color-text-faint)]"
             />
           </div>
         </div>
 
-        <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-          <p className="text-[11px] text-blue-300 leading-relaxed font-medium">
+        <div className="p-3 bg-[var(--color-primary-blue)]/5 border border-[var(--color-primary-blue)]/20 rounded-xl">
+          <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed font-medium">
             Ao provisionar, um novo identificador único de Tenant ID será gerado com isolamento de dados no Supabase e credenciais administrativas para login imediato.
           </p>
         </div>

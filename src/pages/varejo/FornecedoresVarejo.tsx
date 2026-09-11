@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface FornecedorItem {
   id: string;
@@ -113,6 +114,11 @@ export default function FornecedoresVarejo() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const fornecedor = fornecedores.find(f => f.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir fornecedor",
+      description: `Excluir o fornecedor "${fornecedor?.razaoSocial || "selecionado"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("varejo_fornecedores").delete().eq("id", id);
     if (error) {
       toast.error("Erro ao remover fornecedor.");

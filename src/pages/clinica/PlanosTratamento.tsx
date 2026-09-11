@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface PlanoTratamentoItem {
   id: string;
@@ -125,6 +126,11 @@ export default function PlanosTratamento() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const plano = planos.find(p => p.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir plano de tratamento",
+      description: `Excluir o plano de tratamento de "${plano?.paciente || "este paciente"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("clinica_planos_tratamento").delete().eq("id", id);
     if (error) { toast.error("Erro ao remover plano."); return; }
     setPlanos(prev => prev.filter(p => p.id !== id));

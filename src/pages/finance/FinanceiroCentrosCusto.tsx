@@ -310,14 +310,14 @@ export default function FinanceiroCentrosCusto() {
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => handleOpenEdit(c)}
-                    className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-primary-blue)] transition-colors"
+                    className="p-1 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10 hover:border-[var(--color-primary-blue)]/25 transition-colors"
                     title="Editar"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => handleDelete(c.id)}
-                    className="p-1 text-[var(--color-text-muted)] hover:text-rose-500 transition-colors"
+                    className="p-1 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-rose-500/10 hover:border-rose-500/25 transition-colors"
                     title="Excluir"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

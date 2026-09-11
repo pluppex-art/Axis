@@ -695,7 +695,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit, onGanho, onPerdido, onDelete,
                         {done && <Check className="w-2.5 h-2.5 text-white" />}
                       </button>
                       <span className={cn("text-sm flex-1", done ? "line-through text-slate-600" : "text-slate-300")}>{task.title}</span>
-                      <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all cursor-pointer">
+                      <button onClick={() => deleteTask(task.id)} className="p-1 rounded-lg bg-white/5 border border-white/10 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/25 transition-all cursor-pointer">
                         <Trash className="w-3.5 h-3.5" />
                       </button>
                     </div>

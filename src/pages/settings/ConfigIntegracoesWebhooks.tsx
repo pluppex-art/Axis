@@ -170,7 +170,7 @@ export function ConfigIntegracoesWebhooks() {
                           }))) return;
                           deleteGlobalWebhook(w.id);
                         }}
-                        className="text-[var(--color-text-faint)] hover:text-danger p-1 transition-colors"
+                        className="rounded-lg bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-danger hover:bg-danger/10 hover:border-danger/25 p-1 transition-colors"
                         title="Remover Webhook"
                       >
                         <X className="w-3.5 h-3.5" />

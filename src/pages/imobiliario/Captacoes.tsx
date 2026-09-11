@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface CaptacaoItem {
   id: string;
@@ -118,6 +119,11 @@ export default function Captacoes() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const captacao = captacoes.find(c => c.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir captação",
+      description: `Excluir a captação de "${captacao?.endereco || "este imóvel"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("imobiliario_captacoes").delete().eq("id", id);
     if (error) { toast.error("Erro ao remover captação."); return; }
     setCaptacoes(prev => prev.filter(c => c.id !== id));

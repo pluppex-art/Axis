@@ -439,7 +439,7 @@ export default function Indicacoes() {
                     <td className="p-3 text-right">
                       <button
                         onClick={() => handleDelete(item)}
-                        className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                        className="p-1.5 bg-white/5 border border-white/10 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer rounded-lg hover:bg-rose-500/10 hover:border-rose-500/25"
                         title="Excluir"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

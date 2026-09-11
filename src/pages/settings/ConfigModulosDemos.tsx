@@ -4,11 +4,12 @@ import { toast } from "sonner";
 import {
   Cpu, Activity, Layers, Database, UserCheck,
   Target, Award, DollarSign, Package, MessageSquare, Users, Columns3, Clock, Code2,
-  Plus, X, Building2, RefreshCw, ChevronDown, Megaphone, Pencil, Trash2, AlertTriangle,
+  Plus, X, Building2, RefreshCw, ChevronDown, Megaphone, Pencil, Trash2,
   Sparkles, Search, CheckCircle2, ShieldCheck, ArrowRight, HeartPulse, Home, Sun, ShoppingCart, Car, Server
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 import {
   supabase,
   createTenantAdmin,
@@ -104,11 +105,11 @@ const CredentialFields = memo(function CredentialFields({
   );
 });
 
-export default function ConfigModulosDemos({ 
+export default function ConfigModulosDemos({
   embedded = false,
   onOpenNewTenant,
   reloadTrigger
-}: { 
+}: {
   embedded?: boolean;
   onOpenNewTenant?: () => void;
   reloadTrigger?: number;
@@ -163,7 +164,6 @@ export default function ConfigModulosDemos({
   const [editAdminPassword, setEditAdminPassword] = useState("");
   const [loadingAdminUser, setLoadingAdminUser] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingTenant, setDeletingTenant] = useState(false);
 
   const loadTenantDetails = async () => {
@@ -292,7 +292,6 @@ export default function ConfigModulosDemos({
     setEditAdminUserId(null);
     setEditAdminEmail("");
     setEditAdminPassword("");
-    setConfirmingDelete(false);
     setShowEditTenant(willShow);
 
     if (willShow && current) {
@@ -311,12 +310,6 @@ export default function ConfigModulosDemos({
         setLoadingAdminUser(false);
       }
     }
-  };
-
-  const openDeleteConfirm = (tenantName: string) => {
-    setSelectedTenant(tenantName);
-    setShowEditTenant(false);
-    setConfirmingDelete(v => !(v && selectedTenant === tenantName));
   };
 
   const handleSaveEditTenant = async () => {
@@ -361,19 +354,24 @@ export default function ConfigModulosDemos({
     setSavingEdit(false);
   };
 
-  const handleDeleteTenant = async () => {
-    const current = tenantDetails.find(t => t.name === selectedTenant);
+  const handleDeactivateTenant = async (tenantName: string) => {
+    const current = tenantDetails.find(t => t.name === tenantName);
     if (!current) {
       toast.error("Empresa não encontrada no banco de dados.");
       return;
     }
+    if (!(await confirmDialog({
+      title: `Desativar empresa "${tenantName}"?`,
+      description: "A empresa deixará de aparecer na lista de parceiros ativos e os acessos de usuários serão suspensos. O histórico de dados é preservado com segurança.",
+      confirmText: "Confirmar Desativação",
+    }))) return;
+
     setDeletingTenant(true);
     const result = await deactivateTenant(current.id);
     if (result.success) {
       toast.success(`Empresa "${current.name}" desativada com sucesso.`);
-      setConfirmingDelete(false);
       setShowEditTenant(false);
-      setSelectedTenant("G-Tech Master");
+      if (selectedTenant === tenantName) setSelectedTenant("G-Tech Master");
       await handleReloadTenants(true);
     } else {
       toast.error(`Erro: ${result.error}`);
@@ -423,6 +421,10 @@ export default function ConfigModulosDemos({
   const selectedTenantDetail = useMemo(() => {
     return tenantDetails.find(t => t.name === selectedTenant);
   }, [tenantDetails, selectedTenant]);
+
+  function setConfirmingDelete(arg0: boolean) {
+    throw new Error('Function not implemented.');
+  }
 
   return (
     <div className="space-y-6 max-w-6xl pb-24 animate-in fade-in duration-300">
@@ -668,58 +670,39 @@ export default function ConfigModulosDemos({
                   />
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex justify-between gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowEditTenant(false)}
-                    className="px-4 py-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs font-bold rounded-xl transition-all cursor-pointer"
+                    onClick={() => handleDeactivateTenant(selectedTenant)}
+                    disabled={deletingTenant}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 border border-rose-500/30 text-rose-500 text-xs font-bold rounded-xl transition-all cursor-pointer"
                   >
-                    Cancelar
+                    <Trash2 className="w-3.5 h-3.5" /> {deletingTenant ? "Desativando..." : "Desativar Empresa"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveEditTenant}
-                    disabled={savingEdit}
-                    className="px-6 py-2 bg-[var(--color-primary-blue)] hover:opacity-90 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
-                  >
-                    {savingEdit ? "Salvando..." : "Salvar Alterações"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditTenant(false)}
+                      className="px-4 py-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs font-bold rounded-xl transition-all cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveEditTenant}
+                      disabled={savingEdit}
+                      className="px-6 py-2 bg-[var(--color-primary-blue)] hover:opacity-90 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+                    >
+                      {savingEdit ? "Salvando..." : "Salvar Alterações"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </ErrorBoundary>
           )}
 
-          {/* Delete confirmation modal */}
-          {confirmingDelete && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-3 animate-in fade-in duration-200">
-              <div className="flex items-center gap-2 text-rose-500 text-xs font-bold uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4" /> Desativar Empresa "{selectedTenant}"?
-              </div>
-              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                A empresa deixará de aparecer na lista de parceiros ativos e os acessos de usuários serão suspensos. O histórico de dados é preservado com segurança.
-              </p>
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(false)}
-                  className="px-4 py-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs font-bold rounded-xl transition-all cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteTenant}
-                  disabled={deletingTenant}
-                  className="px-5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
-                >
-                  {deletingTenant ? "Desativando..." : "Confirmar Desativação"}
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Module Configuration for Selected Tenant */}
-          <div id="tenant-modules-section" className="pt-6 border-t border-[var(--color-border-subtle)] space-y-6">
+          <div id="tenant-modules-section" className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
@@ -847,11 +830,10 @@ export default function ConfigModulosDemos({
                   <div
                     key={mod.id}
                     onClick={() => handleToggleModule(mod.id)}
-                    className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-3.5 cursor-pointer select-none ${
-                      isEnabled
+                    className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-3.5 cursor-pointer select-none ${isEnabled
                         ? 'bg-[var(--color-surface)] border-[var(--color-primary-blue)]/50 shadow-xs ring-1 ring-[var(--color-primary-blue)]/20'
                         : 'bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] opacity-50 hover:opacity-90'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`p-2.5 rounded-xl border shrink-0 ${mod.color}`}>
@@ -869,9 +851,8 @@ export default function ConfigModulosDemos({
 
                     {/* Switch Toggle */}
                     <div className="shrink-0">
-                      <div className={`w-10 h-6 rounded-full p-0.5 transition-all flex items-center ${
-                        isEnabled ? 'bg-[var(--color-primary-blue)] justify-end shadow-xs' : 'bg-slate-300 dark:bg-slate-700 justify-start'
-                      }`}>
+                      <div className={`w-10 h-6 rounded-full p-0.5 transition-all flex items-center ${isEnabled ? 'bg-[var(--color-primary-blue)] justify-end shadow-xs' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                        }`}>
                         <div className="w-5 h-5 rounded-full bg-white transition-transform shadow-xs" />
                       </div>
                     </div>
@@ -882,7 +863,7 @@ export default function ConfigModulosDemos({
           </div>
 
           {/* Simulador de Cargos & Permissões */}
-          <div className="pt-6 border-t border-[var(--color-border-subtle)] space-y-4">
+          <div className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-4">
             <div>
               <h2 className="text-base sm:text-lg font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-indigo-500" /> Simulador de Visão por Cargo
@@ -905,17 +886,15 @@ export default function ConfigModulosDemos({
                     key={role.title}
                     type="button"
                     onClick={() => handleSwitchRole(role.title)}
-                    className={`text-left p-3.5 rounded-2xl border text-xs transition-all flex flex-col justify-between gap-2 cursor-pointer ${
-                      isSelected
+                    className={`text-left p-3.5 rounded-2xl border text-xs transition-all flex flex-col justify-between gap-2 cursor-pointer ${isSelected
                         ? "bg-[var(--color-primary-blue)]/10 border-[var(--color-primary-blue)] text-[var(--color-text-primary)] font-bold shadow-xs"
                         : "bg-[var(--color-surface-sunken)] border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface)]"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between w-full">
                       <h5 className="font-bold text-xs text-[var(--color-text-primary)]">{role.title}</h5>
-                      <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                        isSelected ? "border-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]" : "border-slate-400"
-                      }`}>
+                      <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? "border-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]" : "border-slate-400"
+                        }`}>
                         {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </span>
                     </div>
@@ -936,7 +915,7 @@ export default function ConfigModulosDemos({
           </div>
 
           {/* DIRETÓRIO GLOBAL DE TENANTS & INSTÂNCIAS */}
-          <div id="tenant-directory-section" className="pt-8 border-t border-[var(--color-border-subtle)] space-y-5">
+          <div id="tenant-directory-section" className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -988,19 +967,17 @@ export default function ConfigModulosDemos({
                 return (
                   <div
                     key={name}
-                    className={`bg-[var(--color-surface)] border rounded-2xl p-4 space-y-3.5 transition-all shadow-xs group ${
-                      isSelected
+                    className={`bg-[var(--color-surface)] border rounded-2xl p-4 space-y-3.5 transition-all shadow-xs group ${isSelected
                         ? 'border-[var(--color-primary-blue)] ring-2 ring-[var(--color-primary-blue)]/20 shadow-md'
                         : 'border-[var(--color-border-default)] hover:border-slate-600'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          isSelected 
-                            ? 'bg-[var(--color-primary-blue)] text-white' 
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isSelected
+                            ? 'bg-[var(--color-primary-blue)] text-white'
                             : 'bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)] border border-[var(--color-primary-blue)]/20'
-                        }`}>
+                          }`}>
                           <Building2 className="w-5 h-5" />
                         </div>
                         <div className="min-w-0">
@@ -1049,24 +1026,34 @@ export default function ConfigModulosDemos({
                           const el = document.getElementById("tenant-modules-section");
                           if (el) el.scrollIntoView({ behavior: "smooth" });
                         }}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs ${
-                          isSelected
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs ${isSelected
                             ? 'bg-[var(--color-primary-blue)] text-white'
                             : 'bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)]'
-                        }`}
+                          }`}
                       >
                         <Cpu className="w-3.5 h-3.5 text-blue-400" /> Configurar Módulos
                       </button>
 
                       {!isMaster && (
-                        <button
-                          type="button"
-                          onClick={() => openEditTenant(name)}
-                          title="Editar dados e credenciais"
-                          className="p-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] rounded-xl transition-all cursor-pointer shrink-0"
-                        >
-                          <Pencil className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" />
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditTenant(name)}
+                            title="Editar dados e credenciais"
+                            className="p-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] rounded-xl transition-all cursor-pointer shrink-0"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeactivateTenant(name)}
+                            disabled={deletingTenant}
+                            title="Desativar empresa"
+                            className="p-2 bg-[var(--color-surface-sunken)] hover:bg-rose-500/10 disabled:opacity-50 border border-[var(--color-border-default)] hover:border-rose-500/30 text-[var(--color-text-muted)] hover:text-rose-500 rounded-xl transition-all cursor-pointer shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

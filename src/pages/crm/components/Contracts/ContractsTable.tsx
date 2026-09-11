@@ -107,16 +107,16 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)] rounded-md transition-colors">
+                    <button className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-elevated)] hover:border-[var(--color-border-default)] rounded-md transition-colors">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => onDelete(contract.id)}
-                      className="p-2 text-[var(--color-text-muted)] hover:text-danger hover:bg-danger/10 rounded-md transition-colors"
+                      className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-danger hover:bg-danger/10 hover:border-danger/25 rounded-md transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                    <button className="p-2 text-[var(--color-text-muted)] hover:text-accent hover:bg-accent/10 rounded-md transition-colors ml-1">
+                    <button className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-accent hover:bg-accent/10 hover:border-accent/25 rounded-md transition-colors ml-1">
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>

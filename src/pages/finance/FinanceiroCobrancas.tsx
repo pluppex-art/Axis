@@ -252,7 +252,7 @@ export default function FinanceiroCobrancas() {
                     </button>
                     <button
                       onClick={() => handleDelete(c.id)}
-                      className="p-1 rounded-lg text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                      className="p-1 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-rose-500/10 hover:border-rose-500/25 transition-colors"
                       title="Excluir Cobrança"
                     >
                       <Trash2 className="w-4 h-4" />

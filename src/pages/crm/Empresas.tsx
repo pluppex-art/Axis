@@ -159,7 +159,7 @@ export default function Empresas() {
                 </div>
                 <button
                   onClick={() => handleDelete(emp.id, emp.name)}
-                  className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-rose-500/10 text-[var(--color-text-muted)] hover:text-rose-500 transition-all"
+                  className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] opacity-0 group-hover:opacity-100 hover:bg-rose-500/10 hover:border-rose-500/25 text-[var(--color-text-muted)] hover:text-rose-500 transition-all"
                   title="Excluir Empresa"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

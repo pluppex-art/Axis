@@ -1388,7 +1388,7 @@ export default function VarejoVendas() {
                       <button
                         type="button"
                         onClick={() => removeFromCart(item.productId)}
-                        className="text-[var(--color-text-muted)] hover:text-red-500 p-1"
+                        className="rounded-lg bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-500/10 hover:border-red-500/25 p-1 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1854,7 +1854,7 @@ export default function VarejoVendas() {
 
                           <button
                             onClick={() => setExpandedVenda(isExpanded ? null : venda.id)}
-                            className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                            className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-elevated)] hover:border-[var(--color-border-default)] transition-colors"
                           >
                             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                           </button>
@@ -2244,7 +2244,7 @@ export default function VarejoVendas() {
                     setVendasEmEspera((prev) => prev.filter((e) => e.id !== esp.id));
                     toast.info("Venda em espera descartada.");
                   }}
-                  className="p-1.5 text-[var(--color-text-muted)] hover:text-red-500"
+                  className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-500/10 hover:border-red-500/25 transition-colors"
                   title="Descartar esta venda"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface InstalacaoSolarItem {
   id: string;
@@ -111,11 +112,15 @@ export default function InstalacoesSolar() {
     setModulosInstalados("");
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (item: InstalacaoSolarItem) => {
     if (!supabase) return;
-    const { error } = await supabase.from("solar_instalacoes").delete().eq("id", id);
+    if (!(await confirmDialog({
+      title: "Excluir obra",
+      description: `Excluir a obra de instalação de "${item.cliente}"? Essa ação não pode ser desfeita.`,
+    }))) return;
+    const { error } = await supabase.from("solar_instalacoes").delete().eq("id", item.id);
     if (error) { toast.error("Erro ao remover obra."); return; }
-    setInstalacoes(prev => prev.filter(i => i.id !== id));
+    setInstalacoes(prev => prev.filter(i => i.id !== item.id));
     toast.info("Obra removida.");
   };
 
@@ -261,7 +266,7 @@ export default function InstalacoesSolar() {
                 </button>
               </div>
 
-              <Button size="sm" variant="ghost" onClick={() => handleDelete(i.id)} className="h-7 w-7 p-0 text-red-500 hover:bg-red-500/10 rounded-lg">
+              <Button size="sm" variant="ghost" onClick={() => handleDelete(i)} className="h-7 w-7 p-0 text-red-500 hover:bg-red-500/10 rounded-lg">
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </div>

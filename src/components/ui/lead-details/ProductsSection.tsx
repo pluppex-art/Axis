@@ -955,7 +955,7 @@ export function ProductsSection({
                   <button
                     type="button"
                     onClick={() => toggleProductLink(item.id)}
-                    className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer ml-1"
+                    className="p-1 rounded bg-white/5 border border-white/10 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/25 transition-colors cursor-pointer ml-1"
                     title="Remover item da proposta"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

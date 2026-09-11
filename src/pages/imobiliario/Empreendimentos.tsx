@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface EmpreendimentoItem {
   id: string;
@@ -121,6 +122,11 @@ export default function Empreendimentos() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const empreendimento = empreendimentos.find(e => e.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir empreendimento",
+      description: `Excluir o empreendimento "${empreendimento?.nome || "selecionado"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("imobiliario_empreendimentos").delete().eq("id", id);
     if (error) { toast.error("Erro ao remover empreendimento."); return; }
     setEmpreendimentos(prev => prev.filter(e => e.id !== id));

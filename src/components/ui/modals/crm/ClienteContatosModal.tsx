@@ -165,11 +165,11 @@ export function ClienteContatosModal({ isOpen, onClose, clienteId, clienteNome }
                   </div>
                   <div className="flex items-center gap-1">
                     {!c.principal && (
-                      <button onClick={() => handleSetPrincipal(c.id)} title="Definir como contato principal" className="p-1.5 text-slate-500 hover:text-amber-400">
+                      <button onClick={() => handleSetPrincipal(c.id)} title="Definir como contato principal" className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/25 transition-colors">
                         <Star className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    <button onClick={() => handleDelete(c.id, c.nome)} title="Remover contato" className="p-1.5 text-slate-500 hover:text-red-400">
+                    <button onClick={() => handleDelete(c.id, c.nome)} title="Remover contato" className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-500 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/25 transition-colors">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
