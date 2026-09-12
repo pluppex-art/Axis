@@ -8,19 +8,61 @@ import { NovaCategoriaTarefaModal } from "../../../components/ui/modals/producti
 import { NovoPlanoContasModal } from "../../../components/ui/modals/settings/NovoPlanoContasModal";
 import { toast } from "sonner";
 
+const TASK_CATEGORIES_SETTING_KEY = "produtividade_categorias_tarefa";
+const DEFAULT_TASK_CATEGORIES = [
+    { id: "1", nome: "Follow-up", cor: "bg-blue-500" },
+    { id: "2", nome: "Reunião", cor: "bg-purple-500" },
+    { id: "3", nome: "Proposta", cor: "bg-emerald-500" }
+];
+// O modal usa nomes de cor em português (Azul, Verde...); as categorias
+// armazenadas usam classes Tailwind (bg-blue-500...) — sem esse mapeamento,
+// uma categoria nova salvava "Azul" como classe CSS e a bolinha de cor
+// nunca aparecia.
+const CATEGORIA_COR_TO_CLASS: Record<string, string> = {
+    Azul: "bg-blue-500",
+    Verde: "bg-emerald-500",
+    Vermelho: "bg-rose-500",
+    Laranja: "bg-orange-500",
+    Roxo: "bg-purple-500",
+};
+const CATEGORIA_CLASS_TO_COR: Record<string, string> = {
+    "bg-blue-500": "Azul",
+    "bg-emerald-500": "Verde",
+    "bg-rose-500": "Vermelho",
+    "bg-orange-500": "Laranja",
+    "bg-purple-500": "Roxo",
+};
+
 export function ConfigProdutividadeCategorias() {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const { squads, leads } = useData();
-    const [categories, setCategories] = useState<any[]>([
-        { id: "1", nome: "Follow-up", cor: "bg-blue-500" },
-        { id: "2", nome: "Reunião", cor: "bg-purple-500" },
-        { id: "3", nome: "Proposta", cor: "bg-emerald-500" }
-    ]);
+    const [editingCategory, setEditingCategory] = useState<any | null>(null);
+    const { squads, leads, appSettings, saveAppSetting } = useData();
+    const [categories, setCategories] = useState<any[]>(DEFAULT_TASK_CATEGORIES);
+    const [hydrated, setHydrated] = useState(false);
 
-    const handleSave = (data: any) => {
-        setCategories([{ ...data, id: Date.now().toString() }, ...categories]);
-        toast.success("Categoria de tarefa criada!");
+    useEffect(() => {
+        if (hydrated) return;
+        const saved = appSettings?.[TASK_CATEGORIES_SETTING_KEY];
+        if (saved) { setCategories(saved); setHydrated(true); }
+    }, [appSettings, hydrated]);
+
+    const persistCategories = (next: any[]) => {
+        setCategories(next);
+        setHydrated(true);
+        saveAppSetting(TASK_CATEGORIES_SETTING_KEY, next);
+    };
+
+    const handleSave = (data: { nome: string; cor: string }) => {
+        const corClass = CATEGORIA_COR_TO_CLASS[data.cor] || "bg-blue-500";
+        if (editingCategory) {
+            persistCategories(categories.map((c) => (c.id === editingCategory.id ? { ...c, nome: data.nome, cor: corClass } : c)));
+            toast.success("Categoria de tarefa atualizada!");
+        } else {
+            persistCategories([{ id: Date.now().toString(), nome: data.nome, cor: corClass }, ...categories]);
+            toast.success("Categoria de tarefa criada!");
+        }
         setIsModalOpen(false);
+        setEditingCategory(null);
     };
 
     const cacData = useMemo(() => {
@@ -53,7 +95,7 @@ export function ConfigProdutividadeCategorias() {
                     <h1 className="text-2xl font-bold tracking-tight">Categorias & Produtividade</h1>
                     <p className="text-sm text-slate-400">Organize as tarefas e visualize o CAC por time comercial.</p>
                 </div>
-                <Button onClick={() => setIsModalOpen(true)} className="bg-[#2563EB] hover:bg-blue-600 font-bold px-6 shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4 mr-2" /> Nova Categoria</Button>
+                <Button onClick={() => { setEditingCategory(null); setIsModalOpen(true); }} className="bg-[#2563EB] hover:bg-blue-600 font-bold px-6 shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4 mr-2" /> Nova Categoria</Button>
             </div>
 
             {/* CAC Visualization Section */}
@@ -111,20 +153,30 @@ export function ConfigProdutividadeCategorias() {
             </Card>
 
             <div className="grid md:grid-cols-2 gap-4">
-                {categories.map((cat: any, i) => (
-                    <Card key={i} className="p-4 bg-[var(--color-surface-elevated)]/80 backdrop-blur-xl border border-white/10 flex justify-between items-center group">
+                {categories.map((cat: any) => (
+                    <Card key={cat.id} className="p-4 bg-[var(--color-surface-elevated)]/80 backdrop-blur-xl border border-white/10 flex justify-between items-center group">
                         <div className="flex items-center gap-3">
                             <div className={`w-3 h-3 rounded-full ${cat.cor}`}></div>
                             <span className="font-semibold text-slate-200">{cat.nome}</span>
                         </div>
-                        <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">Editar</Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setEditingCategory(cat); setIsModalOpen(true); }}
+                            className="text-slate-400 hover:text-white"
+                        >
+                            Editar
+                        </Button>
                     </Card>
                 ))}
             </div>
 
             <NovaCategoriaTarefaModal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
+                onClose={() => { setIsModalOpen(false); setEditingCategory(null); }}
+                initialValue={editingCategory ? { nome: editingCategory.nome, cor: (CATEGORIA_CLASS_TO_COR[editingCategory.cor] || "Azul") as "Azul" | "Verde" | "Vermelho" | "Laranja" | "Roxo" } : null}
+                title={editingCategory ? "Editar Categoria de Tarefa" : "Nova Categoria de Tarefa"}
+                submitText={editingCategory ? "Salvar Alterações" : "Salvar"}
                 onSave={handleSave}
             />
         </div>

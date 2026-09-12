@@ -1,12 +1,30 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "../../../../components/ui/card";
 import { Button } from "../../../../components/ui/button";
 import { Plus, ExternalLink } from "lucide-react";
 import { NovoCampoCRMModal } from "../../../../components/ui/modals/crm/NovoCampoCRMModal";
+import { useData } from "../../../../contexts/DataContext";
+
+const SETTING_KEY = "crm_produto_campos_personalizados";
 
 export function ConfigCRMProdutos() {
+  const { appSettings, saveAppSetting } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingField, setEditingField] = useState<any | null>(null);
   const [customFields, setCustomFields] = useState<any[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (hydrated) return;
+    const saved = appSettings?.[SETTING_KEY];
+    if (saved) { setCustomFields(saved); setHydrated(true); }
+  }, [appSettings, hydrated]);
+
+  const persistFields = (fields: any[]) => {
+    setCustomFields(fields);
+    setHydrated(true);
+    saveAppSetting(SETTING_KEY, fields);
+  };
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -37,8 +55,8 @@ export function ConfigCRMProdutos() {
             <h3 className="font-bold text-base text-[var(--color-text-primary)]">Campos Personalizados</h3>
             <p className="text-sm text-[var(--color-text-muted)]">Adicione mais detalhes aos produtos (SKU, dimensões, atributos específicos).</p>
           </div>
-          <Button 
-            onClick={() => setIsModalOpen(true)} 
+          <Button
+            onClick={() => { setEditingField(null); setIsModalOpen(true); }}
             className="h-9 px-4 text-xs font-bold gap-1.5 shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" /> Novo Campo
@@ -55,7 +73,14 @@ export function ConfigCRMProdutos() {
                   <span className="font-bold text-sm text-[var(--color-text-primary)]">{field.name}</span>
                   <span className="text-xs text-[var(--color-text-faint)] font-mono mt-0.5">Tipo: {field.type}</span>
                 </div>
-                <Button variant="ghost" size="xs" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]">Editar</Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => { setEditingField(field); setIsModalOpen(true); }}
+                  className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                >
+                  Editar
+                </Button>
               </div>
             ))
           )}
@@ -64,11 +89,17 @@ export function ConfigCRMProdutos() {
 
       <NovoCampoCRMModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Novo Campo Personalizado"
+        onClose={() => { setIsModalOpen(false); setEditingField(null); }}
+        title={editingField ? "Editar Campo" : "Novo Campo Personalizado"}
+        initialValue={editingField}
         onSave={(data) => {
-          setCustomFields([...customFields, { id: Date.now().toString(), name: data.name, type: data.type }]);
+          if (editingField) {
+            persistFields(customFields.map((f) => (f.id === editingField.id ? { ...f, ...data } : f)));
+          } else {
+            persistFields([...customFields, { id: Date.now().toString(), ...data }]);
+          }
           setIsModalOpen(false);
+          setEditingField(null);
         }}
       />
     </div>

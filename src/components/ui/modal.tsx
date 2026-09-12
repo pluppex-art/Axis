@@ -131,7 +131,12 @@ export function Modal({
         {/* Content */}
         <div
           className={`flex-1 min-h-0 w-full ${
-            noPadding ? "overflow-hidden" : "p-6 overflow-y-auto"
+            // noPadding indica que o conteúdo gerencia seu próprio layout interno
+            // (cabeçalho/barra fixos com shrink-0 + área rolável com flex-1 overflow-y-auto),
+            // então este container precisa ser flex-col — sem isso os filhos viram
+            // fluxo normal de bloco e o overflow-hidden aqui corta o conteúdo em vez
+            // de deixar a área interna rolar (era o caso do editor de contrato).
+            noPadding ? "overflow-hidden flex flex-col" : "p-6 overflow-y-auto"
           }`}
         >
           {children}

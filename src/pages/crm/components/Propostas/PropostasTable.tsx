@@ -18,6 +18,8 @@ import {
 import { toast } from "sonner";
 import { handleDownloadPdf } from "../../utils/proposalPdf";
 import { confirmDialog } from "../../../../components/ui/confirm-dialog";
+import { useData } from "../../../../contexts/DataContext";
+import { useAuth } from "../../../../contexts/AuthContext";
 import {
   PropostaEditorWordModal,
   PropostaEditorData,
@@ -74,6 +76,9 @@ interface PropostasTableProps {
 export function PropostasTable({ propostas, proposalItems, search, onSearchChange, onUpdateStatus, onDelete, updateProposal }: PropostasTableProps) {
   const [editingProposal, setEditingProposal] = useState<PropostaEditorData | null>(null);
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
+  const { appSettings } = useData();
+  const { activeTenantName } = useAuth();
+  const empresaDados = appSettings?.empresa_dados || {};
 
   const filtered = propostas.filter(p =>
     (p.cliente || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -225,7 +230,7 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
                         <button
                           onClick={() => item.tipo === "arquivo" && item.link_pdf
                             ? window.open(item.link_pdf, "_blank", "noopener,noreferrer")
-                            : handleDownloadPdf(item as any, itens)}
+                            : handleDownloadPdf(item as any, itens, { logoUrl: empresaDados?.logoUrl, tenantName: activeTenantName })}
                           title={item.tipo === "arquivo" ? "Abrir Arquivo Anexado" : "Baixar Contrato (PDF)"}
                           className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10 rounded-lg transition-colors"
                         >

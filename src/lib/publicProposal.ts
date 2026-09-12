@@ -15,6 +15,7 @@ export interface PublicProposalEmpresaDados {
   emailContato?: string;
   telefoneContato?: string;
   website?: string;
+  logoUrl?: string;
 }
 
 export interface PublicProposal {

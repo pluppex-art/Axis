@@ -24,8 +24,47 @@ export const INITIAL_PROPOSTAS: Proposta[] = [];
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const fmtCurrency = (v: number) => (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export const handleDownloadPdf = (proposta: Proposta, itens: PropostaItemPdf[] = []) => {
+export interface PropostaBranding {
+  logoUrl?: string;
+  tenantName?: string;
+}
+
+// Busca a logo como data URL para o jsPDF poder embutir a imagem — addImage não
+// aceita uma URL remota diretamente, precisa dos bytes já carregados.
+const fetchImageAsDataUrl = async (url: string): Promise<string | null> => {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+};
+
+export const handleDownloadPdf = async (
+  proposta: Proposta,
+  itens: PropostaItemPdf[] = [],
+  branding?: PropostaBranding
+) => {
   const doc = new jsPDF();
+
+  if (branding?.logoUrl) {
+    const dataUrl = await fetchImageAsDataUrl(branding.logoUrl);
+    if (dataUrl) {
+      try {
+        const format = dataUrl.includes("image/png") ? "PNG" : dataUrl.includes("image/webp") ? "WEBP" : "JPEG";
+        doc.addImage(dataUrl, format as any, 20, 10, 28, 16, undefined, "FAST");
+      } catch {
+        // Formato de imagem não suportado pelo jsPDF (ex: SVG) — segue sem a logo.
+      }
+    }
+  }
 
   // Header
   doc.setFont("helvetica", "bold");

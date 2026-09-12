@@ -382,10 +382,10 @@ export default function MarketingAutomacoes() {
                       size="sm"
                       variant="outline"
                       onClick={() => handleSimulateExecution(item)}
-                      className="h-8 px-2.5 text-[10px] font-bold gap-1 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10"
+                      className="h-8 px-2.5 text-[10px] font-bold gap-1 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] border-[var(--color-border-default)]"
                       title="Testar disparo da automação"
                     >
-                      <Send className="w-3 h-3 text-purple-400" /> Testar
+                      <Send className="w-3 h-3 text-purple-600 dark:text-purple-400" /> Testar
                     </Button>
 
                     {/* Botão de Editar Solicitado */}
@@ -394,10 +394,10 @@ export default function MarketingAutomacoes() {
                       size="sm"
                       variant="outline"
                       onClick={() => openEditModal(item)}
-                      className="h-8 px-2.5 text-[10px] font-bold gap-1 bg-slate-800 hover:bg-slate-700 text-white border-slate-700 cursor-pointer shadow-sm"
+                      className="h-8 px-2.5 text-[10px] font-bold gap-1 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-primary)] border-[var(--color-border-default)] cursor-pointer shadow-sm"
                       title="Editar Fluxo e Mensagens"
                     >
-                      <Edit3 className="w-3 h-3 text-blue-400" /> Editar
+                      <Edit3 className="w-3 h-3 text-blue-600 dark:text-blue-400" /> Editar
                     </Button>
 
                     {/* Botão Pausar / Ativar */}
@@ -408,8 +408,8 @@ export default function MarketingAutomacoes() {
                       className={cn(
                         "h-8 w-8 rounded-xl border transition-all cursor-pointer",
                         item.status === "Ativa"
-                          ? "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25"
-                          : "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25"
+                          ? "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25"
+                          : "bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25"
                       )}
                       title={item.status === "Ativa" ? "Pausar" : "Ativar"}
                     >
@@ -429,7 +429,7 @@ export default function MarketingAutomacoes() {
                         deleteMarketingAutomation(item.id);
                         toast.success("Automação excluída com sucesso.");
                       }}
-                      className="h-8 w-8 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border-slate-700 cursor-pointer"
+                      className="h-8 w-8 rounded-xl bg-[var(--color-surface-sunken)] hover:bg-rose-500/10 text-[var(--color-text-muted)] hover:text-rose-500 border-[var(--color-border-default)] cursor-pointer"
                       title="Excluir"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

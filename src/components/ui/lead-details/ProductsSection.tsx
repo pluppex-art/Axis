@@ -92,7 +92,9 @@ export function ProductsSection({
     updateTurma,
     proposals,
     proposalItems,
+    appSettings,
   } = useData();
+  const empresaDadosBranding = appSettings?.empresa_dados || {};
 
   // Mini PDV State
   const [searchTerm, setSearchTerm] = useState("");
@@ -596,7 +598,8 @@ export function ProductsSection({
         product_name: p.product_name,
         quantidade: p.quantidade,
         preco_unitario: p.preco_unitario,
-      }))
+      })),
+      { logoUrl: empresaDadosBranding?.logoUrl }
     );
 
     setAlterationLogs((prev: any[]) => [

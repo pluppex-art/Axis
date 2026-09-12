@@ -245,6 +245,16 @@ export default function Catalog() {
           setFormDescription={f.setFormDescription}
           formCurrentStock={f.formCurrentStock}
           setFormCurrentStock={f.setFormCurrentStock}
+          formIsRecurring={f.formIsRecurring}
+          setFormIsRecurring={f.setFormIsRecurring}
+          formBillingCycle={f.formBillingCycle}
+          setFormBillingCycle={f.setFormBillingCycle}
+          formContractMonths={f.formContractMonths}
+          setFormContractMonths={f.setFormContractMonths}
+          formHasImplementation={f.formHasImplementation}
+          setFormHasImplementation={f.setFormHasImplementation}
+          formImplementationFee={f.formImplementationFee}
+          setFormImplementationFee={f.setFormImplementationFee}
           categories={f.categories}
           handleSaveProduct={f.handleSaveProduct}
         />
