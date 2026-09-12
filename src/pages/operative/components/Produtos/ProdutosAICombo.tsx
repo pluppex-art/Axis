@@ -76,7 +76,7 @@ export function ProdutosAICombo() {
         <Button
           onClick={handleAddCombo}
           disabled={!combo || creating}
-          className="text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 px-3 py-1.5 rounded-lg shrink-0 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="text-[10px] font-black uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white border border-amber-600 px-3 py-1.5 rounded-lg shrink-0 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Adicionar Combo Sugerido"}
         </Button>

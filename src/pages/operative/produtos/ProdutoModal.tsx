@@ -188,10 +188,10 @@ export function ProdutoModal(props: ProdutoModalProps) {
 
           <div className="flex gap-2 w-full sm:w-auto justify-end">
             {curIdx > 0 && (
-              <Button type="button" onClick={() => props.setActiveTab(tabIds[curIdx - 1])}
-                className="flex-1 sm:flex-initial h-9 bg-slate-800 hover:bg-slate-700 border border-slate-600 !text-white font-black text-xs rounded-xl px-4 gap-1.5 shadow-sm cursor-pointer">
+              <button type="button" onClick={() => props.setActiveTab(tabIds[curIdx - 1])}
+                className="flex-1 sm:flex-initial h-9 inline-flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-black text-xs rounded-xl px-4 shadow-sm cursor-pointer transition-colors">
                 <ArrowLeft className="w-3.5 h-3.5" /> Voltar
-              </Button>
+              </button>
             )}
             {curIdx < tabIds.length - 1 ? (
               <Button type="button" onClick={() => props.setActiveTab(tabIds[curIdx + 1])}

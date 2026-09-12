@@ -254,7 +254,7 @@ export default function ReunioesList() {
                       <div className="flex items-center gap-2 pt-1">
                         <Button
                           onClick={() => navigate(`/app/reunioes/${r.id}`)}
-                          className="flex-1 bg-blue-500/15 hover:bg-blue-500/25 text-blue-700 dark:text-blue-400 border border-blue-500/30 h-8 text-[10px] font-black uppercase tracking-widest rounded-xl"
+                          className="flex-1 bg-blue-600 hover:bg-blue-500 text-white border border-blue-600 h-8 text-[10px] font-black uppercase tracking-widest rounded-xl"
                         >
                           <Video className="w-3 h-3 mr-1.5" /> Entrar
                         </Button>
@@ -390,13 +390,13 @@ export default function ReunioesList() {
                           <div className="flex items-center gap-2">
                             <Button
                               onClick={() => navigate(`/app/reunioes/${r.id}`)}
-                              className="flex-1 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/20 h-8 text-[10px] font-black uppercase tracking-widest rounded-xl"
+                              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white border border-blue-600 h-8 text-[10px] font-black uppercase tracking-widest rounded-xl"
                             >
                               <Video className="w-3 h-3 mr-1.5" /> Entrar na Reunião
                             </Button>
                             <button
                               onClick={() => setReuniaoToDelete(r.id)}
-                              className="h-8 w-8 flex items-center justify-center rounded-xl border border-white/[0.08] text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0"
+                              className="h-8 w-8 flex items-center justify-center rounded-xl border border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-rose-500/10 transition-all shrink-0"
                               title="Excluir reunião"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
