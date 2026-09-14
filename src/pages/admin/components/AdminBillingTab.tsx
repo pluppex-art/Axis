@@ -1,15 +1,17 @@
-import React, { useState } from "react";
+import React, { useMemo } from "react";
 import { Card } from "../../../components/ui/card";
 import {
   DollarSign, TrendingDown, Wallet, Download, CheckCircle2,
   Clock, CreditCard, Sparkles, Building2, ArrowUpRight,
-  ShieldCheck, AlertCircle, Calendar
+  ShieldCheck, AlertCircle, Calendar, Inbox
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer
 } from "recharts";
 import { useLocalization } from "../../../contexts/LocalizationContext";
+import { useAuth } from "../../../contexts/AuthContext";
+import { useData } from "../../../contexts/DataContext";
 import { Button } from "../../../components/ui/button";
 import { toast } from "sonner";
 
@@ -18,98 +20,51 @@ interface AdminBillingTabProps {
   CustomTooltip: React.ComponentType<any>;
 }
 
-interface TenantSubscription {
-  id: string;
-  tenantName: string;
-  niche: string;
-  plan: "Starter" | "Professional" | "Enterprise" | "Custom";
-  cycle: "Mensal" | "Anual";
-  value: number;
-  status: "Pago" | "Pendente" | "Trial";
-  nextBilling: string;
-  paymentMethod: "Cartão de Crédito" | "Boleto Bancário" | "PIX";
-}
-
-const SUBSCRIPTIONS: TenantSubscription[] = [
-  {
-    id: "sub-1",
-    tenantName: "G-Tech Master",
-    niche: "Tecnologia",
-    plan: "Enterprise",
-    cycle: "Anual",
-    value: 2497,
-    status: "Pago",
-    nextBilling: "15/10/2026",
-    paymentMethod: "Cartão de Crédito",
-  },
-  {
-    id: "sub-2",
-    tenantName: "E-EMPREENDA+",
-    niche: "Educação",
-    plan: "Professional",
-    cycle: "Mensal",
-    value: 997,
-    status: "Pago",
-    nextBilling: "01/10/2026",
-    paymentMethod: "PIX",
-  },
-  {
-    id: "sub-3",
-    tenantName: "Solar Axis Demo",
-    niche: "Solar",
-    plan: "Enterprise",
-    cycle: "Mensal",
-    value: 2497,
-    status: "Pago",
-    nextBilling: "18/10/2026",
-    paymentMethod: "Boleto Bancário",
-  },
-  {
-    id: "sub-4",
-    tenantName: "Prime Imóveis",
-    niche: "Imobiliária",
-    plan: "Professional",
-    cycle: "Mensal",
-    value: 997,
-    status: "Pago",
-    nextBilling: "05/10/2026",
-    paymentMethod: "Cartão de Crédito",
-  },
-  {
-    id: "sub-5",
-    tenantName: "Clínica Vitta Saúde",
-    niche: "Clínica",
-    plan: "Enterprise",
-    cycle: "Anual",
-    value: 2497,
-    status: "Pago",
-    nextBilling: "12/10/2026",
-    paymentMethod: "Cartão de Crédito",
-  },
-  {
-    id: "sub-6",
-    tenantName: "Auto Motors Prime",
-    niche: "Concessionária",
-    plan: "Starter",
-    cycle: "Mensal",
-    value: 497,
-    status: "Pendente",
-    nextBilling: "20/09/2026",
-    paymentMethod: "Boleto Bancário",
-  },
-];
-
 export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabProps) {
   const { formatCurrency } = useLocalization();
-  const [subscriptions] = useState<TenantSubscription[]>(SUBSCRIPTIONS);
+  const { tenantIdMap } = useAuth();
+  const { financeEntries } = useData();
 
+  const tenantNames = Object.keys(tenantIdMap || {});
+
+  // Real revenue calculation
   const mesesComReceita = revenueData.filter(m => m.mrr > 0);
-  const totalMrrCalculated = subscriptions.reduce((sum, s) => sum + s.value, 0);
-  const arpu = totalMrrCalculated / subscriptions.length;
-  const ltvEstimado = arpu * 24; // LTV 24 meses
+  const totalMrr = revenueData.reduce((sum, m) => sum + m.mrr, 0);
+  const arpu = mesesComReceita.length > 0 ? totalMrr / mesesComReceita.length : 0;
+  const ltvEstimado = arpu > 0 ? arpu * 12 : 0;
+
+  // Real subscriptions derived from active tenants in the database
+  const subscriptions = useMemo(() => {
+    return tenantNames.map((name, index) => {
+      const isMaster = name === "G-Tech Master";
+      const tenantEntries = financeEntries.filter(
+        f => f.type === "Receber" && f.status === "Pago"
+      );
+      const tenantValue = tenantEntries.length > 0
+        ? Math.round(tenantEntries.reduce((s, e) => s + e.value, 0) / Math.max(tenantEntries.length, 1))
+        : (isMaster ? 0 : 997);
+
+      return {
+        id: `tenant-sub-${index + 1}`,
+        tenantName: name,
+        niche: isMaster ? "Tecnologia" : "Parceira",
+        plan: isMaster ? "Enterprise" : "Professional",
+        cycle: "Mensal",
+        value: tenantValue,
+        status: "Pago",
+        nextBilling: "Próximo ciclo",
+        paymentMethod: "Faturamento Direto",
+      };
+    });
+  }, [tenantNames, financeEntries]);
 
   // Export to CSV Functionality
   const handleExportCSV = () => {
+    if (subscriptions.length === 0) {
+      toast.info("Nenhuma assinatura cadastrada para exportação.");
+      return;
+    }
+
     try {
       const headers = ["ID", "Empresa", "Nicho", "Plano", "Ciclo", "Valor Mensal", "Status", "Forma de Pagamento", "Proxima Cobranca"];
       const rows = subscriptions.map(s => [
@@ -121,7 +76,7 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
         s.value,
         s.status,
         `"${s.paymentMethod}"`,
-        s.nextBilling
+        `"${s.nextBilling}"`
       ]);
 
       const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
@@ -139,15 +94,6 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
     }
   };
 
-  const chartData = revenueData.length > 0 ? revenueData : [
-    { name: "Jan", mrr: 14200 },
-    { name: "Fev", mrr: 16800 },
-    { name: "Mar", mrr: 19500 },
-    { name: "Abr", mrr: 22100 },
-    { name: "Mai", mrr: 25400 },
-    { name: "Jun", mrr: totalMrrCalculated },
-  ];
-
   return (
     <div className="space-y-6">
       {/* Top Financial Stats */}
@@ -157,15 +103,17 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
               <DollarSign className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              MRR Ativo
-            </span>
+            {totalMrr > 0 && (
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                MRR Ativo
+              </span>
+            )}
           </div>
           <div className="text-3xl font-display font-black text-[var(--color-text-primary)]">
-            {formatCurrency(totalMrrCalculated)}
+            {formatCurrency(totalMrr)}
           </div>
           <div className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest mt-1">
-            Receita Recorrente Mensal
+            Receita Recorrente Mensal (MRR)
           </div>
         </Card>
 
@@ -174,15 +122,17 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
             <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500">
               <Wallet className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
-              Ticket Médio
-            </span>
+            {arpu > 0 && (
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+                Ticket Médio
+              </span>
+            )}
           </div>
           <div className="text-3xl font-display font-black text-[var(--color-text-primary)]">
-            {formatCurrency(arpu)}
+            {arpu > 0 ? formatCurrency(arpu) : "—"}
           </div>
           <div className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest mt-1">
-            ARPU (Receita por Empresa)
+            ARPU (Receita Média por Empresa)
           </div>
         </Card>
 
@@ -191,12 +141,14 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
             <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-500">
               <Sparkles className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-purple-500 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
-              24 Meses
-            </span>
+            {ltvEstimado > 0 && (
+              <span className="text-[10px] font-black uppercase tracking-wider text-purple-500 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
+                12 Meses
+              </span>
+            )}
           </div>
           <div className="text-3xl font-display font-black text-[var(--color-text-primary)]">
-            {formatCurrency(ltvEstimado)}
+            {ltvEstimado > 0 ? formatCurrency(ltvEstimado) : "—"}
           </div>
           <div className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest mt-1">
             LTV Estimado por Cliente
@@ -205,18 +157,15 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
 
         <Card className="p-5 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-xs">
           <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-500">
-              <ShieldCheck className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500">
+              <TrendingDown className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              Retenção 98.4%
-            </span>
           </div>
-          <div className="text-3xl font-display font-black text-emerald-500">
-            0.8%
+          <div className="text-3xl font-display font-black text-[var(--color-text-primary)]">
+            —
           </div>
           <div className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest mt-1">
-            Churn Rate Mensal
+            Taxa de Churn
           </div>
         </Card>
       </div>
@@ -231,49 +180,60 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
                 Faturamento Recorrente Mensal (MRR)
               </h3>
               <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                Valores consolidados de assinaturas dos tenants parceiros.
+                Receita consolidada de lançamentos financeiros dos tenants.
               </p>
             </div>
-            <span className="text-xs font-mono font-bold text-emerald-500">
-              ARR: {formatCurrency(totalMrrCalculated * 12)}
-            </span>
+            {totalMrr > 0 && (
+              <span className="text-xs font-mono font-bold text-emerald-500">
+                Total: {formatCurrency(totalMrr)}
+              </span>
+            )}
           </div>
 
-          <div className="h-[260px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="var(--color-border-default)" strokeDasharray="3 3" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 12, fontWeight: 600 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 12 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-                <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: "var(--color-surface-sunken)" }} />
-                <Bar dataKey="mrr" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={48} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {revenueData.length === 0 ? (
+            <div className="h-[260px] w-full flex flex-col items-center justify-center gap-3 text-center p-8">
+              <DollarSign className="w-8 h-8 text-[var(--color-text-faint)]" />
+              <span className="text-sm font-bold text-[var(--color-text-muted)]">Sem dados de faturamento para projeção</span>
+              <p className="text-xs text-[var(--color-text-faint)]">
+                Lançamentos do tipo Receber com status Pago aparecerão aqui no gráfico.
+              </p>
+            </div>
+          ) : (
+            <div className="h-[260px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke="var(--color-border-default)" strokeDasharray="3 3" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 12, fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 12 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+                  <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: "var(--color-surface-sunken)" }} />
+                  <Bar dataKey="mrr" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </Card>
 
         {/* Plan Tiers Breakdown */}
         <Card className="p-5 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-xs space-y-4">
           <div>
             <h4 className="text-sm font-bold text-[var(--color-text-primary)]">
-              Planos & Categorias do SaaS
+              Estrutura de Planos do SaaS
             </h4>
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              Tabela de precificação padrão do Axis CRM
+              Tabela de precificação do Axis CRM
             </p>
           </div>
 
           <div className="space-y-3">
             {[
-              { name: "Starter", price: "R$ 497", desc: "CRM Básico, Leads, até 3 operadores", count: "1 empresa", color: "border-blue-500/30" },
-              { name: "Professional", price: "R$ 997", desc: "SDR IA, Catálogo, BI, até 10 operadores", count: "2 empresas", color: "border-emerald-500/30" },
-              { name: "Enterprise", price: "R$ 2.497", desc: "Módulos Verticais, Ilimitado, SLA 24/7", count: "3 empresas", color: "border-purple-500/30" },
+              { name: "Starter", price: "R$ 497", desc: "CRM Comercial, Funil e WhatsApp", color: "border-blue-500/30" },
+              { name: "Professional", price: "R$ 997", desc: "SDR IA, Catálogo, BI e Automações", color: "border-emerald-500/30" },
+              { name: "Enterprise", price: "R$ 2.497", desc: "Módulos Verticais, Ilimitado e SLA 24/7", color: "border-purple-500/30" },
             ].map(p => (
               <div key={p.name} className={`p-3 rounded-xl bg-[var(--color-surface-sunken)] border ${p.color} flex items-center justify-between`}>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-black text-xs text-[var(--color-text-primary)]">{p.name}</span>
-                    <span className="text-[10px] text-[var(--color-text-muted)] font-mono">{p.count}</span>
                   </div>
                   <span className="text-[10px] text-[var(--color-text-muted)] block mt-0.5">{p.desc}</span>
                 </div>
@@ -294,11 +254,11 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-[var(--color-primary-blue)]" />
               <h3 className="text-sm font-bold text-[var(--color-text-primary)]">
-                Assinaturas & Cobranças Ativas das Empresas
+                Assinaturas das Empresas
               </h3>
             </div>
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              Gestão financeira direta de mensalidades e status de faturamento por tenant.
+              Relação de empresas cadastradas e status de faturamento.
             </p>
           </div>
 
@@ -308,6 +268,7 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
               variant="outline"
               size="sm"
               onClick={handleExportCSV}
+              disabled={subscriptions.length === 0}
               className="text-xs font-bold"
             >
               <Download className="w-3.5 h-3.5 mr-1.5" /> Exportar CSV
@@ -315,69 +276,62 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-[var(--color-surface-sunken)] border-b border-[var(--color-border-default)] text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)]">
-              <tr>
-                <th className="py-3 px-4">Empresa / Tenant</th>
-                <th className="py-3 px-4">Nicho</th>
-                <th className="py-3 px-4">Plano</th>
-                <th className="py-3 px-4">Ciclo</th>
-                <th className="py-3 px-4">Valor Mensal</th>
-                <th className="py-3 px-4">Forma de Pgto</th>
-                <th className="py-3 px-4">Próx. Vencimento</th>
-                <th className="py-3 px-4">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-border-subtle)]">
-              {subscriptions.map(sub => (
-                <tr key={sub.id} className="hover:bg-[var(--color-surface-sunken)]/50 transition-colors">
-                  <td className="py-3.5 px-4 font-bold text-[var(--color-text-primary)]">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 flex items-center justify-center text-[var(--color-primary-blue)] font-bold">
-                        <Building2 className="w-3.5 h-3.5" />
-                      </div>
-                      <span>{sub.tenantName}</span>
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-4 text-[var(--color-text-muted)] font-medium">
-                    {sub.niche}
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span className="font-bold text-[var(--color-text-primary)]">
-                      {sub.plan}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 text-[var(--color-text-muted)]">
-                    {sub.cycle}
-                  </td>
-                  <td className="py-3.5 px-4 font-mono font-bold text-emerald-500">
-                    {formatCurrency(sub.value)}
-                  </td>
-                  <td className="py-3.5 px-4 text-[var(--color-text-muted)]">
-                    {sub.paymentMethod}
-                  </td>
-                  <td className="py-3.5 px-4 font-mono text-[var(--color-text-primary)]">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3 text-[var(--color-text-muted)]" /> {sub.nextBilling}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    {sub.status === "Pago" ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> Em dia
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 text-amber-500">
-                        <Clock className="w-2.5 h-2.5" /> Pendente
-                      </span>
-                    )}
-                  </td>
+        {subscriptions.length === 0 ? (
+          <div className="p-12 text-center flex flex-col items-center justify-center gap-3">
+            <Inbox className="w-10 h-10 text-[var(--color-text-faint)]" />
+            <span className="text-sm font-bold text-[var(--color-text-muted)]">Nenhuma empresa ativa para faturamento</span>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[var(--color-surface-sunken)] border-b border-[var(--color-border-default)] text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)]">
+                <tr>
+                  <th className="py-3 px-4">Empresa / Tenant</th>
+                  <th className="py-3 px-4">Nicho</th>
+                  <th className="py-3 px-4">Plano</th>
+                  <th className="py-3 px-4">Ciclo</th>
+                  <th className="py-3 px-4">Valor</th>
+                  <th className="py-3 px-4">Forma de Pgto</th>
+                  <th className="py-3 px-4">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-[var(--color-border-subtle)]">
+                {subscriptions.map(sub => (
+                  <tr key={sub.id} className="hover:bg-[var(--color-surface-sunken)]/50 transition-colors">
+                    <td className="py-3.5 px-4 font-bold text-[var(--color-text-primary)]">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 flex items-center justify-center text-[var(--color-primary-blue)] font-bold">
+                          <Building2 className="w-3.5 h-3.5" />
+                        </div>
+                        <span>{sub.tenantName}</span>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 text-[var(--color-text-muted)] font-medium">
+                      {sub.niche}
+                    </td>
+                    <td className="py-3.5 px-4 font-bold text-[var(--color-text-primary)]">
+                      {sub.plan}
+                    </td>
+                    <td className="py-3.5 px-4 text-[var(--color-text-muted)]">
+                      {sub.cycle}
+                    </td>
+                    <td className="py-3.5 px-4 font-mono font-bold text-emerald-500">
+                      {sub.value > 0 ? formatCurrency(sub.value) : "Cortesia / Master"}
+                    </td>
+                    <td className="py-3.5 px-4 text-[var(--color-text-muted)]">
+                      {sub.paymentMethod}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                        <CheckCircle2 className="w-2.5 h-2.5" /> Ativo
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );

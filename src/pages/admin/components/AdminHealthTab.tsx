@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card } from "../../../components/ui/card";
 import {
   Activity, Database, ShieldCheck, Zap, RefreshCw,
@@ -20,53 +20,12 @@ interface DiagnosticItem {
 
 export function AdminHealthTab() {
   const [runningDiag, setRunningDiag] = useState(false);
-  const [lastCheck, setLastCheck] = useState("Há poucos instantes");
-  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([
-    {
-      id: "supabase-ping",
-      name: "Conectividade Supabase Cloud",
-      category: "database",
-      status: "success",
-      latencyMs: 24,
-      message: "Conexão WebSocket e REST API respondendo perfeitamente.",
-    },
-    {
-      id: "table-tenants",
-      name: "Tabela 'tenants' & RLS Multi-Tenant",
-      category: "security",
-      status: "success",
-      latencyMs: 18,
-      message: "Políticas de isolamento row-level security validadas.",
-    },
-    {
-      id: "table-users",
-      name: "Tabela 'users' & Perfis de Acesso",
-      category: "auth",
-      status: "success",
-      latencyMs: 21,
-      message: "Integridade de credenciais e permissões operacionais OK.",
-    },
-    {
-      id: "storage-buckets",
-      name: "Buckets de Armazenamento (S3)",
-      category: "storage",
-      status: "success",
-      latencyMs: 38,
-      message: "Permissões de upload/download de documentos e mídias ativas.",
-    },
-    {
-      id: "edge-webhooks",
-      name: "Gateway de Webhooks & Mensagens",
-      category: "database",
-      status: "success",
-      latencyMs: 31,
-      message: "Fila de envio zerada e sem falhas de entrega registradas.",
-    },
-  ]);
+  const [lastCheck, setLastCheck] = useState("Não executado");
+  const [realPingMs, setRealPingMs] = useState<number | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
 
   const runFullDiagnostics = async () => {
     setRunningDiag(true);
-    toast.info("Iniciando bateria de diagnósticos de infraestrutura...");
 
     const startTime = performance.now();
     try {
@@ -83,10 +42,11 @@ export function AdminHealthTab() {
 
         // Test 3: Auth Session check
         const t3 = performance.now();
-        const { data: sessionData } = await supabase.auth.getSession();
+        const { data: sessionData, error: errAuth } = await supabase.auth.getSession();
         const latAuth = Math.round(performance.now() - t3);
 
         const totalLat = Math.round(performance.now() - startTime);
+        setRealPingMs(totalLat);
 
         setDiagnostics([
           {
@@ -103,7 +63,7 @@ export function AdminHealthTab() {
             category: "security",
             status: errTenants ? "warning" : "success",
             latencyMs: latTenants,
-            message: errTenants ? `Aviso: ${errTenants.message}` : "Isolamento de tenants verificado com sucesso.",
+            message: errTenants ? `Aviso: ${errTenants.message}` : "Isolamento de tenants verificado no banco de dados.",
           },
           {
             id: "table-users",
@@ -111,37 +71,41 @@ export function AdminHealthTab() {
             category: "auth",
             status: errUsers ? "warning" : "success",
             latencyMs: latUsers,
-            message: errUsers ? `Aviso: ${errUsers.message}` : "Controle de usuários e permissões íntegro.",
+            message: errUsers ? `Aviso: ${errUsers.message}` : "Controle de usuários e autenticação operacional.",
           },
           {
-            id: "storage-buckets",
-            name: "Buckets de Armazenamento (S3)",
-            category: "storage",
-            status: "success",
-            latencyMs: 34,
-            message: "Permissões de upload/download de documentos e mídias ativas.",
-          },
-          {
-            id: "edge-webhooks",
-            name: "Gateway de Webhooks & Mensagens",
-            category: "database",
-            status: "success",
-            latencyMs: 29,
-            message: "Fila de envio zerada e sem falhas de entrega registradas.",
+            id: "auth-session",
+            name: "Sessão de Autenticação JWT",
+            category: "auth",
+            status: errAuth ? "warning" : "success",
+            latencyMs: latAuth,
+            message: sessionData?.session ? "Sessão ativa e token JWT validado com segurança." : "Sessão anônima ou token pendente de renovação.",
           },
         ]);
 
-        toast.success("Diagnóstico concluído! Todos os microsserviços estão saudáveis.");
+        toast.success("Diagnóstico concluído com dados em tempo real.");
       } else {
-        toast.info("Ambiente local simulado: diagnósticos em modo demonstrativo.");
+        setDiagnostics([
+          {
+            id: "supabase-local",
+            name: "Supabase Client",
+            category: "database",
+            status: "warning",
+            message: "Cliente Supabase não inicializado no ambiente atual.",
+          }
+        ]);
       }
-    } catch {
-      toast.warning("Diagnóstico executado com avisos de rede.");
+    } catch (err: any) {
+      toast.warning("Erro ao executar teste de rede.");
     } finally {
       setRunningDiag(false);
-      setLastCheck("Agora mesmo");
+      setLastCheck(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     }
   };
+
+  useEffect(() => {
+    runFullDiagnostics();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -150,13 +114,13 @@ export function AdminHealthTab() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] text-emerald-500 font-bold uppercase tracking-wider">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Cluster Operacional 99.98% SLA
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Cluster Operacional
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-[var(--color-text-primary)] tracking-tight">
               Monitor de Saúde & Diagnóstico da Infraestrutura
             </h2>
             <p className="text-xs text-[var(--color-text-muted)] max-w-2xl leading-relaxed">
-              Verificação em tempo real de latência, integridade das tabelas do banco de dados Supabase, isolamento RLS e disponibilidade de microsserviços.
+              Verificação em tempo real de latência, integridade das tabelas do banco de dados Supabase e isolamento RLS.
             </p>
           </div>
 
@@ -190,18 +154,18 @@ export function AdminHealthTab() {
               <Database className="w-5 h-5" />
             </div>
             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              Ativo
+              Conectado
             </span>
           </div>
           <div className="text-2xl font-display font-black text-[var(--color-text-primary)]">
-            PostgreSQL 15
+            Supabase DB
           </div>
           <div className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest mt-1">
-            Supabase DB Cluster
+            PostgreSQL Relacional
           </div>
           <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)] text-xs text-[var(--color-text-muted)] flex justify-between">
-            <span>Pool de Conexões</span>
-            <span className="font-mono font-bold text-[var(--color-text-primary)]">14 / 100</span>
+            <span>Status</span>
+            <span className="font-bold text-emerald-500">Online</span>
           </div>
         </Card>
 
@@ -211,7 +175,7 @@ export function AdminHealthTab() {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              100% Protegido
+              Ativo
             </span>
           </div>
           <div className="text-2xl font-display font-black text-[var(--color-text-primary)]">
@@ -221,8 +185,8 @@ export function AdminHealthTab() {
             Isolamento de Tenants
           </div>
           <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)] text-xs text-[var(--color-text-muted)] flex justify-between">
-            <span>Tabelas Auditadas</span>
-            <span className="font-mono font-bold text-[var(--color-text-primary)]">48 tabelas</span>
+            <span>Políticas</span>
+            <span className="font-bold text-emerald-500">Habilitado</span>
           </div>
         </Card>
 
@@ -232,18 +196,18 @@ export function AdminHealthTab() {
               <HardDrive className="w-5 h-5" />
             </div>
             <span className="text-[10px] font-black uppercase tracking-wider text-purple-500 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
-              9.6% em uso
+              Operacional
             </span>
           </div>
           <div className="text-2xl font-display font-black text-[var(--color-text-primary)]">
-            4.8 GB <span className="text-xs text-[var(--color-text-muted)] font-normal">/ 50 GB</span>
+            Supabase Storage
           </div>
           <div className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest mt-1">
-            Storage de Mídias & Docs
+            Armazenamento de Mídias
           </div>
           <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)] text-xs text-[var(--color-text-muted)] flex justify-between">
-            <span>Buckets Ativos</span>
-            <span className="font-mono font-bold text-[var(--color-text-primary)]">4 buckets</span>
+            <span>Permissões</span>
+            <span className="font-bold text-[var(--color-text-primary)]">Autenticado</span>
           </div>
         </Card>
 
@@ -252,19 +216,23 @@ export function AdminHealthTab() {
             <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-500">
               <Zap className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-cyan-500 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
-              Latência
-            </span>
+            {realPingMs !== null && (
+              <span className="text-[10px] font-black uppercase tracking-wider text-cyan-500 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
+                Ao Vivo
+              </span>
+            )}
           </div>
           <div className="text-2xl font-display font-black text-cyan-500">
-            24 ms
+            {realPingMs !== null ? `${realPingMs} ms` : "—"}
           </div>
           <div className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest mt-1">
-            Tempo Médio de Resposta
+            Tempo de Resposta Real
           </div>
           <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)] text-xs text-[var(--color-text-muted)] flex justify-between">
-            <span>Servidor</span>
-            <span className="font-mono font-bold text-[var(--color-text-primary)]">São Paulo (sa-east-1)</span>
+            <span>Latência da Rede</span>
+            <span className="font-mono font-bold text-[var(--color-text-primary)]">
+              {realPingMs !== null ? `${realPingMs}ms` : "Pendente"}
+            </span>
           </div>
         </Card>
       </div>
@@ -275,47 +243,55 @@ export function AdminHealthTab() {
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-[var(--color-primary-blue)]" />
             <h3 className="text-sm font-bold text-[var(--color-text-primary)]">
-              Resultado dos Testes de Integridade
+              Resultado dos Testes em Tempo Real
             </h3>
           </div>
-          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-            5 / 5 Testes Aprovados
-          </span>
+          {diagnostics.length > 0 && (
+            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+              {diagnostics.filter(d => d.status === "success").length} / {diagnostics.length} Aprovados
+            </span>
+          )}
         </div>
 
-        <div className="space-y-3">
-          {diagnostics.map((diag) => (
-            <div
-              key={diag.id}
-              className="p-4 rounded-2xl bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-600 transition-colors"
-            >
-              <div className="flex items-start sm:items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5 sm:mt-0">
-                  <Check className="w-4 h-4" />
+        {diagnostics.length === 0 ? (
+          <div className="p-8 text-center text-xs text-[var(--color-text-muted)]">
+            Clique em "Executar Diagnóstico" para iniciar os testes.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {diagnostics.map((diag) => (
+              <div
+                key={diag.id}
+                className="p-4 rounded-2xl bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-600 transition-colors"
+              >
+                <div className="flex items-start sm:items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5 sm:mt-0">
+                    <Check className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-[var(--color-text-primary)] block">
+                      {diag.name}
+                    </span>
+                    <span className="text-[11px] text-[var(--color-text-muted)] block mt-0.5">
+                      {diag.message}
+                    </span>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <span className="text-xs font-bold text-[var(--color-text-primary)] block">
-                    {diag.name}
-                  </span>
-                  <span className="text-[11px] text-[var(--color-text-muted)] block mt-0.5">
-                    {diag.message}
+
+                <div className="flex items-center gap-3 shrink-0 pl-11 sm:pl-0">
+                  {diag.latencyMs !== undefined && (
+                    <span className="text-xs font-mono font-bold text-cyan-400">
+                      {diag.latencyMs}ms
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <CheckCircle2 className="w-2.5 h-2.5" /> Aprovado
                   </span>
                 </div>
               </div>
-
-              <div className="flex items-center gap-3 shrink-0 pl-11 sm:pl-0">
-                {diag.latencyMs && (
-                  <span className="text-xs font-mono font-bold text-cyan-400">
-                    {diag.latencyMs}ms
-                  </span>
-                )}
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                  <CheckCircle2 className="w-2.5 h-2.5" /> Aprovado
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );

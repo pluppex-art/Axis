@@ -57,7 +57,7 @@ export default function AdminSaaS() {
   const [isCreateTenantOpen, setIsCreateTenantOpen] = useState(false);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   const [selectedTenantForModules, setSelectedTenantForModules] = useState<string | null>(null);
-  const [unreadAlertsCount, setUnreadAlertsCount] = useState(2);
+  const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
   const [reloadTrigger, setReloadTrigger] = useState(0);
 
   useEffect(() => {

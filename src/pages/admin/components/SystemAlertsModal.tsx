@@ -17,53 +17,7 @@ export interface SystemAlert {
   read: boolean;
 }
 
-const INITIAL_ALERTS: SystemAlert[] = [
-  {
-    id: "alt-1",
-    title: "Backup Automatizado Concluído",
-    message: "O snapshot diário do PostgreSQL Supabase Master foi finalizado com sucesso (1.42 GB compactado com integridade SHA-256).",
-    severity: "success",
-    timestamp: "Há 18 minutos",
-    source: "Supabase DB",
-    read: false,
-  },
-  {
-    id: "alt-2",
-    title: "Utilização do Pool de Conexões",
-    message: "Pico de 42 conexões simultâneas registrado durante rotina de sincronização de leads. Pool operando dentro da margem de segurança (máx 100).",
-    severity: "info",
-    timestamp: "Há 45 minutos",
-    source: "Connection Pooler",
-    read: false,
-  },
-  {
-    id: "alt-3",
-    title: "Webhook Gateway com Latência Estável",
-    message: "Taxa de entrega dos webhooks nas últimas 24h em 99.85%. Nenhuma fila de reprocessamento pendente.",
-    severity: "success",
-    timestamp: "Há 2 horas",
-    source: "Edge Functions",
-    read: true,
-  },
-  {
-    id: "alt-4",
-    title: "Certificado SSL / TLS Renovado",
-    message: "Certificado wildcard (*.axis-crm.pluppex.com.br) verificado e válido por mais 88 dias com renovação automática via Cloudflare.",
-    severity: "info",
-    timestamp: "Ontem às 22:15",
-    source: "Segurança & DNS",
-    read: true,
-  },
-  {
-    id: "alt-5",
-    title: "Novo Tenant Provisionado",
-    message: "A instância corporativa 'Solar Axis Demo' foi ativada com RLS isolado e 14 módulos habilitados.",
-    severity: "info",
-    timestamp: "Ontem às 16:30",
-    source: "Multitenancy",
-    read: true,
-  }
-];
+const INITIAL_ALERTS: SystemAlert[] = [];
 
 interface SystemAlertsModalProps {
   isOpen: boolean;

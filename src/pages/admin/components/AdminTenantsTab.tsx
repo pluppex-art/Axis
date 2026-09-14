@@ -25,14 +25,6 @@ interface TenantItem {
   status?: string;
 }
 
-const FALLBACK_TENANTS: TenantItem[] = [
-  { id: "gtech-master", name: "G-Tech Master", niche: "Tecnologia", status: "Active" },
-  { id: "e-empreenda", name: "E-EMPREENDA+", niche: "Educação", status: "Active" },
-  { id: "solar-axis", name: "Solar Axis Demo", niche: "Solar", status: "Active" },
-  { id: "imob-prime", name: "Prime Imóveis", niche: "Imobiliária", status: "Active" },
-  { id: "clinica-vitta", name: "Clínica Vitta Saúde", niche: "Clínica", status: "Active" },
-];
-
 const NICHES_LIST = [
   "Todos",
   "Tecnologia",
@@ -57,7 +49,7 @@ export function AdminTenantsTab({
   onOpenNewTenant,
   reloadTrigger,
 }: AdminTenantsTabProps) {
-  const { user, login, getTenantModules } = useAuth();
+  const { user, login, getTenantModules, tenantIdMap } = useAuth();
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [search, setSearch] = useState("");
   const [selectedNiche, setSelectedNiche] = useState("Todos");
@@ -80,12 +72,28 @@ export function AdminTenantsTab({
     try {
       const data = await fetchTenantsDetailed();
       if (data && data.length > 0) {
-        setTenants(data.map(d => ({ ...d, status: d.status || "Active" })));
+        setTenants(data.map(d => ({ ...d, status: (d as any).status || "Active" })));
       } else {
-        setTenants(FALLBACK_TENANTS);
+        const names = Object.keys(tenantIdMap || {});
+        if (names.length > 0) {
+          setTenants(names.map(name => ({
+            id: tenantIdMap[name] || name.toLowerCase().replace(/\s+/g, "-"),
+            name,
+            niche: name === "G-Tech Master" ? "Tecnologia" : "Parceira",
+            status: "Active"
+          })));
+        } else {
+          setTenants([]);
+        }
       }
     } catch {
-      setTenants(FALLBACK_TENANTS);
+      const names = Object.keys(tenantIdMap || {});
+      setTenants(names.map(name => ({
+        id: tenantIdMap[name] || name.toLowerCase().replace(/\s+/g, "-"),
+        name,
+        niche: name === "G-Tech Master" ? "Tecnologia" : "Parceira",
+        status: "Active"
+      })));
     } finally {
       setLoading(false);
     }
