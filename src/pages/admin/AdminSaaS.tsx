@@ -1,29 +1,42 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Activity, Server, DollarSign, TerminalSquare, Bell, Plus, Cpu } from "lucide-react";
+import {
+  Activity, Server, DollarSign, TerminalSquare, Bell,
+  Plus, Cpu, ShieldCheck, Building2, Zap, RefreshCw
+} from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
 import { toast } from "sonner";
+
 import { AdminOverviewTab } from "./components/AdminOverviewTab";
+import { AdminTenantsTab } from "./components/AdminTenantsTab";
+import { AdminModulesTab } from "./components/AdminModulesTab";
 import { AdminBillingTab } from "./components/AdminBillingTab";
 import { AdminLogsTab } from "./components/AdminLogsTab";
+import { AdminHealthTab } from "./components/AdminHealthTab";
 import { NovoTenantModal } from "./components/NovoTenantModal";
-import ConfigModulosDemos from "../settings/ConfigModulosDemos";
+import { ModuleConfigModal } from "./components/ModuleConfigModal";
+import { SystemAlertsModal } from "./components/SystemAlertsModal";
 
 const TABS = [
   { id: "overview", label: "Visão Geral", icon: Activity },
-  { id: "tenants", label: "Tenants & Módulos", icon: Server },
-  { id: "billing", label: "Faturamento", icon: DollarSign },
-  { id: "logs", label: "Logs do Sistema", icon: TerminalSquare },
+  { id: "tenants", label: "Tenants & Instâncias", icon: Building2 },
+  { id: "modules", label: "Módulos & Presets", icon: Cpu },
+  { id: "billing", label: "Faturamento & Planos", icon: DollarSign },
+  { id: "logs", label: "Logs & Auditoria", icon: TerminalSquare },
+  { id: "health", label: "Saúde & Diagnóstico", icon: ShieldCheck },
 ];
 
 export const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
+    const val = payload[0].value;
     return (
-      <div className="bg-[#0f172a] border border-white/10 p-3 rounded-lg">
-        <p className="text-white text-sm mb-1">{label}</p>
-        <p className="text-slate-300 text-sm">R$ {(payload[0].value / 1000).toFixed(0)}k</p>
+      <div className="bg-[#0f172a] border border-white/10 p-3 rounded-xl shadow-xl">
+        <p className="text-white text-xs font-bold mb-1">{label}</p>
+        <p className="text-cyan-400 font-mono text-sm font-black">
+          R$ {val.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+        </p>
       </div>
     );
   }
@@ -33,15 +46,18 @@ export const CustomTooltip = ({ active, payload, label }: any) => {
 export default function AdminSaaS() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
+
   const normalizedTab = useMemo(() => {
-    if (tabFromUrl === "modules" || tabFromUrl === "tenants" || tabFromUrl === "tenants_modules") {
-      return "tenants";
-    }
-    return tabFromUrl || "overview";
+    if (tabFromUrl === "tenants_modules") return "tenants";
+    if (TABS.some(t => t.id === tabFromUrl)) return tabFromUrl;
+    return "overview";
   }, [tabFromUrl]);
 
   const [activeTab, setActiveTab] = useState(normalizedTab);
   const [isCreateTenantOpen, setIsCreateTenantOpen] = useState(false);
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [selectedTenantForModules, setSelectedTenantForModules] = useState<string | null>(null);
+  const [unreadAlertsCount, setUnreadAlertsCount] = useState(2);
   const [reloadTrigger, setReloadTrigger] = useState(0);
 
   useEffect(() => {
@@ -77,24 +93,45 @@ export default function AdminSaaS() {
 
   return (
     <PageContainer
-      title="Gestão de Infraestrutura S.P.Y."
-      description="Controle centralizado de instâncias, faturamento e saúde global da plataforma."
+      title="Gestão de Infraestrutura & SaaS"
+      description="Centro de Comando Global — Instâncias, Faturamento, Governança Modular e Saúde da Infraestrutura."
       actions={
-        <div className="flex gap-2">
-          <Button variant="outline" className="h-10 px-4" disabled title="Em breve">
-            <Bell className="w-4 h-4 mr-2" /> Alertas
-          </Button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Status Pill */}
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-500">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-mono text-[11px]">SLA 99.98% Operacional</span>
+          </div>
+
+          {/* Alertas */}
           <Button
-            onClick={() => setIsCreateTenantOpen(true)}
-            className="h-10 px-4 font-black"
+            type="button"
+            variant="outline"
+            onClick={() => setIsAlertsOpen(true)}
+            className="h-10 px-3.5 relative font-bold"
           >
-            <Plus className="w-4 h-4 mr-2" /> Novo Tenant
+            <Bell className="w-4 h-4 mr-1.5 text-[var(--color-primary-blue)]" />
+            Alertas
+            {unreadAlertsCount > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white">
+                {unreadAlertsCount}
+              </span>
+            )}
+          </Button>
+
+          {/* Novo Tenant */}
+          <Button
+            type="button"
+            onClick={() => setIsCreateTenantOpen(true)}
+            className="h-10 px-4 font-black shadow-md shadow-[var(--color-primary-blue)]/20"
+          >
+            <Plus className="w-4 h-4 mr-1.5" /> Novo Tenant
           </Button>
         </div>
       }
     >
-      {/* Tabs Bar */}
-      <div className="flex items-center gap-1.5 p-1.5 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-2xl mb-8 overflow-x-auto scrollbar-none shadow-sm">
+      {/* Navigation Tabs Bar */}
+      <div className="flex items-center gap-1.5 p-1.5 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-2xl mb-8 overflow-x-auto scrollbar-none shadow-xs">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -103,7 +140,7 @@ export default function AdminSaaS() {
               key={tab.id}
               type="button"
               onClick={() => handleTabChange(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer select-none ${
                 isActive
                   ? "bg-[var(--color-primary-blue)] text-white shadow-md shadow-[var(--color-primary-blue)]/25"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)]"
@@ -116,30 +153,65 @@ export default function AdminSaaS() {
         })}
       </div>
 
+      {/* Tab Contents */}
       {activeTab === "overview" && (
-        <AdminOverviewTab globalMrr={globalMrr} revenueData={revenueData} CustomTooltip={CustomTooltip} />
+        <AdminOverviewTab
+          globalMrr={globalMrr}
+          revenueData={revenueData}
+          CustomTooltip={CustomTooltip}
+          onNavigateTab={handleTabChange}
+          onOpenNewTenant={() => setIsCreateTenantOpen(true)}
+        />
       )}
-      {(activeTab === "tenants" || activeTab === "modules") && (
-        <div className="pt-1">
-          <ConfigModulosDemos 
-            embedded={true} 
-            onOpenNewTenant={() => setIsCreateTenantOpen(true)}
-            reloadTrigger={reloadTrigger}
-          />
-        </div>
+
+      {activeTab === "tenants" && (
+        <AdminTenantsTab
+          onConfigureModules={(tenantName) => setSelectedTenantForModules(tenantName)}
+          onOpenNewTenant={() => setIsCreateTenantOpen(true)}
+          reloadTrigger={reloadTrigger}
+        />
       )}
+
+      {activeTab === "modules" && (
+        <AdminModulesTab
+          initialTenant={selectedTenantForModules || undefined}
+          onTenantChange={(name) => setSelectedTenantForModules(name)}
+        />
+      )}
+
       {activeTab === "billing" && (
         <AdminBillingTab revenueData={revenueData} CustomTooltip={CustomTooltip} />
       )}
-      {activeTab === "logs" && <AdminLogsTab />}
 
+      {activeTab === "logs" && (
+        <AdminLogsTab />
+      )}
+
+      {activeTab === "health" && (
+        <AdminHealthTab />
+      )}
+
+      {/* Modals */}
       <NovoTenantModal
         isOpen={isCreateTenantOpen}
         onClose={() => setIsCreateTenantOpen(false)}
         onCreated={() => {
-          toast.success("Novo Tenant cadastrado com sucesso!");
           setReloadTrigger(v => v + 1);
         }}
+      />
+
+      <ModuleConfigModal
+        selectedTenant={selectedTenantForModules}
+        onClose={() => setSelectedTenantForModules(null)}
+        onSaved={() => {
+          setReloadTrigger(v => v + 1);
+        }}
+      />
+
+      <SystemAlertsModal
+        isOpen={isAlertsOpen}
+        onClose={() => setIsAlertsOpen(false)}
+        onAlertsChange={(count) => setUnreadAlertsCount(count)}
       />
     </PageContainer>
   );
