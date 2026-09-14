@@ -21,12 +21,14 @@ import {
 import { DataContext, DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao, Indicacao, useData } from './DataContextTypes';
 import { apiFetch } from "../lib/apiClient";
 import { parseCurrencyBR } from "../lib/utils";
+import { useLocalization } from "./LocalizationContext";
 
 export { useData };
 export type { DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao };
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const { user, authLoading, updatePreferences, activeTenantId, activeFilialId } = useAuth();
+  const { formatCurrency } = useLocalization();
   const tenantId = activeTenantId;
 
   // Tabelas com segregação por filial: quando uma filial está ativa (activeFilialId),
@@ -781,7 +783,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (percentage >= 90 && !notifiedSquadsRef.current[sq.id]) {
         addNotification({
           title: "Meta Próxima (90%+)",
-          desc: `O ${sq.nome} atingiu 90% da meta mensal! Faturamento atual: R$ ${sq.faturamentoAlcancado.toLocaleString()}`,
+          desc: `O ${sq.nome} atingiu 90% da meta mensal! Faturamento atual: ${formatCurrency(sq.faturamentoAlcancado)}`,
           type: "success",
           category: "Performance"
         }, true);

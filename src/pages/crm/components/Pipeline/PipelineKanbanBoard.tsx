@@ -3,6 +3,7 @@ import { ChevronRight, Plus } from "lucide-react";
 import { LeadCard } from "./LeadCard";
 import { Task } from "../../../../types";
 import { useData } from "../../../../contexts/DataContext";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
 import { parseCurrencyBR } from "../../../../lib/utils";
 import { calculateLeadScore, normalizeText } from "../../../../lib/leadScore";
@@ -58,6 +59,7 @@ export function PipelineKanbanBoard({
   onReuniaoStageDrop,
 }: PipelineKanbanBoardProps) {
   const { products } = useData();
+  const { formatCurrency } = useLocalization();
 
   // Mesma regra do LeadCard: quando o lead tem produtos vinculados, o valor
   // exibido vem da soma dos preços dos produtos, não do campo value/valor —
@@ -176,7 +178,7 @@ export function PipelineKanbanBoard({
                   </button>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-[10px] font-mono font-bold text-[var(--color-text-muted)]">
-                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(
+                      {formatCurrency(
                         stageLeads.reduce((sum: number, item: any) => sum + getLeadValue(item), 0)
                       )}
                     </span>

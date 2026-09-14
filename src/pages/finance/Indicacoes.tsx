@@ -5,6 +5,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
 import {
   Plus, X, Trash2, Download, Handshake, CheckCircle2, Clock, XCircle, DollarSign,
@@ -13,9 +14,6 @@ import {
 
 const DEFAULT_COMMISSION_KEY = "indicacao_comissao_padrao";
 const AFFILIATES_KEY = "afiliados_sistema";
-
-const currency = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
 
 const STATUS_FLOW: Record<string, string> = {
   Pendente: "Aprovada",
@@ -46,6 +44,8 @@ export default function Indicacoes() {
     indicacoes, addIndicacao, updateIndicacao, deleteIndicacao,
     colaboradores, clienteBase, appSettings, saveAppSetting, addLead
   } = useData();
+  const { formatCurrency } = useLocalization();
+  const currency = (v: number) => formatCurrency(v || 0);
 
   // Modais
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -575,7 +575,7 @@ export default function Indicacoes() {
               >
                 {affiliates.map((a: any) => (
                   <option key={a.code} value={a.code}>
-                    {a.name} (ref={a.code} — R$ {a.commission})
+                    {a.name} (ref={a.code} — {currency(a.commission)})
                   </option>
                 ))}
               </select>

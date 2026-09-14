@@ -8,11 +8,13 @@ import {
 import { Card } from "../../components/ui/card";
 import { Link } from "react-router-dom";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { NewLeadModal } from "../../components/ui/modals/crm/NewLeadModal";
 import { LeadDetailsModal } from "../../components/ui/LeadDetailsModal";
 
 export default function Oportunidades() {
   const { leads } = useData();
+  const { formatCurrency } = useLocalization();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("Todos");
   const [selectedLead, setSelectedLead] = useState<any>(null);
@@ -74,8 +76,8 @@ export default function Oportunidades() {
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { icon: DollarSign, label: "Pipeline Total", val: `R$ ${(totalPipeline / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k`, color: "text-blue-500" },
-          { icon: TrendingUp, label: "Ganhos / Fechados", val: `R$ ${(totalWon / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k`, color: "text-emerald-500" },
+          { icon: DollarSign, label: "Pipeline Total", val: formatCurrency(totalPipeline), color: "text-blue-500" },
+          { icon: TrendingUp, label: "Ganhos / Fechados", val: formatCurrency(totalWon), color: "text-emerald-500" },
           { icon: Clock, label: "Oportunidades Abertas", val: oportunidades.filter(o => o.status !== "Fechado" && o.status !== "Perdido").length, color: "text-amber-500" },
           { icon: CheckCircle2, label: "Taxa de Sucesso", val: oportunidades.length > 0 ? `${Math.round((closedWon.length / oportunidades.length) * 100)}%` : "0%", color: "text-indigo-500" },
         ].map((k, i) => (
@@ -126,7 +128,7 @@ export default function Oportunidades() {
                   </td>
                   <td className="px-4 py-3.5 font-bold text-[var(--color-text-primary)]">
                     {op.numericValue > 0 ? (
-                      `R$ ${op.numericValue.toLocaleString("pt-BR")}`
+                      formatCurrency(op.numericValue)
                     ) : (
                       <span className="text-[var(--color-text-muted)]">A definir</span>
                     )}

@@ -3,6 +3,7 @@ import { Building2, Users, DollarSign, FileText, Handshake, Inbox } from "lucide
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { useAuth } from "../../contexts/AuthContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { supabase } from "../../lib/supabase";
 
 interface PlatformMetrics {
@@ -20,11 +21,9 @@ interface AttributedTenant {
   status: string | null;
 }
 
-const currency = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v || 0);
-
 export default function PartnersOverview() {
   const { user } = useAuth();
+  const { formatCurrency: currency } = useLocalization();
   const hasAccess = !!user?.isMaster || !!user?.partnerId;
 
   const [metrics, setMetrics] = useState<PlatformMetrics | null>(null);

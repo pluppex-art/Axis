@@ -2,6 +2,7 @@ import React from 'react';
 import { Card } from '../../../components/ui/card';
 import { Droppable, Draggable } from '@hello-pangea/dnd';
 import { DollarSign, MoreHorizontal, Calendar, Image, MessageSquare, GripVertical, Zap, FileText } from 'lucide-react';
+import { useLocalization } from '../../../contexts/LocalizationContext';
 
 interface KanbanColumnProps {
   col: any;
@@ -18,6 +19,7 @@ export function KanbanColumn({
   setColumnSearches,
   openTask
 }: KanbanColumnProps) {
+  const { formatCurrency } = useLocalization();
   const searchQuery = columnSearches[col.id] || "";
   const colTasksAll = tasks.filter(t => t.colId === col.id);
   const colTasks = colTasksAll.filter(t => {
@@ -55,11 +57,7 @@ export function KanbanColumn({
                       
                       <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/5 text-[9px] font-black text-blue-400/80 shadow-sm shrink-0">
                         <DollarSign className="w-2.5 h-2.5" />
-                        {new Intl.NumberFormat('pt-BR', { 
-                          style: 'currency', 
-                          currency: 'BRL',
-                          maximumFractionDigits: 0 
-                        }).format(colTasksAll.reduce((sum, t) => sum + (t.value || 0), 0))}
+                        {formatCurrency(colTasksAll.reduce((sum, t) => sum + (t.value || 0), 0))}
                       </div>
                     </div>
 
@@ -68,11 +66,7 @@ export function KanbanColumn({
                          <span className="text-[8px] font-bold text-slate-600 uppercase tracking-tighter">
                            Ticket Médio: 
                            <strong className="text-slate-500 ml-1">
-                             {new Intl.NumberFormat('pt-BR', { 
-                               style: 'currency', 
-                               currency: 'BRL',
-                               maximumFractionDigits: 0 
-                             }).format(colTasksAll.length > 0 ? colTasksAll.reduce((sum, t) => sum + (t.value || 0), 0) / colTasksAll.length : 0)}
+                             {formatCurrency(colTasksAll.length > 0 ? colTasksAll.reduce((sum, t) => sum + (t.value || 0), 0) / colTasksAll.length : 0)}
                            </strong>
                          </span>
                        </div>
@@ -165,7 +159,7 @@ export function KanbanColumn({
                            <h4 className="text-sm font-bold text-white mb-1 line-clamp-2">{task.title}</h4>
                            <div className="flex items-center gap-2 mb-2">
                              <span className="text-[10px] font-bold text-blue-400">
-                               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(task.value || 0)}
+                               {formatCurrency(task.value || 0)}
                              </span>
                            </div>
                            <p className="text-xs text-slate-400 mb-4 line-clamp-2">{task.desc}</p>

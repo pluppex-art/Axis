@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer,
 } from "recharts";
+import { useLocalization } from "../../../contexts/LocalizationContext";
 
 interface AdminBillingTabProps {
   revenueData: { name: string; mrr: number }[];
@@ -11,7 +12,8 @@ interface AdminBillingTabProps {
 }
 
 export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabProps) {
-  const fmt = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(n);
+  const { formatCurrency } = useLocalization();
+  const fmt = (n: number) => formatCurrency(n);
   const mesesComReceita = revenueData.filter(m => m.mrr > 0);
   const arpu = mesesComReceita.length > 0
     ? mesesComReceita.reduce((s, m) => s + m.mrr, 0) / mesesComReceita.length

@@ -1,6 +1,7 @@
 import { Modal } from "../../modal";
 import { Button } from "../../button";
 import { AlertTriangle } from "lucide-react";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -18,14 +19,17 @@ export function ConfirmModal({
   onConfirm,
   title,
   message,
-  confirmText = "Excluir permanentemente",
-  cancelText = "Cancelar"
+  confirmText,
+  cancelText
 }: ConfirmModalProps) {
+  const { t } = useLocalization();
+  const resolvedConfirmText = confirmText ? t(confirmText) : t("Excluir permanentemente");
+  const resolvedCancelText = cancelText ? t(cancelText) : t("Cancelar");
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={title}
+      title={t(title)}
       maxWidth="max-w-md"
       footer={null}
     >
@@ -35,7 +39,7 @@ export function ConfirmModal({
         </div>
 
         <p className="text-sm text-[var(--color-text-muted)] font-sans leading-relaxed max-w-sm px-4">
-          {message}
+          {t(message)}
         </p>
 
         <div className="bg-rose-500/10 border border-rose-500/20 p-3 rounded-xl flex items-start gap-2.5 w-full text-left mt-2 shadow-inner">
@@ -43,8 +47,8 @@ export function ConfirmModal({
             <AlertTriangle className="w-4 h-4" />
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-rose-400">Atenção</p>
-            <p className="text-xs text-rose-500/90 font-medium">Esta ação é irreversível.</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-rose-400">{t("Atenção")}</p>
+            <p className="text-xs text-rose-500/90 font-medium">{t("Esta ação é irreversível.")}</p>
           </div>
         </div>
 
@@ -55,7 +59,7 @@ export function ConfirmModal({
             onClick={onClose}
             className="flex-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xs font-bold font-sans cursor-pointer h-10 rounded-xl bg-[var(--color-surface-sunken)] hover:bg-[var(--color-border-subtle)] transition-colors"
           >
-            {cancelText}
+            {resolvedCancelText}
           </Button>
           <Button
             type="button"
@@ -67,7 +71,7 @@ export function ConfirmModal({
           >
             <span className="relative z-10 flex items-center justify-center gap-2">
               <AlertTriangle className="w-3.5 h-3.5 opacity-0 -ml-5 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
-              {confirmText}
+              {resolvedConfirmText}
             </span>
           </Button>
         </div>

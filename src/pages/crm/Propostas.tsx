@@ -5,6 +5,7 @@ import { PageContainer } from "../../components/PageContainer";
 import { toast } from "sonner";
 import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { CriarPropostaModal } from "../../components/ui/modals/crm/CriarPropostaModal";
 import { NovaPropostaRapidaModal } from "../../components/ui/modals/crm/NovaPropostaRapidaModal";
 import { PropostasKPIs } from "./components/Propostas/PropostasKPIs";
@@ -33,6 +34,7 @@ export default function Propostas() {
     addFinanceEntry,
   } = useData();
   const { user } = useAuth();
+  const { formatCurrency } = useLocalization();
 
   const [activeTab, setActiveTab] = useState<"propostas" | "contratos">("propostas");
   const [search, setSearch] = useState("");
@@ -63,7 +65,7 @@ export default function Propostas() {
     if (newStatus === "Aceita") {
       const prop = (propostas || []).find((p: any) => p.id === id);
       if (prop) {
-        const valorFmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(prop.valor || 0);
+        const valorFmt = formatCurrency(prop.valor || 0);
 
         const jaExiste = (contracts || []).some((c: any) => c.client === prop.cliente && c.plan === prop.titulo);
         if (!jaExiste) {

@@ -8,9 +8,11 @@ import {
 import { Card } from "../../components/ui/card";
 import { useData } from "../../contexts/DataContext";
 import { downloadCsv } from "../../lib/csvExport";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 export default function FinanceiroFluxoCaixa() {
   const { financeEntries } = useData();
+  const { formatCurrency } = useLocalization();
   const [periodo, setPeriodo] = useState<"30d" | "60d" | "90d">("30d");
 
   const { totalEntradas, totalSaidas, saldoProjetado, fluxoDiario } = useMemo(() => {
@@ -68,7 +70,7 @@ export default function FinanceiroFluxoCaixa() {
             <ArrowUpRight className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-black text-emerald-500">
-            R$ {totalEntradas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            {formatCurrency(totalEntradas)}
           </div>
         </Card>
 
@@ -78,7 +80,7 @@ export default function FinanceiroFluxoCaixa() {
             <ArrowDownRight className="w-4 h-4 text-rose-500" />
           </div>
           <div className="text-2xl font-black text-rose-500">
-            R$ {totalSaidas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            {formatCurrency(totalSaidas)}
           </div>
         </Card>
 
@@ -88,7 +90,7 @@ export default function FinanceiroFluxoCaixa() {
             <Wallet className="w-4 h-4 text-[var(--color-primary-blue)]" />
           </div>
           <div className={`text-2xl font-black ${saldoProjetado >= 0 ? 'text-[var(--color-primary-blue)]' : 'text-rose-500'}`}>
-            R$ {saldoProjetado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            {formatCurrency(saldoProjetado)}
           </div>
         </Card>
       </div>
@@ -117,13 +119,13 @@ export default function FinanceiroFluxoCaixa() {
                 <tr key={idx} className="hover:bg-[var(--color-surface-sunken)]/40 transition-colors">
                   <td className="px-5 py-3.5 font-bold text-[var(--color-text-primary)]">{row.date}</td>
                   <td className="px-4 py-3.5 text-right font-medium text-emerald-500">
-                    {row.entradas > 0 ? `+ R$ ${row.entradas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "-"}
+                    {row.entradas > 0 ? `+ ${formatCurrency(row.entradas)}` : "-"}
                   </td>
                   <td className="px-4 py-3.5 text-right font-medium text-rose-500">
-                    {row.saidas > 0 ? `- R$ ${row.saidas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "-"}
+                    {row.saidas > 0 ? `- ${formatCurrency(row.saidas)}` : "-"}
                   </td>
                   <td className={`px-5 py-3.5 text-right font-bold ${row.saldo >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    R$ {row.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    {formatCurrency(row.saldo)}
                   </td>
                 </tr>
               ))}

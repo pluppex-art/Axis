@@ -3,6 +3,7 @@ import { Badge } from "../../../../components/ui/badge";
 import { Button } from "../../../../components/ui/button";
 import { TrendingUp, Clock, ArrowUpRight, ArrowDownRight, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
 interface UpcomingEntry { label: string; date: string; value: string; type: "pagar" | "receber"; }
 
@@ -13,9 +14,9 @@ interface FinanceiroBottomPanelsProps {
   margemEbitda: number | null;
 }
 
-const fmtBRL = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(n);
-
 export function FinanceiroBottomPanels({ upcomingEntries, cpl, ltvProjetado, margemEbitda }: FinanceiroBottomPanelsProps) {
+  const { formatCurrency } = useLocalization();
+  const fmtBRL = (n: number) => formatCurrency(n);
   const insights = [
     { label: "Custo por Lead (CPL)", value: cpl !== null ? fmtBRL(cpl) : "—" },
     { label: "LTV Projetado (12m)", value: ltvProjetado !== null ? fmtBRL(ltvProjetado) : "—" },

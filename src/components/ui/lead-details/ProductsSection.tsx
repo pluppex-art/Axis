@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
+import { useLocalization } from "../../../contexts/LocalizationContext";
 import { handleDownloadPdf } from "../../../pages/crm/utils/proposalPdf";
 import {
   PropostaEditorWordModal,
@@ -95,6 +96,7 @@ export function ProductsSection({
     appSettings,
   } = useData();
   const empresaDadosBranding = appSettings?.empresa_dados || {};
+  const { formatCurrency } = useLocalization();
 
   // Mini PDV State
   const [searchTerm, setSearchTerm] = useState("");
@@ -442,12 +444,12 @@ export function ProductsSection({
       const isInstantPayment = formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito";
       const formattedDate = new Date(dueDate + "T12:00:00").toLocaleDateString("pt-BR");
       const installmentInfo = parcelas > 1
-        ? ` (${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+        ? ` (${parcelas}x de ${formatCurrency(valorParcela)})`
         : " (À Vista)";
       const paymentInfoStr = `Forma: ${formaPagamento}${installmentInfo} | Data: ${formattedDate}${detalhesPagamento ? ` - Obs: ${detalhesPagamento}` : ""}`;
 
       await addFinanceEntry({
-        description: `Venda PDV — ${clientName} | ${paymentInfoStr} (${linkedItems.length} soluções: 1º Vencimento R$ ${firstPaymentTotal.toLocaleString("pt-BR")} | Total R$ ${finalTotal.toLocaleString("pt-BR")})`,
+        description: `Venda PDV — ${clientName} | ${paymentInfoStr} (${linkedItems.length} soluções: 1º Vencimento ${formatCurrency(firstPaymentTotal)} | Total ${formatCurrency(finalTotal)})`,
         category: "Vendas / Serviços",
         value: finalTotal,
         type: "Receber",
@@ -507,7 +509,7 @@ export function ProductsSection({
         {
           id: Date.now().toString(),
           author: seller || "Mini PDV",
-          desc: `⚡ Pedido de R$ ${finalTotal.toLocaleString("pt-BR")} concluído via ${formaPagamento}${installmentInfo} (Data: ${formattedDate}): Proposta gerada, Contas a Receber lançado e Lead atualizado.`,
+          desc: `⚡ Pedido de ${formatCurrency(finalTotal)} concluído via ${formaPagamento}${installmentInfo} (Data: ${formattedDate}): Proposta gerada, Contas a Receber lançado e Lead atualizado.`,
           time: "Agora",
         },
         ...prev,
@@ -515,7 +517,7 @@ export function ProductsSection({
 
       addNotification({
         title: `🎉 Venda Concluída no PDV: ${clientName}`,
-        desc: `Venda de R$ ${finalTotal.toLocaleString("pt-BR")} processada via ${formaPagamento}${installmentInfo} para ${formattedDate}. Proposta vinculada e receita provisionada no financeiro.`,
+        desc: `Venda de ${formatCurrency(finalTotal)} processada via ${formaPagamento}${installmentInfo} para ${formattedDate}. Proposta vinculada e receita provisionada no financeiro.`,
         type: "success",
         category: "CRM & Vendas",
         link: "/app/crm/propostas",
@@ -606,7 +608,7 @@ export function ProductsSection({
       {
         id: Date.now().toString(),
         author: seller || "Sistema",
-        desc: `PDF do Orçamento gerado no valor de R$ ${finalTotal.toLocaleString("pt-BR")}`,
+        desc: `PDF do Orçamento gerado no valor de ${formatCurrency(finalTotal)}`,
         time: "Agora",
       },
       ...prev,
@@ -678,7 +680,7 @@ export function ProductsSection({
             </div>
             <div className="flex items-center gap-2.5 shrink-0">
               <span className="text-sm font-mono font-black text-emerald-400">
-                R$ {(existingProposal.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                {formatCurrency(existingProposal.valor || 0)}
               </span>
               <Button
                 type="button"
@@ -897,7 +899,7 @@ export function ProductsSection({
             </span>
           </div>
           <Badge variant="success" className="font-mono text-xs font-bold px-2.5 py-1">
-            Total: R$ {finalTotal.toLocaleString("pt-BR")}
+            Total: {formatCurrency(finalTotal)}
           </Badge>
         </div>
 
@@ -917,7 +919,7 @@ export function ProductsSection({
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                      Preço Unitário: R$ {item.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      Preço Unitário: {formatCurrency(item.price)}
                     </div>
                   </div>
 
@@ -947,10 +949,10 @@ export function ProductsSection({
                   {/* Subtotal do Item */}
                   <div className="text-right min-w-[90px]">
                     <div className="text-xs font-mono font-black text-emerald-400">
-                      R$ {item.subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {formatCurrency(item.subtotal)}
                     </div>
                     <div className="text-[9px] text-slate-500 font-mono">
-                      {item.isRecurring ? `${item.contractMonths}x R$ ${item.monthlyPrice.toLocaleString("pt-BR")}` : "Valor Pontual"}
+                      {item.isRecurring ? `${item.contractMonths}x ${formatCurrency(item.monthlyPrice)}` : "Valor Pontual"}
                     </div>
                   </div>
 
@@ -1136,28 +1138,28 @@ export function ProductsSection({
                   <span className="text-[9px] text-blue-400 flex items-center gap-1 uppercase font-bold">
                     <DollarSign className="w-2.5 h-2.5" /> 1º Vencimento
                   </span>
-                  <span className="text-white font-black text-xs block">R$ {firstPaymentTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-white font-black text-xs block">{formatCurrency(firstPaymentTotal)}</span>
                 </div>
 
                 <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
                   <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
                     <RefreshCw className="w-2.5 h-2.5" /> Mensalidade (MRR)
                   </span>
-                  <span className="text-blue-300 font-bold text-xs block">R$ {totalMonthlyMRR.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-blue-300 font-bold text-xs block">{formatCurrency(totalMonthlyMRR)}</span>
                 </div>
 
                 <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
                   <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
                     <Layers className="w-2.5 h-2.5" /> Implantação
                   </span>
-                  <span className="text-amber-300 font-bold text-xs block">R$ {totalImplementation.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-amber-300 font-bold text-xs block">{formatCurrency(totalImplementation)}</span>
                 </div>
 
                 <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-emerald-500/20 space-y-1">
                   <span className="text-[9px] text-emerald-400 flex items-center gap-1 uppercase font-bold">
                     <TrendingUp className="w-2.5 h-2.5" /> Total Contrato (LTV)
                   </span>
-                  <span className="text-emerald-400 font-black text-xs block">R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-emerald-400 font-black text-xs block">{formatCurrency(finalTotal)}</span>
                 </div>
               </div>
 
@@ -1167,37 +1169,37 @@ export function ProductsSection({
                   <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
                     <TrendingDown className="w-2.5 h-2.5" /> Custos Totais
                   </span>
-                  <span className="text-rose-400 font-bold text-[11px] block">R$ {totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-rose-400 font-bold text-[11px] block">{formatCurrency(totalCost)}</span>
                 </div>
 
                 <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
                   <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
                     <Percent className="w-2.5 h-2.5" /> Comissão Vendas
                   </span>
-                  <span className="text-amber-400 font-bold text-[11px] block">R$ {totalCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-amber-400 font-bold text-[11px] block">{formatCurrency(totalCommission)}</span>
                 </div>
 
                 <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] col-span-2 sm:col-span-1 space-y-0.5">
                   <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
                     <TrendingUp className="w-2.5 h-2.5" /> Lucro Líquido
                   </span>
-                  <span className="text-emerald-400 font-bold text-[11px] block">R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  <span className="text-emerald-400 font-bold text-[11px] block">{formatCurrency(netProfit)}</span>
                 </div>
               </div>
             </div>
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] font-mono bg-[var(--color-surface-elevated)] px-3 py-2 rounded-lg border border-white/5 animate-in fade-in">
               <span className="text-slate-400">
-                1º Venc: <strong className="text-white">R$ {firstPaymentTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+                1º Venc: <strong className="text-white">{formatCurrency(firstPaymentTotal)}</strong>
               </span>
               <span className="text-slate-400">
-                MRR: <strong className="text-blue-300">R$ {totalMonthlyMRR.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+                MRR: <strong className="text-blue-300">{formatCurrency(totalMonthlyMRR)}</strong>
               </span>
               <span className="text-slate-400">
-                LTV: <strong className="text-emerald-400">R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+                LTV: <strong className="text-emerald-400">{formatCurrency(finalTotal)}</strong>
               </span>
               <span className="text-slate-400">
-                Lucro: <strong className="text-emerald-400">R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+                Lucro: <strong className="text-emerald-400">{formatCurrency(netProfit)}</strong>
               </span>
             </div>
           )}
@@ -1210,7 +1212,7 @@ export function ProductsSection({
               <CreditCard className="w-3.5 h-3.5" /> Condição de Pagamento & Parcelas (PDV)
             </span>
             <span className="text-[var(--color-text-muted)] font-mono">
-              {parcelas > 1 ? `${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "À Vista"}
+              {parcelas > 1 ? `${parcelas}x de ${formatCurrency(valorParcela)}` : "À Vista"}
             </span>
           </div>
 
@@ -1325,10 +1327,10 @@ export function ProductsSection({
                 onChange={(e) => setParcelas(Number(e.target.value))}
                 className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none cursor-pointer"
               >
-                <option value={1}>1x à vista (R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})</option>
+                <option value={1}>1x à vista ({formatCurrency(finalTotal)})</option>
                 {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map((num) => (
                   <option key={num} value={num}>
-                    {num}x de R$ {(finalTotal / num).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {num}x de {formatCurrency(finalTotal / num)}
                   </option>
                 ))}
               </select>
@@ -1363,7 +1365,7 @@ export function ProductsSection({
               </span>
             </div>
             <span className="text-xs font-mono font-black text-emerald-400">
-              {parcelas > 1 ? `${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `R$ ${finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} à vista`}
+              {parcelas > 1 ? `${parcelas}x de ${formatCurrency(valorParcela)}` : `${formatCurrency(finalTotal)} à vista`}
             </span>
           </div>
         </div>
@@ -1479,7 +1481,7 @@ export function ProductsSection({
 
                   <div className="text-right flex items-center gap-2">
                     <span className="text-xs font-mono font-black text-emerald-400 whitespace-nowrap">
-                      R$ {prod.price.toLocaleString("pt-BR")}
+                      {formatCurrency(prod.price)}
                     </span>
                     <div
                       className={cn(

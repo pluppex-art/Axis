@@ -20,6 +20,7 @@ import { handleDownloadPdf } from "../../utils/proposalPdf";
 import { confirmDialog } from "../../../../components/ui/confirm-dialog";
 import { useData } from "../../../../contexts/DataContext";
 import { useAuth } from "../../../../contexts/AuthContext";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 import {
   PropostaEditorWordModal,
   PropostaEditorData,
@@ -52,7 +53,6 @@ interface PropostaItem {
   preco_unitario: number;
 }
 
-const fmtCurrency = (v: number) => (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
 const STATUS_CONFIG = {
@@ -78,6 +78,7 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
   const { appSettings } = useData();
   const { activeTenantName } = useAuth();
+  const { formatCurrency } = useLocalization();
   const empresaDados = appSettings?.empresa_dados || {};
 
   const filtered = propostas.filter(p =>
@@ -156,7 +157,7 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="text-sm font-black text-[var(--color-text-primary)]">{fmtCurrency(item.valor)}</div>
+                    <div className="text-sm font-black text-[var(--color-text-primary)]">{formatCurrency(item.valor || 0)}</div>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">

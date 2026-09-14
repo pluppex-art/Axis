@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Building2, MapPin } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 import { navSections, type NavReqCondition } from "./navData";
 import { Logo } from "../ui/Logo";
@@ -39,6 +40,7 @@ export function Sidebar({
     activeFilialId, switchFilial,
   } = useAuth();
   const { cargos, empresaFiliais, tenantPrimaryColor } = useData();
+  const { t } = useLocalization();
 
   // Master vê e troca de cliente (tenant); admin do próprio tenant (ou master, dentro
   // do cliente ativo) vê e troca de filial daquele cliente.
@@ -164,7 +166,7 @@ export function Sidebar({
               <div key={idx} className="space-y-1">
                 {!isSidebarCollapsed ? (
                   <div className="px-2.5 text-[10px] font-black text-[var(--color-text-faint)] uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span>{section.title}</span>
+                    <span>{t(section.title)}</span>
                   </div>
                 ) : (
                   <div className="h-2"></div>
@@ -183,7 +185,7 @@ export function Sidebar({
                     >
                       <item.icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "!text-white" : "text-[var(--color-text-faint)]"}`} />
                       {!isSidebarCollapsed && (
-                        <span className={`truncate ${isActive ? "!text-white" : ""}`}>{item.name}</span>
+                        <span className={`truncate ${isActive ? "!text-white" : ""}`}>{t(item.name)}</span>
                       )}
                     </button>
                   );
@@ -192,7 +194,7 @@ export function Sidebar({
                     return (
                       <div
                         key={item.name}
-                        title={isSidebarCollapsed ? item.name : undefined}
+                        title={isSidebarCollapsed ? t(item.name) : undefined}
                         className="cursor-pointer"
                         onClick={() => {
                           if (item.action === "sdr-webhooks") setIsSDRWebhookOpen(true);
@@ -208,7 +210,7 @@ export function Sidebar({
                     <Link
                       key={item.name}
                       to={item.path}
-                      title={isSidebarCollapsed ? item.name : undefined}
+                      title={isSidebarCollapsed ? t(item.name) : undefined}
                       onClick={() => setIsMobileSidebarOpen(false)}
                       className="block"
                     >
@@ -225,7 +227,7 @@ export function Sidebar({
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
               <span className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-wider">
-                Sistema Operacional 100%
+                {t("Sistema Operacional 100%")}
               </span>
             </div>
           </div>

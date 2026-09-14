@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { AgendarReuniaoModal } from "./modals/crm/AgendarReuniaoModal";
 import { supabase } from "../../lib/supabase";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { Modal } from "./modal";
 import { Phone, Activity, TrendingUp, AlertTriangle } from "lucide-react";
 
@@ -34,6 +35,7 @@ interface LeadDetailsModalProps {
 
 export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProps) {
   const { updateLead, leadActivities, products } = useData();
+  const { formatCurrency } = useLocalization();
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState("informacoes");
   const [showCopilot, setShowCopilot] = useState(false);
@@ -139,8 +141,8 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
 
   const tc = LeadDetailsTempCfg[temperature as keyof typeof LeadDetailsTempCfg] || LeadDetailsTempCfg.Frio;
   const formattedValue = productTotal > 0
-    ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(productTotal)
-    : formatLeadValueBRL(lead?.value ?? value);
+    ? formatCurrency(productTotal)
+    : formatLeadValueBRL(lead?.value ?? value, formatCurrency);
   const initials = ((companyName || leadName || "LD").substring(0, 2)).toUpperCase();
 
   const moveToStage = (stg: any) => {

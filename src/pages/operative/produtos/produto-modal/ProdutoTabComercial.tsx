@@ -43,7 +43,7 @@ export function ProdutoTabComercial({
   setFormImplementationFee,
 }: ProdutoTabComercialProps) {
   const inputCls =
-    "w-full bg-[var(--color-surface-elevated)] border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#2563EB]/40 font-mono font-bold transition-all";
+    "w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)] font-mono font-bold transition-all";
 
   const p = parseFloat(formPrice) || 0;
   const c = parseFloat(formCost) || 0;
@@ -91,15 +91,15 @@ export function ProdutoTabComercial({
       </div>
 
       {/* ── PARÂMETROS DE RECORRÊNCIA E IMPLANTAÇÃO (SOFTWARE / SISTEMA) ── */}
-      <div className="bg-gradient-to-br from-blue-950/20 to-indigo-950/20 border border-blue-500/20 p-4.5 rounded-2xl space-y-4">
-        <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+      <div className="bg-violet-500/5 border border-violet-500/25 p-4.5 rounded-2xl space-y-4">
+        <div className="flex items-center justify-between border-b border-violet-500/15 pb-3">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-blue-400" />
-            <h5 className="text-xs font-black uppercase text-white tracking-wide">
+            <Sparkles className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+            <h5 className="text-xs font-black uppercase text-[var(--color-text-primary)] tracking-wide">
               Modelo de Cobrança & Vigência (SaaS / Serviços)
             </h5>
           </div>
-          <span className="text-[10px] text-slate-400 font-mono">Definição Contratual</span>
+          <span className="text-[10px] text-[var(--color-text-muted)] font-mono">Definição Contratual</span>
         </div>
 
         {/* Toggles de Recorrência e Implantação */}
@@ -110,21 +110,21 @@ export function ProdutoTabComercial({
             className={cn(
               "p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
               formIsRecurring
-                ? "bg-blue-500/15 border-blue-500/40 text-white shadow-sm"
-                : "bg-white/[0.02] border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200"
+                ? "bg-violet-500/10 border-violet-500/50 text-[var(--color-text-primary)] shadow-sm"
+                : "bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-default)] hover:text-[var(--color-text-primary)]"
             )}
           >
             <div
               className={cn(
-                "w-5 h-5 rounded-md flex items-center justify-center mt-0.5 transition-colors",
-                formIsRecurring ? "bg-blue-500 text-white" : "bg-white/10 text-transparent"
+                "w-5 h-5 rounded-md flex items-center justify-center mt-0.5 transition-colors shrink-0",
+                formIsRecurring ? "bg-violet-500 text-white" : "bg-[var(--color-surface-elevated)] text-[var(--color-text-faint)]"
               )}
             >
               <RotateCw className="w-3.5 h-3.5" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold leading-tight text-white">Cobrança Recorrente</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">
+              <p className="text-xs font-bold leading-tight text-[var(--color-text-primary)]">Cobrança Recorrente</p>
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
                 Mensalidade periódica (Assinatura, SaaS, Manutenção)
               </p>
             </div>
@@ -136,21 +136,21 @@ export function ProdutoTabComercial({
             className={cn(
               "p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
               formHasImplementation
-                ? "bg-indigo-500/15 border-indigo-500/40 text-white shadow-sm"
-                : "bg-white/[0.02] border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200"
+                ? "bg-fuchsia-500/10 border-fuchsia-500/50 text-[var(--color-text-primary)] shadow-sm"
+                : "bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-default)] hover:text-[var(--color-text-primary)]"
             )}
           >
             <div
               className={cn(
-                "w-5 h-5 rounded-md flex items-center justify-center mt-0.5 transition-colors",
-                formHasImplementation ? "bg-indigo-500 text-white" : "bg-white/10 text-transparent"
+                "w-5 h-5 rounded-md flex items-center justify-center mt-0.5 transition-colors shrink-0",
+                formHasImplementation ? "bg-fuchsia-500 text-white" : "bg-[var(--color-surface-elevated)] text-[var(--color-text-faint)]"
               )}
             >
               <Wrench className="w-3.5 h-3.5" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold leading-tight text-white">Taxa de Implantação / Setup</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">
+              <p className="text-xs font-bold leading-tight text-[var(--color-text-primary)]">Taxa de Implantação / Setup</p>
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
                 Onboarding, parametrização técnica inicial ou treinamento
               </p>
             </div>
@@ -161,8 +161,8 @@ export function ProdutoTabComercial({
         {formIsRecurring && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 animate-in fade-in slide-in-from-top-1">
             <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 font-extrabold uppercase block tracking-wider flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-blue-400" /> Duração do Contrato (Quantos Meses?)
+              <label className="text-[10px] text-[var(--color-text-muted)] font-extrabold uppercase block tracking-wider flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-violet-600 dark:text-violet-400" /> Duração do Contrato (Quantos Meses?)
               </label>
               <div className="flex items-center gap-1.5">
                 {["1", "3", "6", "12", "24"].map((m) => (
@@ -173,8 +173,8 @@ export function ProdutoTabComercial({
                     className={cn(
                       "px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer",
                       formContractMonths === m
-                        ? "bg-blue-600 border-blue-500 text-white shadow-sm"
-                        : "bg-white/[0.03] border-white/10 text-slate-400 hover:text-white"
+                        ? "bg-violet-600 border-violet-500 text-white shadow-sm"
+                        : "bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
                     )}
                   >
                     {m}m
@@ -186,13 +186,13 @@ export function ProdutoTabComercial({
                   value={formContractMonths}
                   onChange={(e) => setFormContractMonths && setFormContractMonths(e.target.value)}
                   placeholder="Meses"
-                  className="w-16 bg-[var(--color-surface-elevated)] border border-white/10 rounded-lg px-2 py-1 text-xs text-white font-mono text-center"
+                  className="w-16 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-2 py-1 text-xs text-[var(--color-text-primary)] font-mono text-center"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 font-extrabold uppercase block tracking-wider">
+              <label className="text-[10px] text-[var(--color-text-muted)] font-extrabold uppercase block tracking-wider">
                 Ciclo de Cobrança
               </label>
               <select
@@ -212,18 +212,18 @@ export function ProdutoTabComercial({
         {/* Campo Condicional de Taxa de Implantação */}
         {formHasImplementation && (
           <div className="space-y-1.5 pt-2 animate-in fade-in slide-in-from-top-1">
-            <label className="text-[10px] text-indigo-400 font-extrabold uppercase block tracking-wider flex items-center gap-1">
+            <label className="text-[10px] text-fuchsia-600 dark:text-fuchsia-400 font-extrabold uppercase block tracking-wider flex items-center gap-1">
               <Wrench className="w-3 h-3" /> Valor da Implantação / Setup Fee (R$)
             </label>
             <div className="relative max-w-xs">
-              <DollarSign className="w-4 h-4 text-indigo-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <DollarSign className="w-4 h-4 text-fuchsia-600 dark:text-fuchsia-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="number"
                 step="any"
                 value={formImplementationFee}
                 onChange={(e) => setFormImplementationFee && setFormImplementationFee(e.target.value)}
                 placeholder="Ex: 1500"
-                className={`${inputCls} pl-9 text-indigo-300`}
+                className={`${inputCls} pl-9 text-fuchsia-700 dark:text-fuchsia-300`}
               />
             </div>
           </div>

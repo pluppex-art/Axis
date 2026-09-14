@@ -12,6 +12,7 @@ import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { Modal } from "../../components/ui/modal";
 import { Link } from "react-router-dom";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 type Imovel = {
   id: string;
@@ -218,7 +219,7 @@ function ImovelFormModal({ onClose, onSave, initial }: {
               Comissão Imobiliária Estimada ({form.operacao === "Venda" ? "6%" : "1º Aluguel"}):
             </span>
             <span className="font-mono font-black text-blue-500">
-              {(form.operacao === "Venda" ? Number(form.valor) * 0.06 : Number(form.valor)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              {formatCurrency(form.operacao === "Venda" ? Number(form.valor) * 0.06 : Number(form.valor))}
             </span>
           </div>
         )}
@@ -382,6 +383,7 @@ function rowToImovel(r: any): Imovel {
 export default function Imoveis() {
   // Supabase (imobiliario_imoveis) é a única fonte — sem cache local nem
   // gravação otimista silenciosa: erro de escrita agora aparece pro usuário.
+  const { formatCurrency } = useLocalization();
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [loading, setLoading] = useState(true);
 

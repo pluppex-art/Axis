@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -51,6 +52,7 @@ export function Topbar({
     appSettings,
     tenantPrimaryColor,
   } = useData();
+  const { t } = useLocalization();
 
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -132,7 +134,7 @@ export function Topbar({
           type="button"
           onClick={() => toggleTheme()}
           className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] bg-[var(--color-surface-sunken)] hover:bg-[var(--color-border-default)] rounded-xl transition-colors cursor-pointer border-none"
-          title="Alternar Tema (Light/Dark)"
+          title={t("Alternar Tema (Light/Dark)")}
         >
           {theme === "dark" ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500" />}
         </button>
@@ -148,7 +150,7 @@ export function Topbar({
                 ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
                 : "hover:bg-[var(--color-surface-sunken)]"
             }`}
-            title="Notificações"
+            title={t("Notificações")}
           >
             <Bell className="w-4 h-4" />
             {unreadNotifications > 0 && (
@@ -170,10 +172,10 @@ export function Topbar({
                     </div>
                     <div>
                       <h4 className="text-xs font-black uppercase tracking-wider text-[var(--color-text-primary)]">
-                        Central de Notificações
+                        {t("Central de Notificações")}
                       </h4>
                       <p className="text-[10px] text-[var(--color-text-muted)]">
-                        {unreadNotifications} {unreadNotifications === 1 ? "pendente de leitura" : "pendentes de leitura"}
+                        {unreadNotifications} {t(unreadNotifications === 1 ? "pendente de leitura" : "pendentes de leitura")}
                       </p>
                     </div>
                   </div>
@@ -184,7 +186,7 @@ export function Topbar({
                       onClick={() => markAllNotificationsAsRead()}
                       className="text-[11px] text-[var(--color-primary-blue)] font-bold hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none"
                     >
-                      <CheckCheck className="w-3.5 h-3.5" /> Ler todas
+                      <CheckCheck className="w-3.5 h-3.5" /> {t("Ler todas")}
                     </button>
                   )}
                 </div>
@@ -208,7 +210,7 @@ export function Topbar({
                           : "bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
                       }`}
                     >
-                      {tab.label}
+                      {t(tab.label)}
                       {tab.count > 0 && (
                         <span className={`px-1 rounded-full text-[8px] font-mono ${activeTab === tab.id ? "bg-white/25 text-white" : "bg-[var(--color-border-default)] text-[var(--color-text-muted)]"}`}>
                           {tab.count}
@@ -268,7 +270,7 @@ export function Topbar({
                     <div className="p-10 flex flex-col items-center justify-center text-center opacity-50">
                       <Bell className="w-8 h-8 mb-2 text-[var(--color-text-faint)]" />
                       <p className="text-xs font-bold text-[var(--color-text-muted)]">
-                        Nenhuma notificação {activeTab !== "todas" ? "nesta categoria" : ""}
+                        {t("Nenhuma notificação")} {activeTab !== "todas" ? t("nesta categoria") : ""}
                       </p>
                     </div>
                   )}
@@ -304,14 +306,14 @@ export function Topbar({
                       onClick={() => { setIsUserMenuOpen(false); navigate("/app/configuracoes/usuario/perfil"); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)] rounded-lg transition-colors cursor-pointer border-none bg-transparent text-left"
                     >
-                      <Users className="w-3.5 h-3.5" /> Meu Perfil
+                      <Users className="w-3.5 h-3.5" /> {t("Meu Perfil")}
                     </button>
                     <button
                       type="button"
                       onClick={() => { setIsUserMenuOpen(false); navigate("/app/configuracoes/usuario/preferencias"); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)] rounded-lg transition-colors cursor-pointer border-none bg-transparent text-left"
                     >
-                      <Settings2 className="w-3.5 h-3.5" /> Preferências
+                      <Settings2 className="w-3.5 h-3.5" /> {t("Preferências")}
                     </button>
                     <div className="h-px bg-[var(--color-border-subtle)] my-1"></div>
                     <button
@@ -319,7 +321,7 @@ export function Topbar({
                       onClick={() => { setIsUserMenuOpen(false); handleLogout(); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer border-none bg-transparent text-left"
                     >
-                      <AlertCircle className="w-3.5 h-3.5" /> Sair da Conta
+                      <AlertCircle className="w-3.5 h-3.5" /> {t("Sair da Conta")}
                     </button>
                   </div>
                 </div>

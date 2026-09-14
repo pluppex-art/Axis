@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { Modal } from "../../components/ui/modal";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 type Corretor = {
   id: string;
@@ -251,7 +252,7 @@ function CorretorDetailDrawer({ c, idx, onClose, onEdit, onDelete }: {
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
               <span className="text-[10px] text-slate-500">Comissão ({c.comissaoPct}%) estimada no mês</span>
               <span className="text-xs font-black text-emerald-400">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(c.vgvMes * 1_000_000 * (c.comissaoPct / 100))}
+                {formatCurrency(c.vgvMes * 1_000_000 * (c.comissaoPct / 100))}
               </span>
             </div>
           </div>
@@ -320,6 +321,7 @@ function CorretorDetailDrawer({ c, idx, onClose, onEdit, onDelete }: {
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 export default function Corretores() {
+  const { formatCurrency } = useLocalization();
   const [corretores, setCorretores] = useState<Corretor[]>([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);

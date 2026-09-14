@@ -6,6 +6,7 @@ import { Badge } from '../../../components/ui/badge';
 import { ResponsiveContainer, AreaChart, CartesianGrid, XAxis, YAxis, Tooltip, Area, Line } from 'recharts';
 import { BarChart3, RefreshCw, Target, Trophy, Layers, Zap, Briefcase, ChevronDown } from 'lucide-react';
 import { useData } from '../../../contexts/DataContext';
+import { useLocalization } from '../../../contexts/LocalizationContext';
 
 interface Squad {
   nome: string;
@@ -34,6 +35,7 @@ export function StrategicalView({
   contracts = [],
 }: StrategicalViewProps) {
   const { leads } = useData();
+  const { formatCurrency } = useLocalization();
   const leadsAbertos = leads.filter(l => l.status !== 'Fechado' && l.status !== 'Perdido');
   const valorPipelineAberto = leadsAbertos.reduce((s, l) => s + (l.value || 0), 0);
   const leadsQuentes = leadsAbertos.filter(l => (l.scoreIA ?? 0) > 80).length;
@@ -184,14 +186,14 @@ export function StrategicalView({
                         <div className="w-2 h-2 rounded-full bg-emerald-500" />
                         <span className="text-xs text-[var(--color-text-muted)] font-medium">Realizado:</span>
                       </div>
-                      <span className="text-xs font-black text-[var(--color-text-primary)]">R$ {totalAlcancado.toLocaleString('pt-BR')}</span>
+                      <span className="text-xs font-black text-[var(--color-text-primary)]">{formatCurrency(totalAlcancado)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-[var(--color-text-faint)]" />
                         <span className="text-xs text-[var(--color-text-muted)] font-medium">Meta Global:</span>
                       </div>
-                      <span className="text-xs font-bold text-[var(--color-text-faint)]">R$ {totalMeta.toLocaleString('pt-BR')}</span>
+                      <span className="text-xs font-bold text-[var(--color-text-faint)]">{formatCurrency(totalMeta)}</span>
                     </div>
                   </div>
                 </>
@@ -226,7 +228,7 @@ export function StrategicalView({
                     <Zap className="w-3.5 h-3.5 text-amber-500" /> Pipeline em Aberto
                   </p>
                   <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
-                    {leadsAbertos.length} lead(s) em negociação, somando {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(valorPipelineAberto)}.
+                    {leadsAbertos.length} lead(s) em negociação, somando {formatCurrency(valorPipelineAberto)}.
                   </p>
                 </div>
                 <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-[var(--radius-control)]">
@@ -259,9 +261,9 @@ export function StrategicalView({
                   </div>
                 ) : (
                   [
-                    { label: "MRR Ativo", value: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(activeMRR), desc: "Contratos ativos em execução", color: "text-emerald-600 dark:text-emerald-400" },
+                    { label: "MRR Ativo", value: formatCurrency(activeMRR), desc: "Contratos ativos em execução", color: "text-emerald-600 dark:text-emerald-400" },
                     { label: "Contratos Ativos", value: contracts.filter(c => c.status === 'Ativo').length.toString(), desc: "Carteira de clientes recorrentes", color: "text-[var(--color-primary-blue)]" },
-                    { label: "Ticket Médio", value: contracts.filter(c => c.status === 'Ativo').length > 0 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(activeMRR / contracts.filter(c => c.status === 'Ativo').length) : 'R$ 0', desc: "Receita média por contrato", color: "text-purple-600 dark:text-purple-400" },
+                    { label: "Ticket Médio", value: contracts.filter(c => c.status === 'Ativo').length > 0 ? formatCurrency(activeMRR / contracts.filter(c => c.status === 'Ativo').length) : formatCurrency(0), desc: "Receita média por contrato", color: "text-purple-600 dark:text-purple-400" },
                   ].map((item, i) => (
                     <div key={i} className="space-y-1.5 border-r border-[var(--color-border-subtle)] last:border-0 pr-6 last:pr-0">
                       <p className="text-[10px] text-[var(--color-text-faint)] font-bold uppercase tracking-wider">{item.label}</p>

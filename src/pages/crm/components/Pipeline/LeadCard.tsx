@@ -1,4 +1,5 @@
 import { useData } from '../../../../contexts/DataContext';
+import { useLocalization } from '../../../../contexts/LocalizationContext';
 import { Card } from '../../../../components/ui/card';
 import {
   Flame, MoreVertical, Calendar, FileText,
@@ -62,10 +63,6 @@ function formatCreatedAt(iso: string | undefined | null): string | null {
   return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value);
-}
-
 export function LeadCard({
   item, tasks, stageName, draggedLeadId, setDraggedLeadId, updateLead,
   tempDropdownId, setTempDropdownId, openDropdownId, setOpenDropdownId,
@@ -73,6 +70,7 @@ export function LeadCard({
   setWebhookModalLead, currentPipeline,
 }: LeadCardProps) {
   const { products, squads } = useData();
+  const { formatCurrency } = useLocalization();
 
   const isDragging    = draggedLeadId === item.id;
   const hasDelayedTask = tasks.some(

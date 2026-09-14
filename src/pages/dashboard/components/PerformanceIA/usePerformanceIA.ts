@@ -3,11 +3,13 @@ import { toast } from "sonner";
 
 import { useData } from "../../../../contexts/DataContext";
 import { apiFetch } from "../../../../lib/apiClient";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
 type AiRecommendation = any;
 
 export function usePerformanceIA() {
   const { leads, financeEntries, contracts } = useData();
+  const { formatCurrency } = useLocalization();
 
   const [isSimulating, setIsSimulating] = useState(false);
   const [aiRecommendations, setAiRecommendations] = useState<AiRecommendation[]>([]);
@@ -113,7 +115,7 @@ export function usePerformanceIA() {
           },
           {
             title: "Expansão de Receita Recorrente (MRR)",
-            desc: `MRR atual em R$ ${currentMRR.toLocaleString("pt-BR")}. Implemente planos anuais com desconto para reduzir churn e estabilizar fluxo de caixa.`,
+            desc: `MRR atual em ${formatCurrency(currentMRR)}. Implemente planos anuais com desconto para reduzir churn e estabilizar fluxo de caixa.`,
             impact: "+25% Previsibilidade",
             color: "text-purple-400"
           }
@@ -138,7 +140,7 @@ export function usePerformanceIA() {
         },
         {
           title: "Expansão de Receita Recorrente (MRR)",
-          desc: `MRR atual em R$ ${currentMRR.toLocaleString("pt-BR")}. Implemente planos anuais com desconto para reduzir churn e estabilizar fluxo de caixa.`,
+          desc: `MRR atual em ${formatCurrency(currentMRR)}. Implemente planos anuais com desconto para reduzir churn e estabilizar fluxo de caixa.`,
           impact: "+25% Previsibilidade",
           color: "text-purple-400"
         }

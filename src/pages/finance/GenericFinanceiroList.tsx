@@ -10,6 +10,7 @@ import { useData } from "../../contexts/DataContext";
 import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { downloadCsv } from "../../lib/csvExport";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 interface GenericProps {
   title: string;
@@ -19,6 +20,7 @@ interface GenericProps {
 
 export default function GenericFinanceiroList({ title, desc, type }: GenericProps) {
   const { financeEntries, addFinanceEntry, deleteFinanceEntry, updateFinanceEntry } = useData();
+  const { formatCurrency } = useLocalization();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // New entry form
@@ -201,7 +203,7 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                       </span>
                     </td>
                     <td className={`px-6 py-4 text-right font-mono font-bold ${type === 'Pagar' ? 'text-rose-500' : 'text-emerald-500'}`}>
-                      {type === 'Pagar' ? '-' : '+'} {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)}
+                      {type === 'Pagar' ? '-' : '+'} {formatCurrency(item.value)}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -231,7 +233,7 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
               <tr>
                 <td colSpan={4} className="px-6 py-4 text-[var(--color-text-muted)] text-right uppercase tracking-wider text-[10px]">Total:</td>
                 <td className={`px-6 py-4 font-mono font-bold text-sm text-right ${type === 'Pagar' ? 'text-rose-500' : 'text-emerald-500'}`}>
-                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}
+                  {formatCurrency(totalValue)}
                 </td>
                 <td></td>
               </tr>
@@ -277,7 +279,7 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                     <Lock className="w-2.5 h-2.5 ml-1 opacity-60" />
                   </span>
                   <p className={`font-mono font-bold text-xs ${type === 'Pagar' ? 'text-rose-500' : 'text-emerald-500'}`}>
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)}
+                    {formatCurrency(item.value)}
                   </p>
                 </div>
               </div>

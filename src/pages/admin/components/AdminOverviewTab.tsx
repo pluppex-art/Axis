@@ -7,6 +7,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer,
 } from "recharts";
+import { useLocalization } from "../../../contexts/LocalizationContext";
 
 interface AdminOverviewTabProps {
   globalMrr: number;
@@ -15,11 +16,12 @@ interface AdminOverviewTabProps {
 }
 
 export function AdminOverviewTab({ globalMrr, revenueData, CustomTooltip }: AdminOverviewTabProps) {
+  const { formatCurrency } = useLocalization();
   const metricItems = [
     { label: "Total de Empresas", value: "0", icon: Building2, color: "text-indigo-500" },
     {
       label: "MRR Global (SaaS)",
-      value: new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(globalMrr),
+      value: formatCurrency(globalMrr),
       icon: DollarSign,
       color: "text-emerald-500",
     },

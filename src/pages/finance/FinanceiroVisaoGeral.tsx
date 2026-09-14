@@ -8,6 +8,7 @@ import { FinanceiroKPIs } from "./components/FinanceiroVisaoGeral/FinanceiroKPIs
 import { FinanceiroCashflowChart } from "./components/FinanceiroVisaoGeral/FinanceiroCashflowChart";
 import { FinanceiroBottomPanels } from "./components/FinanceiroVisaoGeral/FinanceiroBottomPanels";
 import { downloadCsv } from "../../lib/csvExport";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
@@ -50,6 +51,7 @@ function isInCiclo(date: Date | null, ciclo: Ciclo, now: Date): boolean {
 
 export default function FinanceiroVisaoGeral() {
   const { financeEntries, contracts, leads } = useData();
+  const { formatCurrency } = useLocalization();
   const [ciclo, setCiclo] = useState<Ciclo>("mes");
 
   const cicloEntries = useMemo(() => {
@@ -76,10 +78,10 @@ export default function FinanceiroVisaoGeral() {
     financeEntries.filter(f => f.status === "A Vencer").slice(0, 4).map(f => ({
       label: f.description,
       date: f.date,
-      value: new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(f.value),
+      value: formatCurrency(f.value),
       type: f.type.toLowerCase() as "pagar" | "receber",
     })),
-  [financeEntries]);
+  [financeEntries, formatCurrency]);
 
   const chartData = useMemo(() => {
     const now = new Date();

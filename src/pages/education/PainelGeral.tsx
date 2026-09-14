@@ -17,10 +17,12 @@ import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
 import { supabase } from "../../lib/supabase";
 import { useNavigate } from "react-router-dom";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'];
 
 export default function PainelGeralEducation() {
+  const { formatCurrency } = useLocalization();
   const navigate = useNavigate();
   const { turmas, students, certificates } = useData();
   const [mensalidades, setMensalidades] = useState<any[]>([]);
@@ -87,8 +89,7 @@ export default function PainelGeralEducation() {
     ].filter(d => d.value > 0);
   }, [mensalidades]);
 
-  const fmt = (v: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
+  const fmt = (v: number) => formatCurrency(v);
 
   return (
     <PageContainer 

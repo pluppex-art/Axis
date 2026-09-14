@@ -5,8 +5,7 @@ import { Badge } from '../../../components/ui/badge';
 import { AlertCircle, ShieldAlert, HeartHandshake, CheckCircle2 } from 'lucide-react';
 import { useData } from '../../../contexts/DataContext';
 import { toast } from 'sonner';
-
-const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
+import { useLocalization } from '../../../contexts/LocalizationContext';
 
 const toNumberMRR = (mrr: string | number): number => {
   if (typeof mrr === 'number') return mrr;
@@ -17,6 +16,7 @@ const toNumberMRR = (mrr: string | number): number => {
 
 export function CustomerSuccessView() {
   const { contracts, addTask } = useData();
+  const { formatCurrency } = useLocalization();
 
   const ativos = contracts.filter(c => c.status === 'Ativo');
   const emRisco = contracts.filter(c => c.status === 'Inadimplente');
@@ -71,7 +71,7 @@ export function CustomerSuccessView() {
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-xs font-bold text-[var(--color-text-primary)] truncate">{c.client}</span>
                     <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 px-2 py-0.5 bg-rose-500/10 rounded-full shrink-0">
-                      {fmt(toNumberMRR(c.mrr))}/mês
+                      {formatCurrency(toNumberMRR(c.mrr))}/mês
                     </span>
                   </div>
                   <Button
@@ -112,7 +112,7 @@ export function CustomerSuccessView() {
               <span className="text-[10px] text-[var(--color-text-faint)] font-bold uppercase tracking-wider block mb-1">
                 MRR Ativo
               </span>
-              <span className="text-2xl font-black text-[var(--color-text-primary)] font-mono">{fmt(mrrAtivo)}</span>
+              <span className="text-2xl font-black text-[var(--color-text-primary)] font-mono">{formatCurrency(mrrAtivo)}</span>
               <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{ativos.length} contrato(s) ativo(s)</p>
             </div>
 
@@ -120,7 +120,7 @@ export function CustomerSuccessView() {
               <span className="text-[10px] text-[var(--color-text-faint)] font-bold uppercase tracking-wider block mb-1">
                 MRR em Risco (Inadimplente)
               </span>
-              <span className="text-2xl font-black text-rose-500 font-mono">{fmt(mrrEmRisco)}</span>
+              <span className="text-2xl font-black text-rose-500 font-mono">{formatCurrency(mrrEmRisco)}</span>
               <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{emRisco.length} contrato(s)</p>
             </div>
 

@@ -6,11 +6,13 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 
 import { PageContainer } from "../../components/PageContainer";
 import { Button } from "../../components/ui/button";
 import { toast } from "sonner";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 const SETTING_KEY = "finance_dre_config";
 
 export default function FinanceiroDRE() {
   const { financeEntries, appSettings, appSettingsLoaded, saveAppSetting } = useData();
+  const { formatCurrency } = useLocalization();
 
   const [impostoPct, setImpostoPct] = useState(0);
   const [cpvPct, setCpvPct] = useState(0);
@@ -107,9 +109,7 @@ export default function FinanceiroDRE() {
     };
   }, [financeEntries, impostoPct, cpvPct, despesaPessoal, despesaMarketing, despesaAdmin, period, customStartDate, customEndDate]);
 
-  const fmt = (v: number) => {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
-  };
+  const fmt = (v: number) => formatCurrency(v);
 
   const chartData = [
     { name: "Receita Bruta", Valor: Math.max(0, parsedData.receitaBruta), fill: "#2563EB" },

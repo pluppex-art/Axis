@@ -1,6 +1,7 @@
 import * as React from "react"
 import { cn } from "../../lib/utils"
 import type { LucideIcon } from "lucide-react"
+import { useLocalization } from "../../contexts/LocalizationContext"
 
 export interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
   icon?: LucideIcon
@@ -10,6 +11,7 @@ export interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 function EmptyState({ icon: Icon, title, description, action, className, ...props }: EmptyStateProps) {
+  const { t } = useLocalization();
   return (
     <div
       className={cn(
@@ -24,9 +26,9 @@ function EmptyState({ icon: Icon, title, description, action, className, ...prop
         </div>
       )}
       <div className="space-y-1">
-        <p className="text-sm font-semibold text-[var(--color-text-primary)]">{title}</p>
+        <p className="text-sm font-semibold text-[var(--color-text-primary)]">{t(title)}</p>
         {description && (
-          <p className="text-sm text-[var(--color-text-muted)] max-w-sm">{description}</p>
+          <p className="text-sm text-[var(--color-text-muted)] max-w-sm">{t(description)}</p>
         )}
       </div>
       {action}

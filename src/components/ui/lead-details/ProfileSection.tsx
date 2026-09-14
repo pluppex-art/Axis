@@ -7,6 +7,7 @@ import {
 import { Button } from "../button";
 import { Badge } from "../badge";
 import { useData } from "../../../contexts/DataContext";
+import { useLocalization } from "../../../contexts/LocalizationContext";
 import { toast } from "sonner";
 import { ProfileDataForm } from "./ProfileDataForm";
 
@@ -75,6 +76,7 @@ export function ProfileSection({
 }: ProfileSectionProps) {
   const [cnpjFetching, setCnpjFetching] = useState(false);
   const { leads: allLeads, colaboradores, addLeadActivity: addActivityCtx, products } = useData();
+  const { formatCurrency } = useLocalization();
 
   const sellerOptions = useMemo(() => {
     const fromColab = (colaboradores as any[])
@@ -93,17 +95,17 @@ export function ProfileSection({
         0
       );
       if (total > 0) {
-        return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(total);
+        return formatCurrency(total);
       }
     }
-    if (!value) return "R$ 0,00";
+    if (!value) return formatCurrency(0);
     const cleaned = String(value).replace(/[^\d,.]/g, "");
-    if (!cleaned) return "R$ 0,00";
+    if (!cleaned) return formatCurrency(0);
     const normalized = cleaned.replace(/\./g, "").replace(",", ".");
     const num = parseFloat(normalized);
-    if (isNaN(num) || num === 0) return "R$ 0,00";
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num);
-  }, [lead?.productIds, products, value]);
+    if (isNaN(num) || num === 0) return formatCurrency(0);
+    return formatCurrency(num);
+  }, [lead?.productIds, products, value, formatCurrency]);
 
   const fetchCnpjData = async () => {
     const digits = (cnpj || lead.cnpj || "").replace(/\D/g, "");

@@ -9,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
 import { toast } from "sonner";
 import { 
@@ -20,6 +21,7 @@ type Periodo = "30dias" | "mes" | "trimestre" | "ano" | "todos";
 
 export default function RelatoriosExecutivos() {
   const { leads, financeEntries, contracts, tasks, colaboradores } = useData();
+  const { formatCurrency } = useLocalization();
   const [periodo, setPeriodo] = useState<Periodo>("mes");
   const [moduloFiltro, setModuloFiltro] = useState<"todos" | "comercial" | "financeiro" | "operacoes">("todos");
 
@@ -108,8 +110,7 @@ export default function RelatoriosExecutivos() {
     })).sort((a, b) => b.revenue - a.revenue);
   }, [filteredData.leads]);
 
-  const fmt = (v: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
+  const fmt = (v: number) => formatCurrency(v);
 
   const handleExportCSV = () => {
     const rows = [

@@ -40,12 +40,14 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 export default function MarketingCampanhas() {
   const navigate = useNavigate();
   const { leads, financeEntries, appSettings } = useData();
+  const { formatCurrency } = useLocalization();
 
   // Status das integrações vem do Supabase (app_settings, via DataContext),
   // gravado pela Central de Integrações.
@@ -90,13 +92,6 @@ export default function MarketingCampanhas() {
       return { name: day, leads: dayLeads.length, spend: 0 };
     });
   }, [leads]);
-
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-      maximumFractionDigits: 0,
-    }).format(n);
 
   return (
     <PageContainer
@@ -238,21 +233,21 @@ export default function MarketingCampanhas() {
         {[
           {
             label: "Total Investido",
-            value: fmt(totalSpent),
+            value: formatCurrency(totalSpent),
             icon: DollarSign,
             color: "text-rose-500",
             sub: "Despesas de tráfego pagas",
           },
           {
             label: "Receita Gerada",
-            value: fmt(totalRevenue),
+            value: formatCurrency(totalRevenue),
             icon: ArrowUpRight,
             color: "text-emerald-500",
             sub: "Contratos e vendas fechadas",
           },
           {
             label: "CPA Médio",
-            value: cpa > 0 ? fmt(cpa) : "—",
+            value: cpa > 0 ? formatCurrency(cpa) : "—",
             icon: Target,
             color: "text-amber-500",
             sub: "Custo por lead adquirido",

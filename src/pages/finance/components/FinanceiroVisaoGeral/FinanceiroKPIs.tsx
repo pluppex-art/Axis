@@ -1,6 +1,7 @@
 import { Card } from "../../../../components/ui/card";
 import { TrendingUp, AlertCircle, Wallet, Globe } from "lucide-react";
 import { motion } from "motion/react";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
 interface FinanceiroKPIsProps {
   receita: number;
@@ -9,9 +10,9 @@ interface FinanceiroKPIsProps {
   inadimplencia: number;
 }
 
-const fmt = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(n);
-
 export function FinanceiroKPIs({ receita, despesa, mrr, inadimplencia }: FinanceiroKPIsProps) {
+  const { formatCurrency } = useLocalization();
+  const fmt = (n: number) => formatCurrency(n);
   const kpis = [
     { label: "Receita (Real)",      value: fmt(receita),               trend: "--", positive: true,  icon: TrendingUp,  color: "text-emerald-500" },
     { label: "Custo Operacional",   value: fmt(despesa),               trend: "--", positive: true,  icon: Wallet,      color: "text-rose-500" },

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { DollarSign, Users, Target, TrendingDown, Sun } from 'lucide-react';
+import { useLocalization } from '../../../contexts/LocalizationContext';
 
 export type DashboardStatsCard = {
   label: string;
@@ -24,6 +25,8 @@ export function DashboardStatsByNiche({
   conversionRate: number;
   churnRate: number;
 }) {
+  const { formatCurrency } = useLocalization();
+
   const stats = useMemo<DashboardStatsCard[]>(() => {
     const niche = tenantNiche || 'Master';
 
@@ -31,7 +34,7 @@ export function DashboardStatsByNiche({
       return [
         {
           label: 'Hardware & Upgrades',
-          value: `R$ ${totalRevenue.toLocaleString('pt-BR')}`,
+          value: formatCurrency(totalRevenue),
           trend: '--',
           color: 'text-slate-400',
           bg: 'bg-white/5',
@@ -113,7 +116,7 @@ export function DashboardStatsByNiche({
       return [
         {
           label: 'Faturamento Clínico',
-          value: `R$ ${totalRevenue.toLocaleString('pt-BR')}`,
+          value: formatCurrency(totalRevenue),
           trend: '--',
           color: 'text-slate-400',
           bg: 'bg-white/5',
@@ -154,7 +157,7 @@ export function DashboardStatsByNiche({
       return [
         {
           label: 'VGV Estimado',
-          value: `R$ ${totalRevenue.toLocaleString('pt-BR')}`,
+          value: formatCurrency(totalRevenue),
           trend: '--',
           color: 'text-slate-400',
           bg: 'bg-white/5',
@@ -195,7 +198,7 @@ export function DashboardStatsByNiche({
     return [
       {
         label: 'Receita (MRR)',
-        value: `R$ ${totalRevenue.toLocaleString('pt-BR')}`,
+        value: formatCurrency(totalRevenue),
         trend: '--',
         color: 'text-slate-400',
         bg: 'bg-white/5',
@@ -230,7 +233,7 @@ export function DashboardStatsByNiche({
         forecast: '--',
       },
     ];
-  }, [tenantNiche, totalRevenue, leadsLength, conversionRate, churnRate]);
+  }, [tenantNiche, totalRevenue, leadsLength, conversionRate, churnRate, formatCurrency]);
 
   return stats;
 }

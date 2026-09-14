@@ -1,7 +1,6 @@
 import { Card } from "../../../../components/ui/card";
 import { Cpu, Scale, DollarSign } from "lucide-react";
-
-const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
 export function PerformanceIAEngineCards(props: {
   simulationData: any[];
@@ -10,6 +9,7 @@ export function PerformanceIAEngineCards(props: {
   currentLTV: number;
 }) {
   const { simulationData, currentCAC, currentLTV } = props;
+  const { formatCurrency } = useLocalization();
   const ltvCacRatio = currentCAC > 0 ? currentLTV / currentCAC : null;
 
   return (
@@ -59,7 +59,7 @@ export function PerformanceIAEngineCards(props: {
         </div>
         <div className="py-6 flex items-end gap-3 text-white">
           <span className="text-4xl font-black font-mono tracking-tighter">
-            {currentCAC > 0 ? fmt(currentCAC) : "—"}
+            {currentCAC > 0 ? formatCurrency(currentCAC) : "—"}
           </span>
         </div>
         <p className="text-[10px] text-slate-400 font-bold tracking-tight">

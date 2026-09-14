@@ -161,6 +161,7 @@ import ProjetoDetalhesDev from "./pages/dev/ProjetoDetalhesDev";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import { DataProvider, useData } from "./contexts/DataContext";
+import { LocalizationProvider } from "./contexts/LocalizationContext";
 import { Toaster } from "sonner";
 import { InteractiveForm } from "./pages/common/InteractiveForm";
 import { ConfirmDialogHost } from "./components/ui/confirm-dialog";
@@ -508,11 +509,13 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <DataProvider>
-        <Router>
-          <AppContent />
-        </Router>
-      </DataProvider>
+      <LocalizationProvider>
+        <DataProvider>
+          <Router>
+            <AppContent />
+          </Router>
+        </DataProvider>
+      </LocalizationProvider>
     </AuthProvider>
   );
 }

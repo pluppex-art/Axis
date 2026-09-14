@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { supabase } from "../../lib/supabase";
 import confetti from "canvas-confetti";
 import jsPDF from "jspdf";
@@ -36,6 +37,7 @@ export function usePipeline() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const { leads, updateLead, tasks, addTask, products, clienteBase, funis: dataFunis, colaboradores } = useData();
   const { user } = useAuth();
+  const { formatCurrency } = useLocalization();
 
   const [clientFilter, setClientFilter] = useState("Todos");
   const [clientsList, setClientsList] = useState<string[]>([]);
@@ -207,9 +209,7 @@ export function usePipeline() {
     return sum + parseCurrencyBR(item.value ?? (item as any).valor);
   }, 0);
 
-  const formattedTotalValue = new Intl.NumberFormat("pt-BR", {
-    style: "currency", currency: "BRL", maximumFractionDigits: 0,
-  }).format(totalValueSum);
+  const formattedTotalValue = formatCurrency(totalValueSum);
 
   const totalLeadsCount = filteredItemsList.length;
   const lastStageId = activePipelineStages.length > 0

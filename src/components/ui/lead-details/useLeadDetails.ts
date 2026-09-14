@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useData } from "../../../contexts/DataContext";
+import { useLocalization } from "../../../contexts/LocalizationContext";
 import { supabase } from "../../../lib/supabase";
 import { toast } from "sonner";
 import { calculateLeadScore } from "../../../lib/leadScore";
@@ -28,6 +29,7 @@ function buildStages(funis: any[], isSDR: boolean) {
 
 export function useLeadDetails(lead: any, onClose: () => void) {
   const { leadActivities, addLeadActivity, updateLead, deleteLead, customLeadFields, products, addProduct, turmas, addTurma, funis, students, addStudent } = useData();
+  const { formatCurrency } = useLocalization();
 
   // ── Exclusão ─────────────────────────────────────────────────────────────────
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
@@ -121,9 +123,9 @@ export function useLeadDetails(lead: any, onClose: () => void) {
   // Sincroniza o campo value com o total dos produtos vinculados (view e edição)
   useEffect(() => {
     if (linkedProductIds.length > 0) {
-      setValue(`R$ ${estimatedSum.toLocaleString("pt-BR")}`);
+      setValue(formatCurrency(estimatedSum));
     }
-  }, [linkedProductIds, estimatedSum]);
+  }, [linkedProductIds, estimatedSum, formatCurrency]);
 
   // ── Estágios do funil ─────────────────────────────────────────────────────────
   // Funis vêm do Supabase (crm_funis, via DataContext) — nada de localStorage.
@@ -445,7 +447,7 @@ export function useLeadDetails(lead: any, onClose: () => void) {
       {
         id: Date.now().toString(),
         author: seller || "Sistema",
-        desc: `Cadastrou e vinculou produto '${newProd.name}' (R$ ${priceNum.toLocaleString("pt-BR")})`,
+        desc: `Cadastrou e vinculou produto '${newProd.name}' (${formatCurrency(priceNum)})`,
         time: "Agora",
       },
       ...prev,
