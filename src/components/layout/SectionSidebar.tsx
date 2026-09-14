@@ -4,6 +4,7 @@ import { Menu, X, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 export interface SectionNavItem {
   title: string;
@@ -33,6 +34,7 @@ interface SectionSidebarProps {
  */
 export function SectionSidebar({ heading, subheading, groups, children }: SectionSidebarProps) {
   const location = useLocation();
+  const { t } = useLocalization();
   const [isHidden, setIsHidden] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -47,7 +49,7 @@ export function SectionSidebar({ heading, subheading, groups, children }: Sectio
             variant="outline"
             onClick={() => setIsHidden(false)}
             className="h-10 w-6 rounded-l-none p-0"
-            title="Abrir menu"
+            title={t("Abrir menu")}
           >
             <PanelLeftOpen className="w-3.5 h-3.5" />
           </Button>
@@ -60,10 +62,10 @@ export function SectionSidebar({ heading, subheading, groups, children }: Sectio
       >
         <div className="px-6 py-6 flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-lg font-black text-[var(--color-text-primary)] tracking-tight">{heading}</h2>
+            <h2 className="text-lg font-black text-[var(--color-text-primary)] tracking-tight">{t(heading)}</h2>
             {subheading && (
               <p className="text-[10px] text-[var(--color-text-faint)] uppercase font-bold tracking-wider mt-0.5">
-                {subheading}
+                {t(subheading)}
               </p>
             )}
           </div>
@@ -72,7 +74,7 @@ export function SectionSidebar({ heading, subheading, groups, children }: Sectio
             size="icon"
             onClick={() => setIsHidden(true)}
             className="h-7 w-7"
-            title="Recolher menu"
+            title={t("Recolher menu")}
           >
             <PanelLeftClose className="w-4 h-4" />
           </Button>
@@ -87,7 +89,7 @@ export function SectionSidebar({ heading, subheading, groups, children }: Sectio
 
       <div className="lg:hidden w-full bg-[var(--color-surface-sunken)] border-b border-[var(--color-border-default)] pt-3 shrink-0 z-20 sticky top-0">
         <div className="px-4 pb-3 flex items-center justify-between">
-          <h2 className="text-lg font-black text-[var(--color-text-primary)] tracking-tight">{heading}</h2>
+          <h2 className="text-lg font-black text-[var(--color-text-primary)] tracking-tight">{t(heading)}</h2>
           <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen((v) => !v)} className="h-8 w-8">
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
@@ -121,12 +123,13 @@ function SectionGroup({
   isActive: (path: string) => boolean;
   onItemClick?: () => void;
 }) {
+  const { t } = useLocalization();
   const GroupIcon = group.icon;
   return (
     <div className="px-2 w-full mb-6 last:mb-0">
       <div className="px-4 mb-2 flex items-center gap-2 text-[11px] font-bold text-[var(--color-text-faint)] uppercase tracking-widest">
         {GroupIcon && <GroupIcon className="w-4 h-4" />}
-        <span>{group.title}</span>
+        <span>{t(group.title)}</span>
       </div>
       <div className="space-y-0.5 flex flex-col">
         {group.items.map((item) => {
@@ -145,7 +148,7 @@ function SectionGroup({
               )}
             >
               {ItemIcon && <ItemIcon className="w-4 h-4 shrink-0" />}
-              <span className="truncate w-full text-left">{item.title}</span>
+              <span className="truncate w-full text-left">{t(item.title)}</span>
             </Link>
           );
         })}

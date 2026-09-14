@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { useData } from "../../contexts/DataContext";
 import {
   LayoutDashboard,
   Columns3,
@@ -9,7 +10,7 @@ import {
   Settings2,
   AlertCircle,
 } from "lucide-react";
-import { navSections } from "./navData";
+import { navSections, conditionCheckers, type NavReqCondition } from "./navData";
 import { SDRWebhookModal } from "../ui/modals/crm/SDRWebhookModal";
 
 interface MobileNavProps {
@@ -20,8 +21,25 @@ interface MobileNavProps {
 export function MobileNav({ isMobileMoreOpen, setIsMobileMoreOpen }: MobileNavProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user, isModuleEnabled } = useAuth();
+  const { cargos } = useData();
   const [isSDRWebhookOpen, setIsSDRWebhookOpen] = useState(false);
+
+  const userCargo = cargos.find((c: any) => c.nome === user?.role);
+  const cargoModulos: string[] | null = userCargo && Array.isArray(userCargo.modulos) && userCargo.modulos.length > 0
+    ? userCargo.modulos
+    : null;
+  const checkModule = (mod: string) => {
+    if (mod === "automotivo" || mod === "concessionaria") return isModuleEnabled("automotivo") || isModuleEnabled("concessionaria");
+    if (mod === "agenda") return isModuleEnabled("agenda") || isModuleEnabled("crm");
+    if (mod === "documentos") return isModuleEnabled("documentos") || isModuleEnabled("crm");
+    return isModuleEnabled(mod as any);
+  };
+  const canAccessModule = (mod: string) => {
+    if (user?.isMaster) return checkModule(mod);
+    if (!cargoModulos) return checkModule(mod);
+    return checkModule(mod) && cargoModulos.some((m: string) => m === mod || ((mod === "automotivo" || mod === "concessionaria") && (m === "automotivo" || m === "concessionaria")));
+  };
 
   const handleLogout = () => {
     logout();
@@ -78,7 +96,25 @@ export function MobileNav({ isMobileMoreOpen, setIsMobileMoreOpen }: MobileNavPr
             </div>
 
             <div className="space-y-6 overflow-y-auto">
-              {navSections.map((section, idx) => (
+              {navSections
+                .map((section) => {
+                  if (section.reqModule && !canAccessModule(section.reqModule)) {
+                    return null;
+                  }
+
+                  const visibleItems = section.items.filter((item: any) => {
+                    if (item.reqModule && item.reqModule !== 'master' && !canAccessModule(item.reqModule)) return false;
+                    if (item.reqModule === 'master' && !user?.isMaster) return false;
+                    if (item.reqCondition && !conditionCheckers[item.reqCondition as NavReqCondition](user)) return false;
+                    return true;
+                  });
+
+                  if (visibleItems.length === 0) return null;
+
+                  return { ...section, items: visibleItems };
+                })
+                .filter(Boolean)
+                .map((section: any, idx) => (
                 <div key={idx} className="space-y-2.5 border-t border-[var(--color-border-subtle)] pt-4 first:border-none first:pt-0">
                   <div className="text-[10px] font-black text-[var(--color-text-faint)] uppercase tracking-widest">{section.title}</div>
                   <div className="grid grid-cols-2 gap-2">

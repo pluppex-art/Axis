@@ -178,6 +178,7 @@ function CorretorDetailDrawer({ c, idx, onClose, onEdit, onDelete }: {
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { formatCurrency } = useLocalization();
   const metaPct = Math.min((c.vendasMes / c.meta) * 100, 100);
   const espColor = especialidadeColor[c.especialidade] ?? "bg-slate-500/10 text-slate-400 border-slate-500/20";
   const phoneRaw = c.telefone.replace(/\D/g, "");

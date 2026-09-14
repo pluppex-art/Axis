@@ -49,9 +49,14 @@ import {
 
 /**
  * Condições de visibilidade que dependem do usuário logado (não dá pra
- * resolver estaticamente aqui). Ver `conditionCheckers` em Sidebar.tsx.
+ * resolver estaticamente aqui).
  */
 export type NavReqCondition = "master-or-gtech" | "master-or-partner";
+
+export const conditionCheckers: Record<NavReqCondition, (user: any) => boolean> = {
+  "master-or-gtech": (user) => !!user?.isMaster || user?.tenantName?.trim().toLowerCase() === "g-tech master",
+  "master-or-partner": (user) => !!user?.isMaster || !!user?.partnerId,
+};
 
 export const navSections = [
   {
@@ -212,14 +217,25 @@ export const navSections = [
     ],
   },
   {
-    title: "Pessoas & Sistema",
+    title: "Equipe & RH",
+    reqModule: "rh",
     items: [
-      { name: "Colaboradores & RH", path: "/app/equipe", icon: Users, reqModule: "rh" },
-      { name: "Central de Integrações", path: "/app/configuracoes/integracoes/apps", icon: Zap },
+      { name: "Colaboradores & RH", path: "/app/equipe", icon: Users },
+    ],
+  },
+  {
+    title: "Configurações",
+    items: [
       { name: "Configurações Gerais", path: "/app/configuracoes", icon: Settings },
-      { name: "Painel G-Tech", path: "/app/admin", icon: Server, reqCondition: "master-or-gtech" as NavReqCondition },
-      { name: "Visão de Parceiros", path: "/app/parceiros", icon: Handshake, reqCondition: "master-or-partner" as NavReqCondition },
-      { name: "Webhooks SDR", action: "sdr-webhooks", icon: SlidersHorizontal },
+      { name: "Central de Integrações", path: "/app/configuracoes/integracoes/apps", icon: Zap },
+      { name: "Webhooks SDR", action: "sdr-webhooks", icon: SlidersHorizontal, reqModule: "crm" },
+    ],
+  },
+  {
+    title: "Administração Master",
+    items: [
+      { name: "Painel SaaS & Infra", path: "/app/admin", icon: Server, reqCondition: "master-or-gtech" as NavReqCondition },
+      { name: "Portal de Parceiros", path: "/app/parceiros", icon: Handshake, reqCondition: "master-or-partner" as NavReqCondition },
     ],
   },
 ];

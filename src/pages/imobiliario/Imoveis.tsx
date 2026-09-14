@@ -76,6 +76,7 @@ function ImovelFormModal({ onClose, onSave, initial }: {
   onSave: (d: any) => void;
   initial?: Partial<Imovel>;
 }) {
+  const { formatCurrency } = useLocalization();
   const [form, setForm] = useState({
     titulo: initial?.titulo ?? "",
     tipo: initial?.tipo ?? "Apartamento",
