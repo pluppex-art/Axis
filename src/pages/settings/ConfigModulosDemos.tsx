@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   Cpu, Activity, Layers, Database, UserCheck,
   Target, Award, DollarSign, Package, MessageSquare, Users, Columns3, Clock, Code2,
-  Plus, X, Building2, RefreshCw, ChevronDown, Megaphone, Pencil, Trash2,
+  Plus, Building2, RefreshCw, ChevronDown, Megaphone, Pencil, Trash2,
   Sparkles, Search, CheckCircle2, ShieldCheck, ArrowRight, HeartPulse, Home, Sun, ShoppingCart, Car, Server
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -12,7 +12,6 @@ import { useData } from "../../contexts/DataContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import {
   supabase,
-  createTenantAdmin,
   fetchTenants,
   fetchTenantsDetailed,
   updateTenantInfo,
@@ -143,15 +142,11 @@ export default function ConfigModulosDemos({
   const [tenantOptions, setTenantOptions] = useState<string[]>(Object.keys(allTenantModules));
   const [searchTenant, setSearchTenant] = useState("");
   const [simulationRole, setSimulationRole] = useState("Administrador / Sócio");
-  const [showTenantList, setShowTenantList] = useState(false);
 
-  // Add partner state
-  const [showAddTenant, setShowAddTenant] = useState(false);
-  const [newTenantName, setNewTenantName] = useState("");
-  const [newTenantNiche, setNewTenantNiche] = useState("Parceira");
-  const [newTenantEmail, setNewTenantEmail] = useState("");
-  const [newTenantPassword, setNewTenantPassword] = useState("");
-  const [savingTenant, setSavingTenant] = useState(false);
+  // Sub-navegação da aba: substitui o antigo padrão de scrollIntoView entre
+  // seções (tudo empilhado numa rolagem só) por duas visões reais — diretório
+  // de empresas (visão padrão) e configuração de módulos da empresa selecionada.
+  const [subView, setSubView] = useState<"directory" | "modules">("directory");
   const [reloading, setReloading] = useState(false);
 
   // Edit/Delete partner state
@@ -379,35 +374,6 @@ export default function ConfigModulosDemos({
     setDeletingTenant(false);
   };
 
-  const handleAddTenant = async () => {
-    if (!newTenantName.trim()) {
-      toast.error("Informe o nome da empresa.");
-      return;
-    }
-    if (!newTenantEmail.trim()) {
-      toast.error("Informe o e-mail do administrador da empresa.");
-      return;
-    }
-    if (newTenantPassword.length < 6) {
-      toast.error("A senha do administrador precisa ter pelo menos 6 caracteres.");
-      return;
-    }
-    setSavingTenant(true);
-    const result = await createTenantAdmin(newTenantName.trim(), newTenantNiche, newTenantEmail.trim(), newTenantPassword);
-    if (result.success) {
-      toast.success(`Empresa "${newTenantName}" cadastrada — acesso gerado para ${newTenantEmail}.`);
-      setNewTenantName("");
-      setNewTenantNiche("Parceira");
-      setNewTenantEmail("");
-      setNewTenantPassword("");
-      setShowAddTenant(false);
-      await handleReloadTenants(true);
-    } else {
-      toast.error(`Erro: ${result.error}`);
-    }
-    setSavingTenant(false);
-  };
-
   const filteredTenants = useMemo(() => {
     return tenantOptions.filter(name =>
       name.toLowerCase().includes(searchTenant.toLowerCase())
@@ -421,10 +387,6 @@ export default function ConfigModulosDemos({
   const selectedTenantDetail = useMemo(() => {
     return tenantDetails.find(t => t.name === selectedTenant);
   }, [tenantDetails, selectedTenant]);
-
-  function setConfirmingDelete(arg0: boolean) {
-    throw new Error('Function not implemented.');
-  }
 
   return (
     <div className="space-y-6 max-w-6xl pb-24 animate-in fade-in duration-300">
@@ -523,102 +485,39 @@ export default function ConfigModulosDemos({
 
               <button
                 type="button"
-                onClick={() => {
-                  if (onOpenNewTenant) {
-                    onOpenNewTenant();
-                  } else {
-                    setShowAddTenant(v => !v);
-                    setShowEditTenant(false);
-                    setConfirmingDelete(false);
-                  }
-                }}
+                onClick={() => onOpenNewTenant?.()}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-[var(--color-primary-blue)] hover:opacity-90 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs cursor-pointer"
               >
-                {showAddTenant ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                {showAddTenant ? "Cancelar" : "Nova Empresa"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const el = document.getElementById("tenant-directory-section");
-                  if (el) el.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] rounded-xl transition-all cursor-pointer"
-              >
-                <Server className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" />
-                Instâncias ({tenantOptions.length})
+                <Plus className="w-3.5 h-3.5" /> Nova Empresa
               </button>
             </div>
           </div>
 
-          {/* Form: Cadastrar Nova Empresa */}
-          {showAddTenant && (
-            <ErrorBoundary compact>
-              <div className="p-5 bg-[var(--color-surface-sunken)] border border-[var(--color-primary-blue)]/30 rounded-2xl space-y-4 shadow-sm animate-in fade-in duration-200">
-                <div className="flex items-center gap-2 text-[var(--color-primary-blue)] text-xs font-bold uppercase tracking-wider">
-                  <Building2 className="w-4 h-4" /> Cadastrar Nova Empresa Parceira
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider">
-                      Nome da Empresa
-                    </label>
-                    <input
-                      value={newTenantName}
-                      onChange={e => setNewTenantName(e.target.value)}
-                      placeholder="Ex: Prime Incorporadora Ltda"
-                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)]"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider">
-                      Nicho Operacional
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={newTenantNiche}
-                        onChange={e => setNewTenantNiche(e.target.value)}
-                        className="w-full appearance-none bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-blue)] pr-8 cursor-pointer font-bold"
-                      >
-                        {niches.map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-muted)] pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-[var(--color-border-subtle)]">
-                  <CredentialFields
-                    email={newTenantEmail}
-                    onEmailChange={setNewTenantEmail}
-                    password={newTenantPassword}
-                    onPasswordChange={setNewTenantPassword}
-                    passwordLabel="Senha Provisória"
-                    passwordPlaceholder="Mínimo 6 caracteres"
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddTenant(false)}
-                    className="px-4 py-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs font-bold rounded-xl transition-all cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAddTenant}
-                    disabled={savingTenant}
-                    className="px-6 py-2.5 bg-[var(--color-primary-blue)] hover:opacity-90 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs cursor-pointer"
-                  >
-                    {savingTenant ? "Cadastrando..." : "Cadastrar Empresa"}
-                  </button>
-                </div>
-              </div>
-            </ErrorBoundary>
-          )}
+          {/* Sub-navegação: Diretório de Empresas vs. Configurar Módulos da empresa selecionada */}
+          <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-2xl w-fit">
+            <button
+              type="button"
+              onClick={() => setSubView("directory")}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                subView === "directory"
+                  ? "bg-[var(--color-primary-blue)] text-white shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+              }`}
+            >
+              <Server className="w-3.5 h-3.5" /> Diretório de Empresas ({tenantOptions.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubView("modules")}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                subView === "modules"
+                  ? "bg-[var(--color-primary-blue)] text-white shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+              }`}
+            >
+              <Cpu className="w-3.5 h-3.5" /> Configurar Módulos
+            </button>
+          </div>
 
           {/* Form: Editar Empresa */}
           {showEditTenant && (
@@ -702,7 +601,9 @@ export default function ConfigModulosDemos({
           )}
 
           {/* Module Configuration for Selected Tenant */}
-          <div id="tenant-modules-section" className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-6">
+          {subView === "modules" && (
+          <>
+          <div className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
@@ -913,9 +814,12 @@ export default function ConfigModulosDemos({
               </span>
             </div>
           </div>
+          </>
+          )}
 
           {/* DIRETÓRIO GLOBAL DE TENANTS & INSTÂNCIAS */}
-          <div id="tenant-directory-section" className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-5">
+          {subView === "directory" && (
+          <div className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -1022,9 +926,7 @@ export default function ConfigModulosDemos({
                         type="button"
                         onClick={() => {
                           setSelectedTenant(name);
-                          toast.info(`Módulos de "${name}" carregados acima.`);
-                          const el = document.getElementById("tenant-modules-section");
-                          if (el) el.scrollIntoView({ behavior: "smooth" });
+                          setSubView("modules");
                         }}
                         className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs ${isSelected
                             ? 'bg-[var(--color-primary-blue)] text-white'
@@ -1061,6 +963,7 @@ export default function ConfigModulosDemos({
               })}
             </div>
           </div>
+          )}
         </Card>
       )}
     </div>

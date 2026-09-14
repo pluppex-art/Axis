@@ -8,6 +8,7 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer,
 } from "recharts";
 import { useLocalization } from "../../../contexts/LocalizationContext";
+import { useAuth } from "../../../contexts/AuthContext";
 
 interface AdminOverviewTabProps {
   globalMrr: number;
@@ -17,16 +18,22 @@ interface AdminOverviewTabProps {
 
 export function AdminOverviewTab({ globalMrr, revenueData, CustomTooltip }: AdminOverviewTabProps) {
   const { formatCurrency } = useLocalization();
+  const { tenantIdMap } = useAuth();
+  const tenantNames = Object.keys(tenantIdMap);
+
+  // Sem infraestrutura de analytics de uso (MAU) ou medição de storage hoje —
+  // mostrar "—" em vez de um zero que parece dado real, mesma convenção já
+  // usada no Churn Rate da aba Faturamento.
   const metricItems = [
-    { label: "Total de Empresas", value: "0", icon: Building2, color: "text-indigo-500" },
+    { label: "Total de Empresas", value: String(tenantNames.length), icon: Building2, color: "text-indigo-500" },
     {
       label: "MRR Global (SaaS)",
       value: formatCurrency(globalMrr),
       icon: DollarSign,
       color: "text-emerald-500",
     },
-    { label: "Usuários Ativos (MAU)", value: "0", icon: Users, color: "text-blue-500" },
-    { label: "Storage System", value: "0 GB", icon: HardDrive, color: "text-amber-500" },
+    { label: "Usuários Ativos (MAU)", value: "—", icon: Users, color: "text-blue-500" },
+    { label: "Storage System", value: "—", icon: HardDrive, color: "text-amber-500" },
   ];
 
   return (
@@ -112,15 +119,36 @@ export function AdminOverviewTab({ globalMrr, revenueData, CustomTooltip }: Admi
       </div>
 
       <Card className="overflow-hidden bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)]">
-        <div className="p-4 border-b border-[var(--color-border-default)]">
+        <div className="p-4 border-b border-[var(--color-border-default)] flex items-center justify-between">
           <h3 className="text-sm font-medium text-[var(--color-text-primary)] flex items-center gap-2">
-            <Server className="w-4 h-4 text-[var(--color-text-muted)]" /> Tenants Recentes
+            <Server className="w-4 h-4 text-[var(--color-text-muted)]" /> Empresas Cadastradas
           </h3>
+          <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)]">
+            {tenantNames.length} no total
+          </span>
         </div>
-        <div className="p-10 flex flex-col items-center justify-center gap-3 text-center">
-          <Building2 className="w-8 h-8 text-[var(--color-text-faint)]" />
-          <span className="text-sm text-[var(--color-text-muted)]">Base de Tenants em construção</span>
-        </div>
+        {tenantNames.length === 0 ? (
+          <div className="p-10 flex flex-col items-center justify-center gap-3 text-center">
+            <Building2 className="w-8 h-8 text-[var(--color-text-faint)]" />
+            <span className="text-sm text-[var(--color-text-muted)]">Nenhuma empresa cadastrada ainda</span>
+          </div>
+        ) : (
+          <div className="divide-y divide-[var(--color-border-subtle)]">
+            {tenantNames.slice(0, 6).map((name) => (
+              <div key={name} className="px-4 py-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 flex items-center justify-center text-[var(--color-primary-blue)] shrink-0">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-bold text-[var(--color-text-primary)] truncate">{name}</span>
+              </div>
+            ))}
+            {tenantNames.length > 6 && (
+              <div className="px-4 py-2.5 text-center text-[11px] font-bold text-[var(--color-text-muted)]">
+                +{tenantNames.length - 6} outras empresas — veja o diretório completo na aba "Tenants & Módulos"
+              </div>
+            )}
+          </div>
+        )}
       </Card>
     </div>
   );
