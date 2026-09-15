@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { 
   Search, Command, LayoutDashboard, Users, 
   FileText, Zap, Settings, BarChart2, 
-  MessageSquare, Briefcase, Plus, Terminal
+  MessageSquare, Briefcase, Plus, Terminal,
+  GraduationCap
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router-dom";
@@ -58,7 +60,7 @@ export function CommandPalette() {
       </button>
 
       <AnimatePresence>
-        {isOpen && (
+        {isOpen && createPortal(
           <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4">
             <motion.div 
               initial={{ opacity: 0 }}
@@ -115,8 +117,7 @@ export function CommandPalette() {
                     ))}
                   </div>
                 ) : (
-                  <div className="py-12 text-center">
-                    <Terminal className="w-8 h-8 text-slate-700 mx-auto mb-3" />
+                  <div className="p-8 text-center">
                     <p className="text-sm text-slate-500 font-medium italic">{t('Nenhum comando encontrado para "{search}"').replace("{search}", search)}</p>
                   </div>
                 )}
@@ -136,12 +137,10 @@ export function CommandPalette() {
                 </div>
               </div>
             </motion.div>
-          </div>
+          </div>,
+          document.body
         )}
       </AnimatePresence>
     </>
   );
 }
-
-// Fixed missing import for graduation cap in the filter map above if needed, but graduation cap isn't in lucide-react list above.
-import { GraduationCap } from "lucide-react";

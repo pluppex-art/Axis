@@ -28,7 +28,7 @@ function buildStages(funis: any[], isSDR: boolean) {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useLeadDetails(lead: any, onClose: () => void) {
-  const { leadActivities, addLeadActivity, updateLead, deleteLead, customLeadFields, products, addProduct, turmas, addTurma, funis, students, addStudent } = useData();
+  const { leadActivities, addLeadActivity, updateLead, deleteLead, customLeadFields, products, addProduct, turmas, addTurma, funis, students, addStudent, proposals } = useData();
   const { formatCurrency } = useLocalization();
 
   // ── Exclusão ─────────────────────────────────────────────────────────────────
@@ -120,12 +120,29 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     [linkedProductIds, availableProducts, productQuantities]
   );
 
-  // Sincroniza o campo value com o total dos produtos vinculados (view e edição)
+  // Proposta comercial vinculada a este lead (proposals.lead_id) — usada como
+  // fallback de valor quando o lead ainda não tem `productIds` preenchido
+  // (ex.: a proposta foi criada/vinculada por um fluxo que só grava o vínculo
+  // do lado da proposta, sem sincronizar de volta o array de produtos do lead).
+  // Mesma lógica de "proposta mais recente vinculada" usada em ProductsSection.
+  const linkedProposal = useMemo(() => {
+    if (!lead?.id) return null;
+    const linked = (proposals || []).filter((p: any) => p.lead_id === lead.id);
+    if (linked.length === 0) return null;
+    return [...linked].sort((a: any, b: any) =>
+      new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    )[0];
+  }, [proposals, lead?.id]);
+
+  // Sincroniza o campo value com o total dos produtos vinculados (view e edição);
+  // se não há productIds mas existe proposta vinculada, usa o valor dela.
   useEffect(() => {
     if (linkedProductIds.length > 0) {
       setValue(formatCurrency(estimatedSum));
+    } else if (linkedProposal?.valor && Number(linkedProposal.valor) > 0) {
+      setValue(formatCurrency(Number(linkedProposal.valor)));
     }
-  }, [linkedProductIds, estimatedSum, formatCurrency]);
+  }, [linkedProductIds, estimatedSum, linkedProposal, formatCurrency]);
 
   // ── Estágios do funil ─────────────────────────────────────────────────────────
   // Funis vêm do Supabase (crm_funis, via DataContext) — nada de localStorage.

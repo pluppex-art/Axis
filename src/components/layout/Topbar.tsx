@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
@@ -57,6 +57,62 @@ export function Topbar({
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<NotificationTab>("todas");
+
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const toggleNotifications = () => {
+    setIsNotificationsOpen((prev) => {
+      if (!prev) setIsUserMenuOpen(false);
+      return !prev;
+    });
+  };
+
+  const toggleUserMenu = () => {
+    setIsUserMenuOpen((prev) => {
+      if (!prev) setIsNotificationsOpen(false);
+      return !prev;
+    });
+  };
+
+  useEffect(() => {
+    if (!isNotificationsOpen && !isUserMenuOpen) return;
+
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (
+        isNotificationsOpen &&
+        notificationsRef.current &&
+        !notificationsRef.current.contains(target)
+      ) {
+        setIsNotificationsOpen(false);
+      }
+      if (
+        isUserMenuOpen &&
+        userMenuRef.current &&
+        !userMenuRef.current.contains(target)
+      ) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsNotificationsOpen(false);
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isNotificationsOpen, isUserMenuOpen]);
 
   // Nome/avatar do usuário e da empresa vêm do Supabase (public.users via
   // AuthContext, app_settings via DataContext) — reativos automaticamente,
@@ -139,10 +195,10 @@ export function Topbar({
           {theme === "dark" ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500" />}
         </button>
 
-        <div className="relative">
+        <div ref={notificationsRef} className="relative">
           <button
             type="button"
-            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+            onClick={toggleNotifications}
             className={`text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all relative p-2 rounded-xl border border-transparent cursor-pointer ${
               isNotificationsOpen
                 ? "bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] shadow-sm"
@@ -161,9 +217,7 @@ export function Topbar({
           </button>
 
           {isNotificationsOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)}></div>
-              <Card className="fixed left-4 right-4 sm:left-auto sm:right-4 md:absolute md:left-auto md:right-0 top-16 md:top-full md:mt-3 md:w-[440px] bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
+            <Card className="fixed left-4 right-4 sm:left-auto sm:right-4 md:absolute md:left-auto md:right-0 top-16 md:top-full md:mt-3 md:w-[440px] bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
                 {/* Header */}
                 <div className="p-4 border-b border-[var(--color-border-subtle)] flex justify-between items-center bg-[var(--color-surface-sunken)]">
                   <div className="flex items-center gap-2">
@@ -276,7 +330,6 @@ export function Topbar({
                   )}
                 </div>
               </Card>
-            </>
           )}
         </div>
 
@@ -285,9 +338,9 @@ export function Topbar({
             <p className="text-xs font-bold text-[var(--color-text-primary)] leading-tight">{liveProfile.name}</p>
             <p className="text-[10px] text-[var(--color-primary-blue)] font-bold uppercase tracking-wider">{liveEmpresaName}</p>
           </div>
-          <div className="relative">
+          <div ref={userMenuRef} className="relative">
             <div
-              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              onClick={toggleUserMenu}
               className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#2563EB] to-blue-700 flex items-center justify-center text-xs font-bold text-white hover:opacity-90 transition-all cursor-pointer shadow-xs overflow-hidden border border-[var(--color-border-default)]"
             >
               {liveProfile.avatar ? (
@@ -297,9 +350,7 @@ export function Topbar({
               )}
             </div>
             {isUserMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
-                <div className="absolute top-full right-0 pt-2 w-48 z-50">
+              <div className="absolute top-full right-0 pt-2 w-48 z-50">
                   <div className="bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-xl shadow-xl p-1 animate-in fade-in slide-in-from-top-2">
                     <button
                       type="button"
@@ -325,7 +376,6 @@ export function Topbar({
                     </button>
                   </div>
                 </div>
-              </>
             )}
           </div>
         </div>
