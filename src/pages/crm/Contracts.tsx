@@ -14,6 +14,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { ContractsKPIs } from "./components/Contracts/ContractsKPIs";
 import { ContractsTable } from "./components/Contracts/ContractsTable";
 import { handleDownloadPdf } from "./utils/proposalPdf";
+import { parseCurrencyBR as toNumberMRR } from "../../lib/utils";
 import type { Contract } from "../../types";
 
 const contractSchema = z.object({
@@ -26,13 +27,6 @@ const contractSchema = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Insira uma data válida"),
 });
 type ContractFormData = z.infer<typeof contractSchema>;
-
-const toNumberMRR = (mrr: string | number): number => {
-  if (typeof mrr === "number") return mrr;
-  const cleaned = mrr.replace("R$ ", "").replace(/\./g, "").replace(",", ".");
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
-};
 
 export default function Contracts() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -102,7 +96,7 @@ export default function Contracts() {
     );
   };
 
-  const totalMRR = contracts.reduce((acc, curr) => acc + toNumberMRR(curr.mrr), 0);
+  const totalMRR = contracts.filter(c => c.status !== "Cancelado").reduce((acc, curr) => acc + toNumberMRR(curr.mrr), 0);
 
   return (
     <div className="space-y-6">

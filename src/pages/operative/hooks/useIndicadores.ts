@@ -5,6 +5,7 @@ import { useData } from "../../../contexts/DataContext";
 import { confirmDialog } from "../../../components/ui/confirm-dialog";
 import { exportToCSV } from "../../../lib/exportCsv";
 import { useLocalization } from "../../../contexts/LocalizationContext";
+import { parseCurrencyBR } from "../../../lib/utils";
 
 export function useIndicadores() {
   const { leads, financeEntries, contracts, financialGoals, scheduledExports, addScheduledExport, updateScheduledExport, deleteScheduledExport } = useData();
@@ -61,18 +62,11 @@ export function useIndicadores() {
   // KPIs dinâmicos
   const kpiCards = useMemo(() => {
     const closedLeads = leads.filter(l => l.status === 'Fechado');
-    const totalClosedValue = closedLeads.reduce((s, l) => s + (l.value || 0), 0);
+    const totalClosedValue = closedLeads.reduce((s, l) => s + parseCurrencyBR(l.value), 0);
     const ticketMedio = closedLeads.length > 0 ? totalClosedValue / closedLeads.length : 0;
 
-    const toNumberMRR = (mrr: string | number): number => {
-      if (typeof mrr === 'number') return mrr;
-      const cleaned = String(mrr).replace('R$ ', '').replace(/\./g, '').replace(',', '.');
-      const num = parseFloat(cleaned);
-      return isNaN(num) ? 0 : num;
-    };
-
     // mrr_value é a coluna real no Supabase; `mrr` é mantido no type por compatibilidade com telas antigas.
-    const mrr = contracts.reduce((acc, c: any) => acc + toNumberMRR(c.mrr_value ?? c.mrr ?? 0), 0) || (ticketMedio / 12);
+    const mrr = contracts.reduce((acc, c: any) => acc + parseCurrencyBR(c.mrr_value ?? c.mrr ?? 0), 0) || (ticketMedio / 12);
     const ltv = mrr * 12; // LTV simples de 1 ano
 
     // Ticket médio por mês (com base em l.date), pra calcular uma tendência real
@@ -83,7 +77,7 @@ export function useIndicadores() {
       if (isNaN(d.getTime())) return;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!porMes[key]) porMes[key] = { soma: 0, qtd: 0 };
-      porMes[key].soma += l.value || 0;
+      porMes[key].soma += parseCurrencyBR(l.value);
       porMes[key].qtd += 1;
     });
     const mesesOrdenados = Object.keys(porMes).sort();

@@ -10,7 +10,7 @@ import { DashboardStatsSection } from "./components/DashboardStatsSection";
 
 export default function Dashboard() {
   const {
-    leads,
+    activeLeadsCount,
     activeTab,
     setActiveTab,
     comparisonPeriod,
@@ -47,7 +47,7 @@ export default function Dashboard() {
         <DashboardStatsSection
           tenantNiche={user?.tenantNiche}
           totalRevenue={totalRevenue}
-          leadsLength={leads.length}
+          leadsLength={activeLeadsCount}
           conversionRate={conversionRate}
           churnRate={churnRate}
         />

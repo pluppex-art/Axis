@@ -16,15 +16,8 @@ import { PropostasTable } from "./components/Propostas/PropostasTable";
 import { ContractsKPIs } from "./components/Contracts/ContractsKPIs";
 import { ContractsTable } from "./components/Contracts/ContractsTable";
 import { handleDownloadPdf } from "./utils/proposalPdf";
-import { cn } from "../../lib/utils";
+import { cn, parseCurrencyBR as toNumberMRR } from "../../lib/utils";
 import type { Contract } from "../../types";
-
-const toNumberMRR = (mrr: string | number): number => {
-  if (typeof mrr === "number") return mrr;
-  const cleaned = String(mrr || "").replace("R$ ", "").replace(/\./g, "").replace(",", ".");
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
-};
 
 export default function Propostas() {
   const {
@@ -136,7 +129,7 @@ export default function Propostas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propostas, contracts]);
 
-  const totalMRR = (contracts || []).reduce((acc: number, curr: any) => acc + toNumberMRR(curr.mrr), 0);
+  const totalMRR = (contracts || []).filter((c: any) => c.status !== "Cancelado").reduce((acc: number, curr: any) => acc + toNumberMRR(curr.mrr), 0);
 
   const handleEditContract = (contract: Contract) => {
     setEditingContract(contract);

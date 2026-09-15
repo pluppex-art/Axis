@@ -7,6 +7,7 @@ import { ResponsiveContainer, AreaChart, CartesianGrid, XAxis, YAxis, Tooltip, A
 import { BarChart3, RefreshCw, Target, Trophy, Layers, Zap, Briefcase, ChevronDown } from 'lucide-react';
 import { useData } from '../../../contexts/DataContext';
 import { useLocalization } from '../../../contexts/LocalizationContext';
+import { parseCurrencyBR } from '../../../lib/utils';
 
 interface Squad {
   nome: string;
@@ -37,7 +38,7 @@ export function StrategicalView({
   const { leads } = useData();
   const { formatCurrency } = useLocalization();
   const leadsAbertos = leads.filter(l => l.status !== 'Fechado' && l.status !== 'Perdido');
-  const valorPipelineAberto = leadsAbertos.reduce((s, l) => s + (l.value || 0), 0);
+  const valorPipelineAberto = leadsAbertos.reduce((s, l) => s + parseCurrencyBR(l.value), 0);
   const leadsQuentes = leadsAbertos.filter(l => (l.scoreIA ?? 0) > 80).length;
 
   const contratosInadimplentes = contracts.filter(c => c.status === 'Inadimplente').length;
@@ -51,16 +52,7 @@ export function StrategicalView({
   // Compute real MRR from contracts
   const activeMRR = contracts
     .filter(c => c.status === 'Ativo')
-    .reduce((sum, c) => {
-      try {
-        const raw = c.mrr;
-        const cleaned = typeof raw === 'number' ? String(raw) : raw;
-        const numeric = typeof cleaned === 'number'
-          ? cleaned
-          : parseFloat(String(cleaned).replace(/[^0-9.,]/g, '').replace(',', '.'));
-        return sum + (isNaN(numeric) ? 0 : numeric);
-      } catch { return sum; }
-    }, 0);
+    .reduce((sum, c) => sum + parseCurrencyBR(c.mrr), 0);
 
   const hasSquads = squads.length > 0;
   const hasContracts = contracts.length > 0;

@@ -5,6 +5,7 @@ import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Ba
 import { Globe, Share2, Sparkles, MousePointer2, Layers, Users, DollarSign } from 'lucide-react';
 import { useData } from '../../../contexts/DataContext';
 import { useLocalization } from '../../../contexts/LocalizationContext';
+import { parseCurrencyBR } from '../../../lib/utils';
 
 const COLORS = ['#3b82f6', '#f43f5e', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4'];
 
@@ -13,7 +14,7 @@ export function MarketingView() {
   const { formatCurrency } = useLocalization();
 
   // Calculate real metrics from database
-  const totalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + (l.value || 0), 0);
+  const totalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + parseCurrencyBR(l.value), 0);
   const totalSpent = financeEntries.filter(f => f.type === 'Pagar' && (f.category?.toLowerCase().includes('marketing') || f.category?.toLowerCase().includes('anúncio')) && f.status === 'Pago').reduce((s, f) => s + f.value, 0);
   
   const totalLeads = leads.length;

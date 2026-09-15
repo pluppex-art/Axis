@@ -6,13 +6,7 @@ import { AlertCircle, ShieldAlert, HeartHandshake, CheckCircle2 } from 'lucide-r
 import { useData } from '../../../contexts/DataContext';
 import { toast } from 'sonner';
 import { useLocalization } from '../../../contexts/LocalizationContext';
-
-const toNumberMRR = (mrr: string | number): number => {
-  if (typeof mrr === 'number') return mrr;
-  const cleaned = String(mrr).replace('R$ ', '').replace(/\./g, '').replace(',', '.');
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
-};
+import { parseCurrencyBR as toNumberMRR } from '../../../lib/utils';
 
 export function CustomerSuccessView() {
   const { contracts, addTask } = useData();

@@ -5,6 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { useData } from "../../contexts/DataContext";
 import { useMemo } from "react";
 import { useLocalization } from "../../contexts/LocalizationContext";
+import { parseCurrencyBR } from "../../lib/utils";
 
 const COLORS = ['#3b82f6', '#f43f5e', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4'];
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -15,7 +16,7 @@ export default function MarketingAnalytics() {
 
   // Receita vinda de Marketing (simplificado como Total Recebido ou leads com status Fechado * valor)
   // Como as despesas de marketing também não têm flag clara, pegamos tudo do tipo Pagar/Receber ou usamos apenas baseados em leads
-  const totalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + (l.value || 0), 0);
+  const totalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + parseCurrencyBR(l.value), 0);
   const totalSpent = financeEntries.filter(f => f.type === 'Pagar' && (f.category?.toLowerCase().includes('marketing') || f.category?.toLowerCase().includes('anúncio')) && f.status === 'Pago').reduce((s, f) => s + f.value, 0);
   
   const totalLeads = leads.length;
@@ -41,7 +42,7 @@ export default function MarketingAnalytics() {
         months[month].leads++;
         if (l.status === 'Fechado') {
           months[month].closed++;
-          months[month].revenue += (l.value || 0);
+          months[month].revenue += parseCurrencyBR(l.value);
         }
       } catch {}
     });
@@ -71,7 +72,7 @@ export default function MarketingAnalytics() {
     leads.forEach(l => {
       if (l.status === 'Fechado') {
         const src = l.source || 'Orgânico';
-        srcMap[src] = (srcMap[src] || 0) + (l.value || 0);
+        srcMap[src] = (srcMap[src] || 0) + parseCurrencyBR(l.value);
       }
     });
     

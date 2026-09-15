@@ -9,6 +9,7 @@ import { FinanceiroCashflowChart } from "./components/FinanceiroVisaoGeral/Finan
 import { FinanceiroBottomPanels } from "./components/FinanceiroVisaoGeral/FinanceiroBottomPanels";
 import { downloadCsv } from "../../lib/csvExport";
 import { useLocalization } from "../../contexts/LocalizationContext";
+import { parseCurrencyBR } from "../../lib/utils";
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
@@ -63,12 +64,7 @@ export default function FinanceiroVisaoGeral() {
   const { receita, despesa, mrr, inadimplencia } = useMemo(() => {
     const receita = cicloEntries.filter(f => f.type === "Receber" && f.status === "Pago").reduce((s, f) => s + f.value, 0);
     const despesa = cicloEntries.filter(f => f.type === "Pagar"   && f.status === "Pago").reduce((s, f) => s + f.value, 0);
-    const mrr = contracts.filter(c => c.status === "Ativo").reduce((s, c) => {
-      const raw = c.mrr;
-      const valStr = typeof raw === "number" ? String(raw) : (raw ?? "0");
-      const val = parseFloat(String(valStr).replace(/[^\d]/g, "") || "0") / 100;
-      return s + (isNaN(val) ? 0 : val);
-    }, 0);
+    const mrr = contracts.filter(c => c.status === "Ativo").reduce((s, c) => s + parseCurrencyBR(c.mrr), 0);
     const entriesPagar = cicloEntries.filter(f => f.type === "Pagar");
     const inadimplencia = entriesPagar.length > 0 ? (entriesPagar.filter(f => f.status === "Atrasado").length / entriesPagar.length) * 100 : 0;
     return { receita, despesa, mrr, inadimplencia };

@@ -11,6 +11,7 @@ import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
+import { parseCurrencyBR } from "../../lib/utils";
 import { toast } from "sonner";
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -305,11 +306,7 @@ export default function RelatoriosExecutivos() {
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-400">MRR Contratado</span>
                 <span className="font-bold text-emerald-400">
-                  {fmt(contracts.filter(c => c.status === "Ativo").reduce((s, c) => {
-                    const raw = c.mrr;
-                    const val = typeof raw === "number" ? raw : parseFloat(String(raw || "0").replace(/[^0-9.,]/g, "").replace(",", "."));
-                    return s + (isNaN(val) ? 0 : val);
-                  }, 0))}
+                  {fmt(contracts.filter(c => c.status === "Ativo").reduce((s, c) => s + parseCurrencyBR(c.mrr), 0))}
                 </span>
               </div>
             </div>
