@@ -26,7 +26,7 @@ type Contato = {
 type ClienteOption = { id: string; name: string };
 
 export default function Contatos() {
-  const { user } = useAuth();
+  const { user, activeTenantId } = useAuth();
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [clientes, setClientes] = useState<ClienteOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,8 +66,10 @@ export default function Contatos() {
   };
 
   const fetchClientes = async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase.from("clientes").select("id, name").order("name");
+    if (!supabase || !activeTenantId) return;
+    // Sem o filtro de tenant, contas de parceiro (has_tenant_access verdadeiro
+    // pra vários tenants) recebiam via RLS clientes de todos os tenants acessíveis.
+    const { data, error } = await supabase.from("clientes").select("id, name").eq("tenant_id", activeTenantId).order("name");
     if (error) {
       console.warn("clientes fetch notice:", error.message);
     } else if (data) {
@@ -78,7 +80,7 @@ export default function Contatos() {
   useEffect(() => {
     fetchContatos();
     fetchClientes();
-  }, []);
+  }, [activeTenantId]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();

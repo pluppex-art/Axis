@@ -32,6 +32,7 @@ export default function Propostas() {
     deleteContract,
     addFinanceEntry,
     updateLead,
+    leads,
     appSettings,
   } = useData();
   const { user, activeTenantName } = useAuth();
@@ -76,10 +77,21 @@ export default function Propostas() {
     if (prop.lead_id && updateLead) {
       const linkedItems = (proposalItems || []).filter((pi: any) => pi.proposal_id === prop.id);
       const productIds = linkedItems.map((pi: any) => pi.product_id).filter(Boolean);
-      updateLead(prop.lead_id, {
-        value: prop.valor || 0,
-        ...(productIds.length > 0 ? { productIds } : {}),
-      });
+      const lead = (leads || []).find((l: any) => l.id === prop.lead_id);
+      // Só grava se o valor/produtos ainda não batem — chamar updateLead
+      // incondicionalmente a cada render (a reconciliação roda em todo change
+      // de propostas/contracts) reescrevia por cima de qualquer edição feita
+      // pelo usuário direto no lead entre uma sincronização e outra.
+      const sameValue = lead ? Number(lead.value) === Number(prop.valor || 0) : false;
+      const sameProducts = lead
+        ? productIds.length === 0 || JSON.stringify([...(lead.productIds || [])].sort()) === JSON.stringify([...productIds].sort())
+        : false;
+      if (!sameValue || !sameProducts) {
+        updateLead(prop.lead_id, {
+          value: prop.valor || 0,
+          ...(productIds.length > 0 ? { productIds } : {}),
+        });
+      }
     }
 
     const norm = (s: any) => String(s || "").trim().toLowerCase();

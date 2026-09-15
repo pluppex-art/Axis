@@ -33,7 +33,7 @@ export default function Contracts() {
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [contractToDelete, setContractToDelete] = useState<string | null>(null);
-  const { contracts, addContract, updateContract, deleteContract, appSettings } = useData();
+  const { contracts, addContract, updateContract, deleteContract, appSettings, clienteBase } = useData();
   const { activeTenantName } = useAuth();
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<ContractFormData>({
@@ -143,10 +143,9 @@ export default function Contracts() {
           <FormField label="Cliente" error={errors.cliente?.message}>
             <select {...register("cliente")} className="w-full h-10 rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-blue)]">
               <option value="">Selecione o Cliente</option>
-              <option value="TechCorp Brasil">TechCorp Brasil</option>
-              <option value="Construtora RS">Construtora RS</option>
-              <option value="Clínica Vida">Clínica Vida</option>
-              <option value="Mendes Consultoria">Mendes Consultoria</option>
+              {(clienteBase as any[]).map((c: any) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
             </select>
           </FormField>
           <FormField label="Plano Acordado" error={errors.plano?.message}>

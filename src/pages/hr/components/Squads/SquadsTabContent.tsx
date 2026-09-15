@@ -3,7 +3,6 @@ import { Brain } from "lucide-react";
 import { toast } from "sonner";
 import { Squad } from "../../../../types";
 import { useData } from "../../../../contexts/DataContext";
-import { supabase } from "../../../../lib/supabase";
 import { SquadEditModal } from "./SquadEditModal";
 import { SquadOTECalculator } from "./SquadOTECalculator";
 import { SquadsPanel } from "./SquadsPanel";
@@ -43,16 +42,11 @@ export function SquadsTabContent({
   colaboradores: colaboradoresForOte, financeCommissionEntries, onSaveOteEntry, onDeleteOteEntry,
   calcVariable, calcBonus, totalOTE,
 }: SquadsTabContentProps) {
-  const { colaboradores, updateSquad } = useData();
-  const [clienteBase, setClienteBase] = useState<any[]>([]);
-
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.from("clientes").select("*").order("created_at", { ascending: false }).then(({ data, error }) => {
-      if (error) console.error("[SquadsTab] clientes load error:", error.message);
-      else if (data) setClienteBase(data);
-    });
-  }, []);
+  // `clienteBase` já vem de useData() escopado ao tenant ativo — um fetch
+  // próprio de "clientes" aqui não filtrava por tenant_id e vazava linhas de
+  // outros tenants pra contas de parceiro (has_tenant_access verdadeiro pra
+  // vários tenants ao mesmo tempo).
+  const { colaboradores, updateSquad, clienteBase } = useData();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<"membros" | "clientes">("membros");

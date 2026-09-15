@@ -364,7 +364,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // até o próximo reload da página.
   const mapLeadRow = (r: any) => ({
     ...r,
-    productIds: r.productIds || r.customFields?.productIds || [],
+    // updateLead gravava productIds só em customFields.productIds (bug corrigido
+    // acima) — leads editados antes do fix ficaram com a coluna real desatualizada
+    // e o vínculo verdadeiro preso em customFields. Prioriza customFields quando
+    // não vazio pra esses registros já mostrarem o valor certo sem precisar de
+    // migração manual; uma vez editados de novo, a coluna real é reescrita e os
+    // dois convergem.
+    productIds: (r.customFields?.productIds?.length ? r.customFields.productIds : r.productIds) || [],
     scoreIA: r.scoreIA ?? r.score_ia ?? 50,
     tags: Array.isArray(r.tags) ? r.tags : (r.customFields?.tags || []),
   });
@@ -1049,16 +1055,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (supabase) {
       try {
         // Strip unknown / non-DB fields and fix value type
-        const { customTags, productIds, probability, ...safeUpdates } = updates as any;
+        const { customTags, probability, ...safeUpdates } = updates as any;
         if (safeUpdates.value !== undefined) {
           safeUpdates.value = parseCurrencyBR(safeUpdates.value);
         }
-        if (productIds !== undefined) {
-          safeUpdates.customFields = {
-            ...(safeUpdates.customFields || {}),
-            productIds,
-          };
-        }
+        // `productIds` é coluna real em `leads` (mesma usada por addLead) — gravar
+        // dentro de customFields.productIds (como antes) nunca chegava na coluna
+        // de fato lida por mapLeadRow/addLead, deixando o vínculo de produto do
+        // lead sempre desatualizado após a primeira edição via updateLead.
         if (safeUpdates.scoreIA !== undefined && safeUpdates.score_ia === undefined) {
           safeUpdates.score_ia = safeUpdates.scoreIA;
         }

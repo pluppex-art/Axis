@@ -115,10 +115,10 @@ export function NotasSection({
 
   useEffect(() => () => recognitionRef.current?.stop(), []);
 
-  const persist = async (updated: Note[]) => {
-    const json = JSON.stringify(updated);
-    updateLead(lead.id, { notes: json });
-    if (supabase) await supabase.from("leads").update({ notes: json }).eq("id", lead.id);
+  const persist = (updated: Note[]) => {
+    // updateLead já grava no Supabase — o update direto aqui era um
+    // round-trip redundante escrevendo a mesma coluna `notes` duas vezes.
+    updateLead(lead.id, { notes: JSON.stringify(updated) });
   };
 
   const applyScoreChange = (deltaOrTarget: number, isAbsolute = false) => {

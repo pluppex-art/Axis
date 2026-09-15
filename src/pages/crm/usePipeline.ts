@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from "react";
 import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
-import { supabase } from "../../lib/supabase";
 import confetti from "canvas-confetti";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -40,14 +39,13 @@ export function usePipeline() {
   const { formatCurrency } = useLocalization();
 
   const [clientFilter, setClientFilter] = useState("Todos");
-  const [clientsList, setClientsList] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.from("clientes").select("name").order("name", { ascending: true }).then(({ data }) => {
-      if (data) setClientsList(data.map((c: any) => c.name).filter(Boolean));
-    });
-  }, []);
+  // `clienteBase` (useData) já vem escopado ao tenant ativo — um fetch próprio
+  // de "clientes" aqui não filtrava por tenant_id e vazava linhas de outros
+  // tenants pra contas de parceiro (has_tenant_access verdadeiro pra vários).
+  const clientsList = useMemo(
+    () => [...new Set((clienteBase as any[]).map((c: any) => c.name).filter(Boolean))].sort(),
+    [clienteBase]
+  );
 
   const [currentPipeline, setCurrentPipeline] = useState<"comercial" | "sdr">("comercial");
   const [selectedFunilId, setSelectedFunilId] = useState<string>("");
