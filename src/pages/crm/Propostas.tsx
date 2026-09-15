@@ -82,7 +82,8 @@ export default function Propostas() {
       });
     }
 
-    const jaExiste = (contracts || []).some((c: any) => c.client === prop.cliente && c.plan === prop.titulo);
+    const norm = (s: any) => String(s || "").trim().toLowerCase();
+    const jaExiste = (contracts || []).some((c: any) => norm(c.client) === norm(prop.cliente) && norm(c.plan) === norm(prop.titulo));
     if (jaExiste) return false;
 
     addContract({
@@ -92,7 +93,7 @@ export default function Propostas() {
       status: "Ativo",
       date: new Date().toLocaleDateString("pt-BR"),
       progress: 100,
-    });
+    }, { silent });
 
     addFinanceEntry({
       description: `Contrato: ${prop.titulo} (${prop.cliente})`,
@@ -101,7 +102,7 @@ export default function Propostas() {
       type: "Receber",
       date: new Date().toISOString().slice(0, 10),
       status: "A Vencer",
-    });
+    }, { silent });
 
     if (!silent) toast.success("🎉 Proposta Aceita! Contrato ativado e fatura a receber gerada no financeiro!");
     return true;

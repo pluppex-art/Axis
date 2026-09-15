@@ -112,7 +112,7 @@ export interface DataContextType {
   addTask: (task: Omit<Task, 'id'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
-  addContract: (contract: Omit<Contract, 'id'>) => void;
+  addContract: (contract: Omit<Contract, 'id'>, options?: { silent?: boolean }) => void;
   updateContract: (id: string, updates: Partial<Contract>) => void;
   deleteContract: (id: string) => void;
   addNotification: (notification: Omit<Notification, 'id' | 'time' | 'date' | 'read'>, push?: boolean) => void;
@@ -127,7 +127,7 @@ export interface DataContextType {
   appSettings: Record<string, any>;
   appSettingsLoaded: boolean;
   getSmartInsight: (context: string, data: any) => Promise<string>;
-  addFinanceEntry: (entry: Omit<FinanceEntry, 'id'>) => void;
+  addFinanceEntry: (entry: Omit<FinanceEntry, 'id'>, options?: { silent?: boolean }) => void;
   deleteFinanceEntry: (id: string) => void;
   updateFinanceEntry: (id: string, updates: Partial<FinanceEntry>) => void;
   addAppointment: (apt: Omit<Appointment, 'id'>) => void;

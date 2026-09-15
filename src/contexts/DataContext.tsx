@@ -326,6 +326,97 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (data) setFunis(data.map(rowToFunil));
   };
 
+  // A tabela real `contracts` não tem client/plan/date — desfaz o mapeamento
+  // inverso gravado por addContract/updateContract (notes/title/signed_date).
+  // Precisa ser usado tanto na carga inicial quanto no listener realtime
+  // abaixo; sem isso em algum dos dois, o estado local vira linhas cruas do
+  // Postgres (client/plan/date undefined) e qualquer comparação por esses
+  // campos (ex.: reconciliação de propostas aceitas) nunca bate.
+  const rowToContract = (r: any): Contract => {
+    const notesMatch = /^Cliente:\s*(.*?)\s*\|\s*Plano:\s*(.*)$/.exec(r.notes || "");
+    const titleParts = typeof r.title === "string" ? r.title.split(" - ") : [];
+    const client = notesMatch?.[1] || (titleParts.length > 1 ? titleParts.slice(1).join(" - ") : "Cliente");
+    const plan = notesMatch?.[2] || titleParts[0] || "Contrato";
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(r.signed_date || "");
+    const date = dateMatch ? `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}` : "";
+    return {
+      id: r.id,
+      client,
+      plan,
+      mrr: r.mrr_value ?? r.value ?? 0,
+      status: r.status,
+      date,
+      progress: 100,
+    };
+  };
+
+  const fetchContracts = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('contracts').select('*').eq('tenant_id', tenantId);
+    if (data) setContracts(data.map(rowToContract));
+  };
+
+  // Mesmo problema do rowToContract acima, mas pro caso onde a carga inicial
+  // já tinha o mapeamento certo (snake_case → camelCase) e só o listener
+  // realtime usava fetchTableData genérico — qualquer INSERT/UPDATE/DELETE
+  // ao vivo nessas tabelas substituía o estado por linhas cruas do Postgres,
+  // apagando os campos mapeados (nome do médico, produtos vinculados, etc.)
+  // até o próximo reload da página.
+  const mapLeadRow = (r: any) => ({
+    ...r,
+    productIds: r.productIds || r.customFields?.productIds || [],
+    scoreIA: r.scoreIA ?? r.score_ia ?? 50,
+    tags: Array.isArray(r.tags) ? r.tags : (r.customFields?.tags || []),
+  });
+
+  const mapAppointmentRow = (r: any): Appointment => ({
+    id: r.id, time: r.time, patient: r.patient, patientId: r.patient_id ?? null,
+    drId: r.dr_id, drName: r.dr_name, status: r.status, type: r.type,
+    room: r.room, specialty: r.specialty, phone: r.phone, date: r.date, notes: r.notes,
+  });
+
+  const mapSquadRow = (r: any): Squad => ({
+    id: r.id, nome: r.nome,
+    departamento: r.departamento || 'Geral',
+    focoComercial: r.foco_comercial || '',
+    membros: r.membros || [],
+    leader: r.leader || '',
+    cor: r.cor || '#6366f1',
+    logo: r.logo || '',
+    membrosFuncoes: r.membros_funcoes || {},
+    clientes: r.clientes || [],
+  });
+
+  const mapProductRow = (p: any) => ({
+    ...p,
+    typeAttributes: p.typeAttributes || p.type_attributes || {},
+    attachments: Array.isArray(p.attachments) ? p.attachments : [],
+  });
+
+  const fetchLeads = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('leads').select('*').eq('tenant_id', tenantId);
+    if (data) setLeads(data.map(mapLeadRow));
+  };
+
+  const fetchAppointments = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId);
+    if (data) setAppointments(data.map(mapAppointmentRow));
+  };
+
+  const fetchSquads = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('squads').select('*').eq('tenant_id', tenantId);
+    if (data) setSquads(data.map(mapSquadRow));
+  };
+
+  const fetchProducts = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('products').select('*').eq('tenant_id', tenantId);
+    if (data) setProducts(data.map(mapProductRow));
+  };
+
   // Inclui nichos globais (tenant_id null) + os do tenant ativo — não dá pra usar
   // fetchTableData genérico aqui porque ele só filtra por .eq('tenant_id', tenantId).
   const fetchNichos = async () => {
@@ -450,19 +541,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             // lista se for do tenant ativo. payload.new é a linha crua do
             // Postgres (snake_case), daí o acesso via `any`.
             if (payload.new && (payload.new as any).tenant_id === tenantId) {
-              setLeads(prev => [payload.new as Lead, ...prev]);
+              setLeads(prev => [mapLeadRow(payload.new) as Lead, ...prev]);
               toast.info(`Novo lead: ${payload.new.name}`, { description: 'Recebido via Realtime' });
             }
           } else {
-            fetchTableData('leads', setLeads);
+            fetchLeads();
           }
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => fetchTableData('tasks', setTasks))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => fetchTableData('contracts', setContracts))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => fetchContracts())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_entries' }, () => fetchTableData('finance_entries', setFinanceEntries))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'squads' }, () => fetchTableData('squads', setSquads))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => fetchTableData('appointments', setAppointments))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchTableData('products', setProducts))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'squads' }, () => fetchSquads())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => fetchAppointments())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchProducts())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, () => fetchTableData('proposals', setProposals))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'proposal_items' }, () => fetchTableData('proposal_items', setProposalItems))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'turmas' }, () => fetchTableData('turmas', setTurmas))
@@ -550,43 +641,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             ]);
 
             if (!leadsRes.error && leadsRes.data && leadsRes.data.length > 0) {
-              setLeads((leadsRes.data as any[]).map(r => ({
-                ...r,
-                productIds: r.productIds || r.customFields?.productIds || [],
-                scoreIA: r.scoreIA ?? r.score_ia ?? 50,
-                tags: Array.isArray(r.tags) ? r.tags : (r.customFields?.tags || []),
-              })) as Lead[]);
+              setLeads((leadsRes.data as any[]).map(mapLeadRow) as Lead[]);
             }
             if (!tasksRes.error && tasksRes.data && tasksRes.data.length > 0) setTasks(tasksRes.data as Task[]);
+            // Faltava esse hidrate — `contracts` nunca era populado a partir do
+            // Supabase na carga inicial (só via evento realtime de escrita na
+            // tabela), então a cada refresh da página o estado local começava
+            // vazio. Isso fazia a reconciliação de propostas aceitas (Propostas.tsx)
+            // achar "nenhum contrato existente" toda vez e recriar um duplicado
+            // + disparar notificação de novo contrato a cada entrada na tela.
+            if (!contractsRes.error && contractsRes.data) setContracts(contractsRes.data.map(rowToContract));
             if (!actsRes.error && actsRes.data && actsRes.data.length > 0) setLeadActivities(actsRes.data as LeadActivity[]);
             if (!financeRes.error && financeRes.data && financeRes.data.length > 0) setFinanceEntries(financeRes.data as FinanceEntry[]);
-            if (!apptRes.error && apptRes.data && apptRes.data.length > 0) setAppointments(apptRes.data.map((r: any): Appointment => ({
-              id: r.id, time: r.time, patient: r.patient, patientId: r.patient_id ?? null,
-              drId: r.dr_id, drName: r.dr_name, status: r.status, type: r.type,
-              room: r.room, specialty: r.specialty, phone: r.phone, date: r.date, notes: r.notes,
-            })));
-            if (!squadsRes.error && squadsRes.data && squadsRes.data.length > 0) setSquads(squadsRes.data.map((r: any): Squad => ({
-              id: r.id, nome: r.nome,
-              departamento: r.departamento || 'Geral',
-              focoComercial: r.foco_comercial || '',
-              membros: r.membros || [],
-              leader: r.leader || '',
-              cor: r.cor || '#6366f1',
-              logo: r.logo || '',
-              membrosFuncoes: r.membros_funcoes || {},
-              clientes: r.clientes || [],
-            })));
+            if (!apptRes.error && apptRes.data && apptRes.data.length > 0) setAppointments(apptRes.data.map(mapAppointmentRow));
+            if (!squadsRes.error && squadsRes.data && squadsRes.data.length > 0) setSquads(squadsRes.data.map(mapSquadRow));
             if (!notifRes.error && notifRes.data && notifRes.data.length > 0) setNotifications(notifRes.data as Notification[]);
             if (!mktCampRes.error && mktCampRes.data) setMarketingCampaigns(mktCampRes.data);
             if (!mktContRes.error && mktContRes.data) setMarketingContent(mktContRes.data);
             if (!mktLpRes.error && mktLpRes.data) setMarketingLandingPages(mktLpRes.data);
-            if (!productsRes.error && productsRes.data) {
-              setProducts(productsRes.data.map((p: any) => ({
-                ...p,
-                typeAttributes: p.typeAttributes || p.type_attributes || {},
-                attachments: Array.isArray(p.attachments) ? p.attachments : [],
-              })));
-            }
+            if (!productsRes.error && productsRes.data) setProducts(productsRes.data.map(mapProductRow));
             if (!proposalsRes.error && proposalsRes.data) setProposals(proposalsRes.data);
             if (!proposalItemsRes.error && proposalItemsRes.data) setProposalItems(proposalItemsRes.data);
             if (!turmasRes.error && turmasRes.data) setTurmas(turmasRes.data);
@@ -1114,17 +1187,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const addContract = async (contract: Omit<Contract, 'id'>) => {
+  const addContract = async (contract: Omit<Contract, 'id'>, options: { silent?: boolean } = {}) => {
     const newContract: any = { ...contract, id: crypto.randomUUID() };
     if (tenantId) newContract.tenant_id = tenantId;
     newContract.filial_id = activeFilialId;
     setContracts(prev => [...prev, newContract]);
-    toast.success('Contrato registrado!');
-    addNotification({
-      title: "Novo Contrato",
-      desc: `Cliente: ${contract.client}`,
-      type: "success"
-    });
+    // `silent` existe pra reconciliação em background (Propostas.tsx sincronizando
+    // propostas antigas já aceitas) — sem isso, um contrato criado por reconciliação
+    // disparava toast + notificação de "Novo Contrato" toda vez que a tela recarregava.
+    if (!options.silent) {
+      toast.success('Contrato registrado!');
+      addNotification({
+        title: "Novo Contrato",
+        desc: `Cliente: ${contract.client}`,
+        type: "success"
+      });
+    }
 
     if (supabase) {
       // `contracts` real não tem client/plan/mrr/date/progress — mapeia pros campos
@@ -1441,7 +1519,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const certCrud = createCrudHelper('certificates', setCertificates);
   const indicacaoCrud = createCrudHelper('indicacoes', setIndicacoes as any);
 
-  const addFinanceEntry = async (entry: Omit<FinanceEntry, 'id'>) => {
+  const addFinanceEntry = async (entry: Omit<FinanceEntry, 'id'>, options: { silent?: boolean } = {}) => {
     const newEntry: any = { ...entry, id: crypto.randomUUID() };
     if (tenantId) newEntry.tenant_id = tenantId;
     newEntry.filial_id = activeFilialId;
@@ -1454,7 +1532,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     }
-    toast.success(`${entry.type === 'Pagar' ? 'Despesa' : 'Receita'} registrada!`);
+    if (!options.silent) toast.success(`${entry.type === 'Pagar' ? 'Despesa' : 'Receita'} registrada!`);
   };
 
   const deleteFinanceEntry = async (id: string) => {
