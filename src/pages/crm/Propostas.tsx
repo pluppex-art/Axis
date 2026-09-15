@@ -32,6 +32,7 @@ export default function Propostas() {
     addContract,
     deleteContract,
     addFinanceEntry,
+    updateLead,
   } = useData();
   const { user } = useAuth();
   const { formatCurrency } = useLocalization();
@@ -66,6 +67,17 @@ export default function Propostas() {
       const prop = (propostas || []).find((p: any) => p.id === id);
       if (prop) {
         const valorFmt = formatCurrency(prop.valor || 0);
+
+        // Sincroniza o valor de volta no lead vinculado — sem isso, o lead
+        // fica com o card do Kanban zerado mesmo com a proposta já aceita.
+        if (prop.lead_id && updateLead) {
+          const linkedItems = (proposalItems || []).filter((pi: any) => pi.proposal_id === prop.id);
+          const productIds = linkedItems.map((pi: any) => pi.product_id).filter(Boolean);
+          updateLead(prop.lead_id, {
+            value: prop.valor || 0,
+            ...(productIds.length > 0 ? { productIds } : {}),
+          });
+        }
 
         const jaExiste = (contracts || []).some((c: any) => c.client === prop.cliente && c.plan === prop.titulo);
         if (!jaExiste) {

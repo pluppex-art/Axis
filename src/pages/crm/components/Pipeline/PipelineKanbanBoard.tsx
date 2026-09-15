@@ -58,20 +58,27 @@ export function PipelineKanbanBoard({
   triggerCelebration,
   onReuniaoStageDrop,
 }: PipelineKanbanBoardProps) {
-  const { products } = useData();
+  const { products, proposals } = useData();
   const { formatCurrency } = useLocalization();
 
   // Mesma regra do LeadCard: quando o lead tem produtos vinculados, o valor
   // exibido vem da soma dos preços dos produtos, não do campo value/valor —
   // ignorar isso aqui fazia o total da coluna mostrar R$ 0 com leads que já
-  // exibiam valor (via produto) nos cards.
+  // exibiam valor (via produto) nos cards. Se não há productIds nem value mas
+  // existe proposta vinculada (proposals.lead_id), usa o valor dela — mesmo
+  // fallback do LeadCard, pro total da coluna bater com os cards.
   const getLeadValue = (l: any) => {
     const linkedProducts = (products as any[]).filter((p) => (l.productIds || []).includes(p.id));
     if (linkedProducts.length > 0) {
       return linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0);
     }
     const raw = l.value ?? l.valor;
-    return parseCurrencyBR(raw);
+    const parsed = parseCurrencyBR(raw);
+    if (parsed > 0) return parsed;
+    const linkedProposal = (proposals as any[] || [])
+      .filter((p) => p.lead_id === l.id)
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+    return linkedProposal?.valor ? Number(linkedProposal.valor) || 0 : 0;
   };
 
   const handleDrop = (stage: any, e: React.DragEvent) => {

@@ -1378,6 +1378,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         preco_unitario: item.precoUnitario,
       });
     }
+    // Sincroniza valor/produtos de volta no lead vinculado — sem isso, o card
+    // do Kanban e o cabeçalho do lead ficam com valor zerado mesmo com uma
+    // proposta real (e aceita) vinculada, porque eles leem `leads.value` /
+    // `leads.productIds` diretamente, não a tabela `proposals`.
+    if (payload.leadId) {
+      const productIds = (payload.itens || [])
+        .map(item => item.productId)
+        .filter((id): id is string => !!id);
+      await updateLead(payload.leadId, {
+        value: payload.valor,
+        ...(productIds.length > 0 ? { productIds } : {}),
+      });
+    }
     return proposalId;
   };
   const turmaCrud = createCrudHelper('turmas', setTurmas);

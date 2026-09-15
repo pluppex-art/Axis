@@ -69,7 +69,7 @@ export function LeadCard({
   setSelectedLead, handleTransferToComercial, handleExportIAResume,
   setWebhookModalLead, currentPipeline,
 }: LeadCardProps) {
-  const { products, squads } = useData();
+  const { products, squads, proposals } = useData();
   const { formatCurrency } = useLocalization();
 
   const isDragging    = draggedLeadId === item.id;
@@ -84,9 +84,15 @@ export function LeadCard({
 
   const linkedProducts = (products as any[]).filter(p => (item.productIds || []).includes(p.id));
   const primaryProduct = linkedProducts[0] ?? null;
+  // Fallback: quando o lead ainda não tem productIds sincronizado mas já tem
+  // uma proposta vinculada (proposals.lead_id), usa o valor dela em vez de
+  // mostrar "R$ 0" com uma proposta real (às vezes já aceita) por trás.
+  const linkedProposalValue = (proposals as any[] || [])
+    .filter(p => p.lead_id === item.id)
+    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0]?.valor;
   const displayValue = linkedProducts.length > 0
     ? formatCurrency(linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0))
-    : (item.value || 'R$ 0');
+    : (item.value || (linkedProposalValue ? formatCurrency(Number(linkedProposalValue)) : 'R$ 0'));
 
   const leadSquad = (squads as any[]).find(s =>
     (s.membros || []).some((m: string) => m === item.seller || m === item.sellerId)
