@@ -113,6 +113,7 @@ export interface DataContextType {
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   addContract: (contract: Omit<Contract, 'id'>) => void;
+  updateContract: (id: string, updates: Partial<Contract>) => void;
   deleteContract: (id: string) => void;
   addNotification: (notification: Omit<Notification, 'id' | 'time' | 'date' | 'read'>, push?: boolean) => void;
   markNotificationAsRead: (id: string) => void;

@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, FileText, FileSignature } from "lucide-react";
 import { Button } from "../../components/ui/button";
+import { Modal } from "../../components/ui/modal";
+import { Input } from "../../components/ui/input";
+import { FormField } from "../../components/ui/form-field";
 import { PageContainer } from "../../components/PageContainer";
 import { toast } from "sonner";
 import { useData } from "../../contexts/DataContext";
@@ -12,7 +15,9 @@ import { PropostasKPIs } from "./components/Propostas/PropostasKPIs";
 import { PropostasTable } from "./components/Propostas/PropostasTable";
 import { ContractsKPIs } from "./components/Contracts/ContractsKPIs";
 import { ContractsTable } from "./components/Contracts/ContractsTable";
+import { handleDownloadPdf } from "./utils/proposalPdf";
 import { cn } from "../../lib/utils";
+import type { Contract } from "../../types";
 
 const toNumberMRR = (mrr: string | number): number => {
   if (typeof mrr === "number") return mrr;
@@ -30,15 +35,22 @@ export default function Propostas() {
     createProposalWithItems,
     contracts,
     addContract,
+    updateContract,
     deleteContract,
     addFinanceEntry,
     updateLead,
+    appSettings,
   } = useData();
-  const { user } = useAuth();
+  const { user, activeTenantName } = useAuth();
   const { formatCurrency } = useLocalization();
 
   const [activeTab, setActiveTab] = useState<"propostas" | "contratos">("propostas");
   const [search, setSearch] = useState("");
+  const [editingContract, setEditingContract] = useState<Contract | null>(null);
+  const [editClient, setEditClient] = useState("");
+  const [editPlan, setEditPlan] = useState("");
+  const [editMrr, setEditMrr] = useState("");
+  const [editDate, setEditDate] = useState("");
   const [contractSearch, setContractSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPropostaModalOpen, setIsPropostaModalOpen] = useState(false);
@@ -60,54 +72,111 @@ export default function Propostas() {
     setIsPropostaModalOpen(false);
   };
 
+  // Sincroniza o valor de volta no lead vinculado e garante contrato + fatura
+  // a receber para uma proposta aceita. Extraído do handleUpdateStatus pra
+  // também poder rodar como reconciliação (abaixo) em propostas que já
+  // estavam "Aceita" antes dessa sincronização existir, e que por isso
+  // ficaram para sempre sem contrato/fatura correspondente.
+  const syncAcceptedProposal = (prop: any, { silent = false }: { silent?: boolean } = {}) => {
+    const valorFmt = formatCurrency(prop.valor || 0);
+
+    if (prop.lead_id && updateLead) {
+      const linkedItems = (proposalItems || []).filter((pi: any) => pi.proposal_id === prop.id);
+      const productIds = linkedItems.map((pi: any) => pi.product_id).filter(Boolean);
+      updateLead(prop.lead_id, {
+        value: prop.valor || 0,
+        ...(productIds.length > 0 ? { productIds } : {}),
+      });
+    }
+
+    const jaExiste = (contracts || []).some((c: any) => c.client === prop.cliente && c.plan === prop.titulo);
+    if (jaExiste) return false;
+
+    addContract({
+      client: prop.cliente || "Cliente",
+      plan: prop.titulo || "Proposta Comercial",
+      mrr: valorFmt,
+      status: "Ativo",
+      date: new Date().toLocaleDateString("pt-BR"),
+      progress: 100,
+    });
+
+    addFinanceEntry({
+      description: `Contrato: ${prop.titulo} (${prop.cliente})`,
+      category: "Contrato / Vendas",
+      value: prop.valor || 0,
+      type: "Receber",
+      date: new Date().toISOString().slice(0, 10),
+      status: "A Vencer",
+    });
+
+    if (!silent) toast.success("🎉 Proposta Aceita! Contrato ativado e fatura a receber gerada no financeiro!");
+    return true;
+  };
+
   const handleUpdateStatus = (id: string, newStatus: any) => {
     updateProposal(id, { status: newStatus });
 
     if (newStatus === "Aceita") {
       const prop = (propostas || []).find((p: any) => p.id === id);
-      if (prop) {
-        const valorFmt = formatCurrency(prop.valor || 0);
-
-        // Sincroniza o valor de volta no lead vinculado — sem isso, o lead
-        // fica com o card do Kanban zerado mesmo com a proposta já aceita.
-        if (prop.lead_id && updateLead) {
-          const linkedItems = (proposalItems || []).filter((pi: any) => pi.proposal_id === prop.id);
-          const productIds = linkedItems.map((pi: any) => pi.product_id).filter(Boolean);
-          updateLead(prop.lead_id, {
-            value: prop.valor || 0,
-            ...(productIds.length > 0 ? { productIds } : {}),
-          });
-        }
-
-        const jaExiste = (contracts || []).some((c: any) => c.client === prop.cliente && c.plan === prop.titulo);
-        if (!jaExiste) {
-          addContract({
-            client: prop.cliente || "Cliente",
-            plan: prop.titulo || "Proposta Comercial",
-            mrr: valorFmt,
-            status: "Ativo",
-            date: new Date().toLocaleDateString("pt-BR"),
-            progress: 100,
-          });
-
-          addFinanceEntry({
-            description: `Contrato: ${prop.titulo} (${prop.cliente})`,
-            category: "Contrato / Vendas",
-            value: prop.valor || 0,
-            type: "Receber",
-            date: new Date().toISOString().slice(0, 10),
-            status: "A Vencer",
-          });
-
-          toast.success("🎉 Proposta Aceita! Contrato ativado e fatura a receber gerada no financeiro!");
-          return;
-        }
-      }
+      if (prop && syncAcceptedProposal(prop)) return;
     }
     toast.success(`Proposta atualizada para: ${newStatus}`);
   };
 
+  // Reconciliação: propostas que já estavam "Aceita" antes de existir a
+  // sincronização acima (ex.: aceitas numa versão anterior do sistema) ficam
+  // presas para sempre sem contrato — isso roda uma vez que os dados
+  // carregam e fecha essa lacuna sem exigir reabrir/re-aceitar a proposta.
+  useEffect(() => {
+    if (!propostas || propostas.length === 0 || !contracts) return;
+    (propostas as any[])
+      .filter((p) => p.status === "Aceita")
+      .forEach((p) => syncAcceptedProposal(p, { silent: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propostas, contracts]);
+
   const totalMRR = (contracts || []).reduce((acc: number, curr: any) => acc + toNumberMRR(curr.mrr), 0);
+
+  const handleEditContract = (contract: Contract) => {
+    setEditingContract(contract);
+    setEditClient(contract.client);
+    setEditPlan(contract.plan);
+    setEditMrr(String(typeof contract.mrr === "number" ? contract.mrr : contract.mrr).replace(/[^\d,.-]/g, ""));
+    setEditDate(contract.date || "");
+  };
+
+  const handleSaveEditContract = () => {
+    if (!editingContract) return;
+    const cleanValue = parseFloat(editMrr.replace(/[^0-9,.]/g, "").replace(",", "."));
+    const formattedValue = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(isNaN(cleanValue) ? 0 : cleanValue);
+    updateContract(editingContract.id, { client: editClient, plan: editPlan, mrr: formattedValue, date: editDate });
+    toast.success("Contrato atualizado com sucesso!");
+    setEditingContract(null);
+  };
+
+  // Mesmo gerador/branding (logo do tenant) já usado no PDF de Propostas —
+  // reaproveita o layout em vez de duplicar a lógica de PDF do zero.
+  const handleContractPdf = (contract: Contract) => {
+    const empresaDados = appSettings?.empresa_dados || {};
+    const mrrNumber = typeof contract.mrr === "number"
+      ? contract.mrr
+      : parseFloat(String(contract.mrr).replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
+    handleDownloadPdf(
+      {
+        id: contract.id,
+        cliente: contract.client,
+        titulo: contract.plan,
+        valor: mrrNumber,
+        created_at: undefined,
+        validade: undefined,
+        status: contract.status === "Ativo" ? "Aceita" : "Enviada",
+        vendedor: activeTenantName || "S.P.Y.",
+      } as any,
+      [],
+      { logoUrl: empresaDados?.logoUrl, tenantName: activeTenantName }
+    );
+  };
 
   return (
     <PageContainer
@@ -190,6 +259,8 @@ export default function Propostas() {
             searchQuery={contractSearch}
             onSearchChange={setContractSearch}
             onDelete={(id) => { deleteContract(id); toast.success("Contrato removido."); }}
+            onEdit={handleEditContract}
+            onDownloadPdf={handleContractPdf}
           />
         </div>
       )}
@@ -219,6 +290,37 @@ export default function Propostas() {
         title="Criar Proposta S.P.Y."
         submitText="Gerar Proposta"
       />
+
+      <Modal
+        isOpen={!!editingContract}
+        onClose={() => setEditingContract(null)}
+        title="Editar Contrato"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setEditingContract(null)}>Cancelar</Button>
+            <Button onClick={handleSaveEditContract}>Salvar Alterações</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <FormField label="Cliente">
+            <Input value={editClient} onChange={(e) => setEditClient(e.target.value)} />
+          </FormField>
+          <FormField label="Plano Acordado">
+            <Input value={editPlan} onChange={(e) => setEditPlan(e.target.value)} />
+          </FormField>
+          <FormField label="Valor (MRR)">
+            <Input value={editMrr} onChange={(e) => setEditMrr(e.target.value)} placeholder="Ex: 1500,00" />
+          </FormField>
+          <FormField label="Data de Assinatura">
+            <Input
+              type="date"
+              value={/^\d{2}\/\d{2}\/\d{4}$/.test(editDate) ? editDate.split("/").reverse().join("-") : editDate}
+              onChange={(e) => setEditDate(e.target.value.split("-").reverse().join("/"))}
+            />
+          </FormField>
+        </div>
+      </Modal>
     </PageContainer>
   );
 }
