@@ -73,10 +73,10 @@ export default function LandingPage() {
             animate={{ opacity: 1, x: 0 }}
             className="flex items-center gap-2 sm:gap-4 group cursor-pointer shrink-0 pr-4 lg:pr-12"
           >
-            <div className="w-8 h-8 sm:w-12 sm:h-12 bg-white rounded-lg sm:rounded-2xl flex items-center justify-center shadow-[0_0_25px_rgba(255,255,255,0.15)] group-hover:rotate-12 transition-transform duration-500 overflow-hidden p-1">
-              <img src="/logo-icon.png" alt="Axis Icon" className="w-full h-full object-contain" />
+            <div className="w-8 h-8 sm:w-12 sm:h-12 bg-[#0B1120] border border-blue-500/30 rounded-lg sm:rounded-2xl flex items-center justify-center shadow-[0_0_25px_rgba(37,99,235,0.3)] group-hover:rotate-12 transition-transform duration-500 overflow-hidden p-1">
+              <img src="/logo-icon.png" alt="S.P.Y. Icon" className="w-full h-full object-contain rounded-md" />
             </div>
-            <span className="text-lg sm:text-3xl font-display font-black tracking-[-0.05em] group-hover:tracking-[0.05em] transition-all">AXIS</span>
+            <span className="text-lg sm:text-3xl font-display font-black tracking-[-0.05em] group-hover:tracking-[0.05em] transition-all text-white">S.P.Y.</span>
           </motion.div>
 
           <div className="hidden lg:flex items-center justify-center gap-6 xl:gap-8 text-[10px] xl:text-[11px] font-black uppercase tracking-[0.2em] xl:tracking-[0.3em] text-slate-500 whitespace-nowrap flex-1">
@@ -128,7 +128,7 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ duration: 1.5, ease: "easeOut" }}
                 src="/logo-full.png" 
-                alt="Axis Commercial Interface" 
+                alt="S.P.Y. Commercial Interface" 
                 className="w-full opacity-100 rounded-2xl sm:rounded-none p-4 sm:p-12 mix-blend-screen"
               />
               <div className="relative sm:absolute bottom-4 left-4 sm:bottom-10 sm:left-10 lg:bottom-20 lg:left-20 z-20 mt-4 sm:mt-0">
@@ -305,10 +305,10 @@ export default function LandingPage() {
          <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 sm:gap-12 lg:gap-16">
             <div className="md:col-span-2">
                <div className="flex items-center gap-4 sm:gap-6 mb-4 sm:mb-6">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-lg sm:rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.1)] overflow-hidden p-1.5">
-                    <img src="/logo-icon.png" alt="Axis Logo" className="w-full h-full object-contain" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#0B1120] border border-blue-500/30 rounded-lg sm:rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(37,99,235,0.25)] overflow-hidden p-1">
+                    <img src="/logo-icon.png" alt="S.P.Y. Logo" className="w-full h-full object-contain rounded" />
                   </div>
-                  <span className="text-xl sm:text-2xl font-display font-black tracking-[-0.05em] italic">AXIS_CORE_SYSTEMS</span>
+                  <span className="text-xl sm:text-2xl font-display font-black tracking-[-0.05em] italic">S.P.Y._CORE_SYSTEMS</span>
                </div>
                <p className="text-slate-500 text-[10px] sm:text-xs lg:text-sm leading-relaxed max-w-lg italic font-medium">
                  Definindo o padrão ouro para a infraestrutura de dados corporativos de próxima geração. A inteligência agora é o seu único patrimônio.
