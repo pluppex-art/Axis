@@ -10,7 +10,7 @@ import {
   TableHead,
   TableCell,
 } from "../../../../components/ui/table";
-import { FileText, Search, Edit2, Trash2, ChevronRight } from "lucide-react";
+import { FileText, Search, Edit2, Trash2, Download } from "lucide-react";
 
 interface Contract {
   id: string;
@@ -27,6 +27,8 @@ interface ContractsTableProps {
   searchQuery: string;
   onSearchChange: (v: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (contract: Contract) => void;
+  onDownloadPdf: (contract: Contract) => void;
 }
 
 function statusBadgeVariant(status: string): "success" | "warning" | "destructive" | "secondary" {
@@ -36,7 +38,7 @@ function statusBadgeVariant(status: string): "success" | "warning" | "destructiv
   return "secondary";
 }
 
-export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelete }: ContractsTableProps) {
+export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelete, onEdit, onDownloadPdf }: ContractsTableProps) {
   const filtered = contracts.filter(c =>
     c.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.plan.toLowerCase().includes(searchQuery.toLowerCase())
@@ -107,17 +109,26 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-elevated)] hover:border-[var(--color-border-default)] rounded-md transition-colors">
+                    <button
+                      onClick={() => onEdit(contract)}
+                      title="Editar contrato"
+                      className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-elevated)] hover:border-[var(--color-border-default)] rounded-xl transition-colors"
+                    >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
+                      onClick={() => onDownloadPdf(contract)}
+                      title="Baixar PDF do contrato"
+                      className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-accent hover:bg-accent/10 hover:border-accent/25 rounded-xl transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => onDelete(contract.id)}
-                      className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-danger hover:bg-danger/10 hover:border-danger/25 rounded-md transition-colors"
+                      title="Excluir contrato"
+                      className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-danger hover:bg-danger/10 hover:border-danger/25 rounded-xl transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-accent hover:bg-accent/10 hover:border-accent/25 rounded-md transition-colors ml-1">
-                      <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
                 </TableCell>

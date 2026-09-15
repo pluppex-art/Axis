@@ -10,8 +10,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { ContractsKPIs } from "./components/Contracts/ContractsKPIs";
 import { ContractsTable } from "./components/Contracts/ContractsTable";
+import { handleDownloadPdf } from "./utils/proposalPdf";
+import type { Contract } from "../../types";
 
 const contractSchema = z.object({
   cliente: z.string().min(1, "O cliente é obrigatório"),
@@ -33,25 +36,71 @@ const toNumberMRR = (mrr: string | number): number => {
 
 export default function Contracts() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [contractToDelete, setContractToDelete] = useState<string | null>(null);
-  const { contracts, addContract, deleteContract } = useData();
+  const { contracts, addContract, updateContract, deleteContract, appSettings } = useData();
+  const { activeTenantName } = useAuth();
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<ContractFormData>({
     resolver: zodResolver(contractSchema),
   });
 
+  const isEditing = !!editingContract;
+
   const onSubmit = (data: ContractFormData) => {
     const formattedData = data.data.split("-").reverse().join("/");
     const cleanValue = parseFloat(data.valor.replace(/[^0-9,.]/g, "").replace(",", "."));
     const formattedValue = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(cleanValue);
-    addContract({ client: data.cliente, plan: data.plano, mrr: formattedValue, status: "Ativo", date: formattedData, progress: 100 });
-    toast.success("Contrato criado com sucesso!");
+    if (isEditing && editingContract) {
+      updateContract(editingContract.id, { client: data.cliente, plan: data.plano, mrr: formattedValue, date: formattedData });
+      toast.success("Contrato atualizado com sucesso!");
+    } else {
+      addContract({ client: data.cliente, plan: data.plano, mrr: formattedValue, status: "Ativo", date: formattedData, progress: 100 });
+      toast.success("Contrato criado com sucesso!");
+    }
     reset();
     setIsModalOpen(false);
+    setEditingContract(null);
   };
 
-  const handleModalClose = () => { setIsModalOpen(false); reset(); };
+  const handleModalClose = () => { setIsModalOpen(false); setEditingContract(null); reset(); };
+
+  const handleEditContract = (contract: Contract) => {
+    setEditingContract(contract);
+    const [dd, mm, yyyy] = (contract.date || "").split("/");
+    reset({
+      cliente: contract.client,
+      plano: contract.plan,
+      valor: String(typeof contract.mrr === "number" ? contract.mrr : contract.mrr).replace(/[^\d,.-]/g, ""),
+      data: dd && mm && yyyy ? `${yyyy}-${mm}-${dd}` : "",
+    });
+    setIsModalOpen(true);
+  };
+
+  // Mesmo gerador/branding (logo do tenant) já usado no PDF de Propostas — o
+  // contrato é montado como uma "Proposta" equivalente pra reaproveitar o
+  // layout, em vez de duplicar a lógica de PDF com um visual diferente.
+  const handleContractPdf = (contract: Contract) => {
+    const empresaDados = appSettings?.empresa_dados || {};
+    const mrrNumber = typeof contract.mrr === "number"
+      ? contract.mrr
+      : parseFloat(String(contract.mrr).replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
+    handleDownloadPdf(
+      {
+        id: contract.id,
+        cliente: contract.client,
+        titulo: contract.plan,
+        valor: mrrNumber,
+        created_at: undefined,
+        validade: undefined,
+        status: contract.status === "Ativo" ? "Aceita" : "Enviada",
+        vendedor: activeTenantName || "S.P.Y.",
+      } as any,
+      [],
+      { logoUrl: empresaDados?.logoUrl, tenantName: activeTenantName }
+    );
+  };
 
   const totalMRR = contracts.reduce((acc, curr) => acc + toNumberMRR(curr.mrr), 0);
 
@@ -81,16 +130,18 @@ export default function Contracts() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onDelete={(id) => setContractToDelete(id)}
+        onEdit={handleEditContract}
+        onDownloadPdf={handleContractPdf}
       />
 
       <Modal
         isOpen={isModalOpen}
         onClose={handleModalClose}
-        title="Novo Contrato"
+        title={isEditing ? "Editar Contrato" : "Novo Contrato"}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={handleModalClose}>Cancelar</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Salvar Contrato</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{isEditing ? "Salvar Alterações" : "Salvar Contrato"}</Button>
           </div>
         }
       >

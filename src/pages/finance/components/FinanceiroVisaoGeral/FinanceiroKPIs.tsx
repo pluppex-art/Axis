@@ -24,10 +24,10 @@ export function FinanceiroKPIs({ receita, despesa, mrr, inadimplencia }: Finance
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {kpis.map((kpi, i) => (
         <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-          <Card className="p-6 bg-[var(--color-surface-elevated)]/50 border hover:border-white/10 border-white/5 backdrop-blur-md transition-all h-full">
+          <Card className="rounded-3xl p-6 bg-[var(--color-surface-elevated)]/50 border hover:border-[var(--color-primary-blue)]/30 border-[var(--color-border-subtle)] backdrop-blur-md transition-all h-full">
             <kpi.icon className={`w-5 h-5 ${kpi.color} mb-4`} />
-            <div className="text-2xl font-display font-black text-white mb-1 italic">{kpi.value}</div>
-            <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{kpi.label}</div>
+            <div className="text-2xl font-display font-black text-[var(--color-text-primary)] mb-1 italic">{kpi.value}</div>
+            <div className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest">{kpi.label}</div>
           </Card>
         </motion.div>
       ))}

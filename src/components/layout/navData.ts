@@ -76,10 +76,10 @@ export const navSections = [
   },
   {
     title: "Agenda & Reuniões",
-    reqModule: "agenda",
     items: [
-      { name: "Calendário Geral", path: "/app/agenda/calendario", icon: CalendarDays },
-      { name: "Salas de Reunião", path: "/app/agenda/reunioes", icon: Video },
+      { name: "Calendário Geral", path: "/app/agenda/calendario", icon: CalendarDays, reqModule: "agenda" },
+      { name: "Salas de Reunião", path: "/app/agenda/reunioes", icon: Video, reqModule: "agenda" },
+      { name: "Tarefas & Projetos", path: "/app/tarefas", icon: CheckSquare, reqModule: "produtividade" },
     ],
   },
   {
@@ -110,7 +110,6 @@ export const navSections = [
     title: "Operações & Catálogo",
     items: [
       { name: "Catálogo de Produtos", path: "/app/produtos", icon: FolderOpen, reqModule: "catalogo" },
-      { name: "Tarefas & Projetos", path: "/app/tarefas", icon: CheckSquare, reqModule: "produtividade" },
     ],
   },
   {

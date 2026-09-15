@@ -217,7 +217,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [squads, setSquads] = useState<Squad[]>(defaultSquads);
 
   const addSquad = async (squad: Omit<Squad, 'id'>) => {
-    const newSquad = { ...squad, id: `sq${Math.random().toString(36).substring(2, 9)}` };
+    const newSquad = { ...squad, id: crypto.randomUUID() };
     setSquads(prev => [...prev, newSquad]);
     if (!supabase) {
       toast.success('Squad criado com sucesso!');
@@ -335,7 +335,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addFunil = async (f: any) => {
-    const newFunil = { ...f, id: f.id || Math.random().toString(36).slice(2) };
+    const newFunil = { ...f, id: f.id || crypto.randomUUID() };
     setFunis(prev => [...prev, newFunil]);
     if (supabase) {
       const { error } = await supabase.from('crm_funis').insert(funilToRow(newFunil));
@@ -392,7 +392,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const colaboradores = useMemo(() => filterByFilial(colaboradoresRaw), [colaboradoresRaw, activeFilialId]);
 
   const addStudent = async (student: any) => {
-    const newStudent = { ...student, id: `st${Math.random().toString(36).substring(2, 9)}`, ...(tenantId ? { tenant_id: tenantId } : {}) };
+    const newStudent = { ...student, id: crypto.randomUUID(), ...(tenantId ? { tenant_id: tenantId } : {}) };
     setStudents(prev => [...prev, newStudent]);
     if (supabase) {
       const { error } = await supabase.from('students').insert(newStudent);
@@ -1115,7 +1115,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addContract = async (contract: Omit<Contract, 'id'>) => {
-    const newContract: any = { ...contract, id: Math.random().toString(36).substr(2, 9) };
+    const newContract: any = { ...contract, id: crypto.randomUUID() };
     if (tenantId) newContract.tenant_id = tenantId;
     newContract.filial_id = activeFilialId;
     setContracts(prev => [...prev, newContract]);
@@ -1148,6 +1148,34 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error("Supabase add contract failed:", error.message);
         toast.error(`Erro ao registrar contrato: ${error.message}`);
+      }
+    }
+  };
+
+  const updateContract = async (id: string, updates: Partial<Contract>) => {
+    setContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    const current = contracts.find(c => c.id === id);
+    if (!current) return;
+    const merged = { ...current, ...updates };
+    toast.success('Contrato atualizado!');
+    if (supabase) {
+      // Mesmo remapeamento do addContract — a tabela real não tem client/plan/mrr/date.
+      const mrrNumber = parseCurrencyBR(merged.mrr);
+      const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(merged.date || "");
+      const signedDate = dateMatch
+        ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`
+        : (/^\d{4}-\d{2}-\d{2}$/.test(merged.date || "") ? merged.date : null);
+      const { error } = await supabase.from('contracts').update({
+        title: `${merged.plan} - ${merged.client}`,
+        value: mrrNumber,
+        mrr_value: mrrNumber,
+        status: merged.status,
+        ...(signedDate ? { signed_date: signedDate } : {}),
+        notes: `Cliente: ${merged.client} | Plano: ${merged.plan}`,
+      }).eq('id', id);
+      if (error) {
+        console.error("Supabase update contract failed:", error.message);
+        toast.error(`Erro ao atualizar contrato: ${error.message}`);
       }
     }
   };
@@ -1188,7 +1216,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const addLeadActivity = async (leadId: string, type: 'Ligação' | 'E-mail' | 'Reunião' | 'Outro', title: string, description: string, seller: string, customDate?: string, files?: { name: string; size: string; }[]) => {
     const newActivity: LeadActivity = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       leadId,
       type,
       title,
@@ -1354,7 +1382,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     linkPdf?: string | null;
     itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number }>;
   }) => {
-    const proposalId = Math.random().toString(36).substring(2, 9);
+    const proposalId = crypto.randomUUID();
     await proposalCrud.add({
       id: proposalId,
       titulo: payload.titulo,
@@ -1370,7 +1398,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
     for (const item of payload.itens || []) {
       await proposalItemCrud.add({
-        id: `${proposalId}-${Math.random().toString(36).substring(2, 7)}`,
+        id: crypto.randomUUID(),
         proposal_id: proposalId,
         product_id: item.productId || null,
         product_name: item.descricao,
@@ -1414,7 +1442,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const indicacaoCrud = createCrudHelper('indicacoes', setIndicacoes as any);
 
   const addFinanceEntry = async (entry: Omit<FinanceEntry, 'id'>) => {
-    const newEntry: any = { ...entry, id: `f${Math.random().toString(36).substring(2, 9)}` };
+    const newEntry: any = { ...entry, id: crypto.randomUUID() };
     if (tenantId) newEntry.tenant_id = tenantId;
     newEntry.filial_id = activeFilialId;
     setFinanceEntries(prev => [newEntry, ...prev]);
@@ -1454,7 +1482,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addAppointment = async (apt: Omit<Appointment, 'id'>) => {
-    const newApt: any = { ...apt, id: Math.random().toString(36).substr(2, 9) };
+    const newApt: any = { ...apt, id: crypto.randomUUID() };
     if (tenantId) newApt.tenant_id = tenantId;
     newApt.filial_id = activeFilialId;
     setAppointments(prev => [newApt, ...prev]);
@@ -1505,7 +1533,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       leads, tasks, contracts, notifications, leadActivities, financeEntries, appointments,
       theme, toggleTheme,
       addLead, updateLead, deleteLead, moveLead,
-      addTask, updateTask, deleteTask, addContract, deleteContract,
+      addTask, updateTask, deleteTask, addContract, updateContract, deleteContract,
       addNotification, markNotificationAsRead, markAllNotificationsAsRead,
       addLeadActivity,
       getSmartInsight,
