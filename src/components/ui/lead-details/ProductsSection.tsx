@@ -191,9 +191,50 @@ export function ProductsSection({
     Recusada: "destructive",
   };
 
+  const isProposalAccepted = existingProposal?.status === "Aceita";
+  const [isCreatingNewProposal, setIsCreatingNewProposal] = useState(false);
+
+  // Se a proposta já foi Aceita e o vendedor não optou explicitamente por criar um novo orçamento (upsell),
+  // o carrinho do Mini PDV não deve ter produtos ativos da proposta já finalizada.
+  const effectiveLinkedProductIds = useMemo(() => {
+    if (isProposalAccepted && !isCreatingNewProposal) {
+      return [];
+    }
+    return linkedProductIds;
+  }, [isProposalAccepted, isCreatingNewProposal, linkedProductIds]);
+
+  const handleToggleProduct = (prodId: string) => {
+    if (isProposalAccepted && !isCreatingNewProposal) {
+      setIsCreatingNewProposal(true);
+    }
+    toggleProductLink(prodId);
+  };
+
+  const handleDownloadExistingProposalPdf = () => {
+    if (!existingProposal) return;
+    handleDownloadPdf(
+      {
+        id: existingProposal.id,
+        cliente: existingProposal.cliente,
+        titulo: existingProposal.titulo,
+        valor: existingProposal.valor,
+        validade: existingProposal.validade,
+        vendedor: existingProposal.vendedor || seller || "Consultor S.P.Y.",
+        status: existingProposal.status || "Aceita",
+      },
+      existingProposalItems.map((p: any) => ({
+        product_name: p.product_name,
+        quantidade: p.quantidade,
+        preco_unitario: p.preco_unitario,
+      })),
+      { logoUrl: empresaDadosBranding?.logoUrl }
+    );
+    toast.success("PDF da proposta gerado com sucesso!");
+  };
+
   // Linked items with quantity, recurrence and implementation fee
   const linkedItems = useMemo(() => {
-    return linkedProductIds
+    return effectiveLinkedProductIds
       .map((id) => {
         const prod = availableProducts.find((p) => p.id === id);
         if (!prod) return null;
@@ -618,47 +659,16 @@ export function ProductsSection({
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* ── HEADER DO MINI PDV ── */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/25 ring-1 ring-white/10 shrink-0">
-            <ShoppingCart className="w-4.5 h-4.5" />
-          </div>
-          <div className="min-w-0">
-            <h4 className="text-[13px] font-black uppercase tracking-wider text-white leading-tight">
-              Mini PDV & Orçamento
-            </h4>
-            <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
-              Composição de itens e proposta comercial
-            </p>
-          </div>
-        </div>
-
-        <Button
-          type="button"
-          size="sm"
-          variant={showAddForm ? "secondary" : "default"}
-          onClick={() => setShowAddForm((v) => !v)}
-          className="text-[11px] font-bold h-8 gap-1.5 cursor-pointer shrink-0"
-        >
-          {showAddForm ? (
-            <>
-              <ChevronUp className="w-3.5 h-3.5" /> Fechar Cadastro
-            </>
-          ) : (
-            <>
-              <Plus className="w-3.5 h-3.5" /> Novo Produto
-            </>
-          )}
-        </Button>
-      </div>
-
-      {/* ── PROPOSTA COMERCIAL JÁ EXISTENTE (se houver, aparece acima do Mini PDV) ── */}
+      {/* ── PROPOSTA COMERCIAL JÁ EXISTENTE (se houver, aparece no topo em destaque) ── */}
       {existingProposal && (
-        <Card className="p-4 bg-[var(--color-surface-elevated)] border border-emerald-500/25 shadow-sm space-y-3">
+        <Card className={cn(
+          "p-4 bg-[var(--color-surface-elevated)] shadow-sm space-y-3",
+          isProposalAccepted ? "border border-emerald-500/30 bg-emerald-500/[0.03]" : "border border-blue-500/25"
+        )}>
           <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-2.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <FileText className="w-3.5 h-3.5 text-emerald-400" /> Proposta Comercial Vinculada
+              <FileText className={cn("w-3.5 h-3.5", isProposalAccepted ? "text-emerald-400" : "text-blue-400")} />
+              Proposta Comercial Vinculada
             </span>
             <Badge
               variant={PROPOSAL_STATUS_VARIANT[existingProposal.status] || "secondary"}
@@ -678,7 +688,7 @@ export function ProductsSection({
                 )}
               </p>
             </div>
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
               <span className="text-sm font-mono font-black text-emerald-400">
                 {formatCurrency(existingProposal.valor || 0)}
               </span>
@@ -691,9 +701,116 @@ export function ProductsSection({
               >
                 <Edit3 className="w-3.5 h-3.5" /> Ver / Editar Proposta
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadExistingProposalPdf}
+                className="h-8 text-xs font-bold gap-1.5 border-blue-500/30 hover:bg-blue-500/10 text-blue-300 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" /> Baixar PDF
+              </Button>
             </div>
           </div>
+
+          {isProposalAccepted && (
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                <strong>Proposta Aceita & Venda Fechada!</strong> O contrato está ativado e as faturas foram provisionadas no financeiro.
+              </span>
+            </div>
+          )}
+
+          {isProposalAccepted && existingProposalItems.length > 0 && (
+            <div className="space-y-1.5 pt-1 border-t border-white/5">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Itens da Proposta Aprovada:</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto scrollbar-thin">
+                {existingProposalItems.map((item: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-[var(--color-surface-sunken)] border border-white/5">
+                    <span className="text-slate-300 font-medium truncate text-[11px]">{item.product_name}</span>
+                    <span className="font-mono text-emerald-400 text-[11px] font-bold shrink-0 ml-2">
+                      {item.quantidade}x {formatCurrency(item.preco_unitario)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
+      )}
+
+      {/* Se a proposta já foi Aceita e o usuário ainda não clicou em Criar Novo Orçamento,
+          mostra banner de upsell e não exibe o carrinho ativo repetindo a venda já fechada */}
+      {isProposalAccepted && !isCreatingNewProposal && (
+        <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <p className="text-xs font-bold text-white">Deseja criar uma nova proposta comercial ou adicionar itens adicionais?</p>
+            <p className="text-[10px] text-slate-400">
+              Inicie um novo orçamento independente mantendo o contrato atual intacto.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCreatingNewProposal(true)}
+            className="h-8 text-xs font-bold gap-1.5 border-blue-500/30 text-blue-400 hover:bg-blue-500/10 cursor-pointer shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" /> Criar Novo Orçamento (Upsell)
+          </Button>
+        </Card>
+      )}
+
+      {/* ── HEADER DO MINI PDV (exibido quando não há proposta aceita ou quando o usuário quer novo orçamento) ── */}
+      {(!isProposalAccepted || isCreatingNewProposal) && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/25 ring-1 ring-white/10 shrink-0">
+              <ShoppingCart className="w-4.5 h-4.5" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-[13px] font-black uppercase tracking-wider text-white leading-tight">
+                {isCreatingNewProposal ? "Novo Orçamento Comercial (Upsell)" : "Mini PDV & Orçamento"}
+              </h4>
+              <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                Composição de itens e proposta comercial
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isCreatingNewProposal && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setIsCreatingNewProposal(false)}
+                className="text-[11px] font-bold h-8 text-slate-400 hover:text-white cursor-pointer"
+              >
+                Cancelar
+              </Button>
+            )}
+
+            <Button
+              type="button"
+              size="sm"
+              variant={showAddForm ? "secondary" : "default"}
+              onClick={() => setShowAddForm((v) => !v)}
+              className="text-[11px] font-bold h-8 gap-1.5 cursor-pointer shrink-0"
+            >
+              {showAddForm ? (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5" /> Fechar Cadastro
+                </>
+              ) : (
+                <>
+                  <Plus className="w-3.5 h-3.5" /> Novo Produto
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* ── FORMULÁRIO DE CADASTRO RÁPIDO DE PRODUTO NO BANCO ── */}
@@ -889,21 +1006,21 @@ export function ProductsSection({
         </Card>
       )}
 
-      {/* ── ITENS DO PEDIDO / CHECKOUT (MINI PDV) ── */}
-      <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3.5">
-        <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-3">
-          <div className="flex items-center gap-2">
-            <Receipt className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-              Itens da Proposta Comercial ({linkedItems.length})
-            </span>
+      {/* ── ITENS DO PEDIDO / COMPOSIÇÃO DA PROPOSTA (SÓ APARECE QUANDO HÁ PRODUTOS SELECIONADOS) ── */}
+      {linkedItems.length > 0 ? (
+        <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-3">
+            <div className="flex items-center gap-2">
+              <Receipt className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                Itens da Proposta Comercial ({linkedItems.length})
+              </span>
+            </div>
+            <Badge variant="success" className="font-mono text-xs font-bold px-2.5 py-1">
+              Total: {formatCurrency(finalTotal)}
+            </Badge>
           </div>
-          <Badge variant="success" className="font-mono text-xs font-bold px-2.5 py-1">
-            Total: {formatCurrency(finalTotal)}
-          </Badge>
-        </div>
 
-        {linkedItems.length > 0 ? (
           <div className="space-y-2.5 max-h-[320px] overflow-y-auto scrollbar-thin pr-1">
             {linkedItems.map((item) => (
               <div
@@ -1084,17 +1201,6 @@ export function ProductsSection({
               </div>
             ))}
           </div>
-        ) : (
-          <div className="py-6 text-center flex flex-col items-center gap-2 border border-dashed border-[var(--color-border-subtle)] rounded-xl">
-            <Package className="w-6 h-6 text-slate-500" />
-            <p className="text-xs text-slate-400 font-medium">
-              Nenhum produto selecionado para esta proposta.
-            </p>
-            <p className="text-[10px] text-slate-500">
-              Escolha produtos no catálogo abaixo ou cadastre um novo.
-            </p>
-          </div>
-        )}
 
         {/* ── DETALHAMENTO FINANCEIRO DO PDV — borda de topo tracejada evoca o corte de um recibo ── */}
         <div
@@ -1415,6 +1521,19 @@ export function ProductsSection({
           </div>
         </div>
       </Card>
+      ) : (
+        (!isProposalAccepted || isCreatingNewProposal) && (
+          <div className="p-6 rounded-2xl bg-[var(--color-surface-elevated)] border border-dashed border-[var(--color-border-subtle)] text-center flex flex-col items-center justify-center gap-2.5 animate-in fade-in duration-200">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+              <Package className="w-5 h-5" />
+            </div>
+            <p className="text-xs font-bold text-white">Nenhum produto selecionado para o orçamento</p>
+            <p className="text-[11px] text-slate-400 max-w-sm">
+              Escolha um ou mais produtos no catálogo abaixo para iniciar a composição comercial e financeira da proposta.
+            </p>
+          </div>
+        )
+      )}
 
       {/* ── CATÁLOGO DE PRODUTOS DISPONÍVEIS ── */}
       <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3">
@@ -1460,11 +1579,11 @@ export function ProductsSection({
         {filteredCatalog.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[280px] overflow-y-auto scrollbar-thin pr-1">
             {filteredCatalog.map((prod) => {
-              const isLinked = linkedProductIds.includes(prod.id);
+              const isLinked = effectiveLinkedProductIds.includes(prod.id);
               return (
                 <div
                   key={prod.id}
-                  onClick={() => toggleProductLink(prod.id)}
+                  onClick={() => handleToggleProduct(prod.id)}
                   className={cn(
                     "p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2 group",
                     isLinked

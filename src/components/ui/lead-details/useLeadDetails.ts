@@ -163,7 +163,10 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     setSeller(lead.seller || "");
     setPriority(lead.priority || "Média");
     setCustomFieldsState(lead.customFields || {});
-    setLinkedProductIds(Array.isArray(lead.productIds) ? lead.productIds : []);
+    // Se a proposta vinculada já foi Aceita, os produtos pertencem à proposta fechada
+    // e não devem ficar ativos no carrinho de nova proposta do Mini PDV.
+    const isAccepted = linkedProposal?.status === "Aceita";
+    setLinkedProductIds(isAccepted ? [] : (Array.isArray(lead.productIds) ? lead.productIds : []));
     setCustomTags(Array.isArray(lead.customFields?.tags) ? lead.customFields.tags : []);
 
     // Calcula score dinâmico considerando a etapa e as notas do cliente
@@ -182,7 +185,14 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     setScore(effectiveScore);
     setTemperature(derivedTemp);
     setProbability(effectiveScore >= 80 ? 85 : effectiveScore >= 70 ? 70 : effectiveScore >= 40 ? 45 : 20);
-  }, [lead]);
+  }, [lead, linkedProposal?.status]);
+
+  // Garante que propostas já aceitas não deixem produtos pendentes no carrinho do PDV
+  useEffect(() => {
+    if (linkedProposal?.status === "Aceita") {
+      setLinkedProductIds([]);
+    }
+  }, [linkedProposal?.status]);
 
   // Reseta stageId e modo de edição quando muda de lead
   useEffect(() => {
