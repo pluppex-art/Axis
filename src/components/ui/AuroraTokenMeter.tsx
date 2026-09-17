@@ -1,11 +1,10 @@
 import { cn } from "../../lib/utils";
 import { useAuroraTokenUsage } from "../../hooks/useAuroraTokenUsage";
 
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
+// Mesmo pacote fixo de 10 mil créditos por ciclo usado em ConfigSistemaAuroraUso
+// (Configurações > Sistema > Aurora) — o cliente nunca vê "tokens" na tela, só
+// créditos e porcentagem; o limite real de bloqueio continua em tokens por trás.
+const CREDITS_PER_CYCLE = 10000;
 
 function barColor(percent: number): string {
   if (percent >= 100) return "bg-rose-500";
@@ -14,7 +13,7 @@ function barColor(percent: number): string {
 }
 
 /**
- * Medidor compacto de uso de tokens — "igual da Claude": barra fina + texto usado/limite.
+ * Medidor compacto de consumo da Aurora — "igual da Claude": barra fina + porcentagem.
  * Usado no cabeçalho do painel de chat da Aurora (AuroraWidget). Sem limite configurado pro
  * tenant ainda (tokensLimit null) = não renderiza nada, não é bloqueado nem alarma à toa.
  */
@@ -24,12 +23,16 @@ export function AuroraTokenMeter({ className }: { className?: string }) {
   if (loading || !usage || usage.tokensLimit === null) return null;
 
   const percent = usage.percentUsed ?? 0;
+  const creditsUsed = Math.round((percent / 100) * CREDITS_PER_CYCLE);
 
   return (
-    <div className={cn("flex flex-col gap-1 min-w-[92px]", className)} title={`${usage.tokensUsed.toLocaleString("pt-BR")} de ${usage.tokensLimit.toLocaleString("pt-BR")} tokens usados neste ciclo${usage.planName ? ` — plano ${usage.planName}` : ""}`}>
+    <div
+      className={cn("flex flex-col gap-1 min-w-[92px]", className)}
+      title={`${creditsUsed.toLocaleString("pt-BR")} de ${CREDITS_PER_CYCLE.toLocaleString("pt-BR")} créditos usados neste ciclo (${percent.toFixed(1)}%)${usage.planName ? ` — plano ${usage.planName}` : ""}`}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className={cn("text-[9px] font-bold tabular-nums", usage.limitReached ? "text-rose-400" : percent >= 90 ? "text-amber-400" : "text-slate-500")}>
-          {formatTokens(usage.tokensUsed)} / {formatTokens(usage.tokensLimit)}
+          {percent.toFixed(1)}%
         </span>
       </div>
       <div className="h-1 w-full rounded-full bg-white/[0.06] overflow-hidden">

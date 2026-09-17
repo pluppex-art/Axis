@@ -7,6 +7,7 @@ import type { AuroraCoreMode } from "./auroraCore/auroraCoreStates";
 import { useAuroraVoice } from "../../hooks/useAuroraVoice";
 import { AuroraTokenMeter } from "./AuroraTokenMeter";
 import { useAuroraTokenUsage } from "../../hooks/useAuroraTokenUsage";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface AuroraMessage {
   id: string;
@@ -14,11 +15,14 @@ interface AuroraMessage {
   text: string;
 }
 
-const GREETING: AuroraMessage = {
-  id: "greeting",
-  role: "aurora",
-  text: "Olá, Senhor Gustavo. Sou a Aurora. Pode falar ou digitar — pergunte sobre a diretoria, agenda, Spotify, WhatsApp ou o S.P.Y..",
-};
+function buildGreeting(userName?: string | null): AuroraMessage {
+  const firstName = userName?.trim().split(/\s+/)[0];
+  return {
+    id: "greeting",
+    role: "aurora",
+    text: `Olá${firstName ? `, ${firstName}` : ""}. Sou a Aurora. Pode falar ou digitar — pergunte sobre a diretoria, agenda, Spotify, WhatsApp ou o S.P.Y..`,
+  };
+}
 
 /**
  * Balão de chat flutuante global com a Aurora (assistente do G-TECH AI OS), embutido no S.P.Y..
@@ -82,6 +86,7 @@ export function AuroraWidget() {
 
   const voice = useAuroraVoice((text) => send(text));
   const { usage: tokenUsage } = useAuroraTokenUsage();
+  const { user } = useAuth();
   const bubbleRingColor =
     tokenUsage?.limitReached ? "rgba(244,63,94,0.65)" // rose-500
     : (tokenUsage?.percentUsed ?? 0) >= 90 ? "rgba(245,158,11,0.6)" // amber-500
@@ -94,8 +99,8 @@ export function AuroraWidget() {
   // Saudação local (nunca enviada à Aurora) na primeira vez que o painel abre vazio — pra não
   // começar em branco.
   useEffect(() => {
-    if (isOpen && messages.length === 0) setMessages([GREETING]);
-  }, [isOpen, messages.length]);
+    if (isOpen && messages.length === 0) setMessages([buildGreeting(user?.name)]);
+  }, [isOpen, messages.length, user?.name]);
 
   // Mapeia o estado real do widget pro modelo de estados do núcleo — tudo aqui agora é real:
   // "listening" enquanto o microfone está ativo, "speaking" enquanto o áudio de resposta toca.
@@ -138,7 +143,9 @@ export function AuroraWidget() {
               <AuroraCore mode={coreMode} size={28} showToggle />
               <div>
                 <p className="text-[11px] font-black text-white">Aurora</p>
-                <p className="text-[9px] text-slate-500">G-TECH AI OS</p>
+                <p className="text-[9px] text-slate-500">
+                  {tokenUsage?.percentUsed != null ? `${tokenUsage.percentUsed.toFixed(1)}% do ciclo` : "Assistente operacional"}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
