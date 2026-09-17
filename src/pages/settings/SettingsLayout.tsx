@@ -72,6 +72,8 @@ export default function SettingsLayout() {
       items: [
         { title: "Categorias financeiras", path: "/app/configuracoes/financeiro/categorias" },
         { title: "Gestão financeira de times", path: "/app/configuracoes/financeiro/squads" },
+        { title: "Integrações bancárias", path: "/app/configuracoes/financeiro/integracoes", soon: true },
+        { title: "Auditoria financeira", path: "/app/configuracoes/financeiro/auditoria", soon: true },
       ],
     }] : []),
     ...(activeModules.marketing || activeModules.engajamento ? [{

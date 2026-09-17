@@ -12,6 +12,7 @@ import { FinanceiroProjecaoReceita } from "./components/FinanceiroVisaoGeral/Fin
 import { downloadCsv } from "../../lib/csvExport";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { getMRR, getActiveCustomers, getChurnRate, getRevenueProjection } from "../../lib/revenueMetrics";
+import { parseEntryDate } from "./lib/financeDates";
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
@@ -22,23 +23,6 @@ const CICLOS: { id: Ciclo; label: string }[] = [
   { id: "ano", label: "Ano Atual" },
   { id: "tudo", label: "Tudo" },
 ];
-
-// `finance_entries.date` nem sempre vem no formato legado DD/MM/AAAA — o
-// fluxo de vendas do PDV (finalizar_venda RPC) grava em ISO (AAAA-MM-DD).
-// Sem os dois formatos aqui, uma venda paga com data ISO desaparecia de
-// todos os totais/gráficos desta tela (só "Tudo" ignora isInCiclo).
-function parseEntryDate(dateStr?: string): Date | null {
-  if (!dateStr) return null;
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
-  if (iso) {
-    const d = new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
-    return isNaN(d.getTime()) ? null : d;
-  }
-  const parts = dateStr.split("/");
-  if (parts.length < 3) return null;
-  const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-  return isNaN(d.getTime()) ? null : d;
-}
 
 function isInCiclo(date: Date | null, ciclo: Ciclo, now: Date): boolean {
   if (ciclo === "tudo") return true;
@@ -141,11 +125,11 @@ export default function FinanceiroVisaoGeral() {
       { label: "Receitas do Mês", value: receitaMes, format: "currency", deltaPct: pctChange(receitaMes, receitaMesAnt), deltaGoodWhenUp: true, icon: Inbox, href: "/app/financeiro/receitas" },
       { label: "Despesas do Mês", value: despesaMes, format: "currency", deltaPct: pctChange(despesaMes, despesaMesAnt), deltaGoodWhenUp: false, icon: TrendingDown, href: "/app/financeiro/despesas" },
       { label: "Resultado do Mês", value: resultadoMes, format: "currency", deltaPct: pctChange(resultadoMes, resultadoMesAnt), deltaGoodWhenUp: true, danger: resultadoMes < 0, icon: Scale, href: "/app/financeiro/transacoes" },
-      { label: "MRR Ativo", value: mrrAtual, format: "currency", deltaPct: null, deltaGoodWhenUp: true, icon: Repeat2, href: "/app/financeiro/faturas" },
+      { label: "MRR Ativo", value: mrrAtual, format: "currency", deltaPct: null, deltaGoodWhenUp: true, icon: Repeat2, href: "/app/financeiro/mrr" },
       { label: "Contas a Receber", value: abertoReceber.reduce((s, f) => s + f.value, 0), format: "currency", count: abertoReceber.length, deltaPct: null, deltaGoodWhenUp: null, icon: TrendingUp, href: "/app/financeiro/receber" },
       { label: "Contas a Pagar", value: abertoPagar.reduce((s, f) => s + f.value, 0), format: "currency", count: abertoPagar.length, deltaPct: null, deltaGoodWhenUp: null, icon: Wallet, href: "/app/financeiro/pagar" },
-      { label: "Vencido (Inadimplência)", value: vencidoReceber.reduce((s, f) => s + f.value, 0), format: "currency", count: vencidoReceber.length, deltaPct: null, deltaGoodWhenUp: null, danger: vencidoReceber.length > 0, icon: AlertTriangle, href: "/app/financeiro/cobrancas" },
-      { label: "Fluxo Projetado (30d)", value: fluxoProjetado30, format: "currency", deltaPct: null, deltaGoodWhenUp: null, danger: fluxoProjetado30 < 0, icon: Waves, href: "/app/financeiro/fluxo-caixa" },
+      { label: "Vencido (Inadimplência)", value: vencidoReceber.reduce((s, f) => s + f.value, 0), format: "currency", count: vencidoReceber.length, deltaPct: null, deltaGoodWhenUp: null, danger: vencidoReceber.length > 0, icon: AlertTriangle, href: "/app/financeiro/inadimplencia" },
+      { label: "Fluxo Projetado (30d)", value: fluxoProjetado30, format: "currency", deltaPct: null, deltaGoodWhenUp: null, danger: fluxoProjetado30 < 0, icon: Waves, href: "/app/financeiro/projecao" },
     ];
   }, [financeEntries, contracts]);
 
@@ -183,7 +167,7 @@ export default function FinanceiroVisaoGeral() {
       alertas.push({ tone: "danger", href: "/app/financeiro/pagar", text: `${vencidasPagar.length} conta(s) a pagar vencida(s), somando ${formatCurrency(vencidasPagar.reduce((s, f) => s + f.value, 0))}.` });
     }
     if (vencidasReceber.length > 0) {
-      alertas.push({ tone: "danger", href: "/app/financeiro/cobrancas", text: `${vencidasReceber.length} cobrança(s) vencida(s), somando ${formatCurrency(vencidasReceber.reduce((s, f) => s + f.value, 0))}.` });
+      alertas.push({ tone: "danger", href: "/app/financeiro/inadimplencia", text: `${vencidasReceber.length} cobrança(s) vencida(s), somando ${formatCurrency(vencidasReceber.reduce((s, f) => s + f.value, 0))}.` });
     }
     if (vencendoEm3.length > 0) {
       alertas.push({ tone: "warning", href: "/app/financeiro/transacoes", text: `${formatCurrency(vencendoEm3.reduce((s, f) => s + f.value, 0))} em lançamentos vencem nos próximos 3 dias.` });

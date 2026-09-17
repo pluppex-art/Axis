@@ -53,6 +53,10 @@ import FinanceiroCobrancas from "./pages/finance/FinanceiroCobrancas";
 import FinanceiroConciliacao from "./pages/finance/FinanceiroConciliacao";
 import FinanceiroCentrosCusto from "./pages/finance/FinanceiroCentrosCusto";
 import FinanceiroDRE from "./pages/finance/FinanceiroDRE";
+import FinanceiroInadimplencia from "./pages/finance/FinanceiroInadimplencia";
+import FinanceiroMRR from "./pages/finance/FinanceiroMRR";
+import FinanceiroProjecao from "./pages/finance/FinanceiroProjecao";
+import FinanceiroRelatorios from "./pages/finance/FinanceiroRelatorios";
 import Indicacoes from "./pages/finance/Indicacoes";
 
 import Calendario from "./pages/agenda/Calendario";
@@ -285,6 +289,10 @@ function AppContent() {
             <Route path="conciliacao" element={<FinanceiroConciliacao />} />
             <Route path="centros-custo" element={<FinanceiroCentrosCusto />} />
             <Route path="dre" element={<FinanceiroDRE />} />
+            <Route path="inadimplencia" element={<FinanceiroInadimplencia />} />
+            <Route path="mrr" element={<FinanceiroMRR />} />
+            <Route path="projecao" element={<FinanceiroProjecao />} />
+            <Route path="relatorios" element={<FinanceiroRelatorios />} />
             <Route path="indicacoes" element={<Indicacoes />} />
             <Route path="faturas" element={<Contracts />} />
             <Route path="categorias" element={<SettingsGenericForm />} />
