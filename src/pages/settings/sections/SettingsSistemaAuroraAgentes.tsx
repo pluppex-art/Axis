@@ -105,9 +105,9 @@ export function ConfigSistemaAuroraAgentes() {
     <div className="max-w-3xl space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
             <Bot className="w-5 h-5 text-violet-400" /> Agentes vinculados à Aurora
-          </h1>
+          </h2>
           <p className="text-sm text-slate-400 mt-0.5">
             Cada agente pode ser ativado ou desativado — a Aurora não age em nome de um agente inativo quando ele é citado diretamente na conversa.
           </p>
@@ -120,7 +120,7 @@ export function ConfigSistemaAuroraAgentes() {
             type="button"
             onClick={() => setEditing({ name: "", role: "", description: "" })}
             size="sm"
-            className="bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/30 font-bold uppercase tracking-wider"
+            className="bg-violet-600 hover:bg-violet-500 text-white border border-violet-600 font-bold uppercase tracking-wider"
           >
             <Plus className="w-3.5 h-3.5" /> Novo Agente
           </Button>

@@ -54,15 +54,25 @@ function daysLeftInCycle(): number {
   return lastDay - now.getDate();
 }
 
-function formatTokensFull(n: number): string {
+function formatFull(n: number): string {
   return n.toLocaleString("pt-BR");
 }
 
+// Todo plano vende um pacote fixo de 10 mil créditos por ciclo — o número de
+// tokens por trás (tenant_token_limits.monthly_limit) varia por plano, mas o
+// cliente nunca vê "tokens" na tela, só créditos. Os créditos são sempre
+// proporcionais ao % de consumo real (mesma base que já trava a Aurora no
+// backend), então não existe conversão fixa tokens→créditos por plano: é
+// sempre "% consumido do ciclo" aplicado sobre os 10 mil créditos do pacote.
+const CREDITS_PER_CYCLE = 10000;
+
 /**
- * Uso de tokens da Aurora no ciclo atual, "igual da Claude" (pedido do Gustavo) — lê direto do
- * Supabase (tenant_token_limits + a view tenant_token_usage_current_month), RLS-escopado ao
- * tenant logado, mesmo dado que o gate de bloqueio em AURORA CORE (n8n) usa pra decidir se
- * bloqueia a Aurora neste ciclo. Ver memória gtech_aurora_token_limiter.
+ * Consumo de créditos da Aurora no ciclo atual, "igual da Claude" (pedido do Gustavo) — lê
+ * direto do Supabase (tenant_token_limits + a view tenant_token_usage_current_month),
+ * RLS-escopado ao tenant logado, mesmo dado que o gate de bloqueio em AURORA CORE (n8n) usa pra
+ * decidir se bloqueia a Aurora neste ciclo. Ver memória gtech_aurora_token_limiter. A conversão
+ * pra "créditos" (unidade comercial vendida ao cliente) é só de exibição — o limite e o gate
+ * real continuam em tokens por trás.
  */
 export function ConfigSistemaAuroraUso() {
   const { usage, loading, refresh } = useAuroraTokenUsage();
@@ -76,6 +86,8 @@ export function ConfigSistemaAuroraUso() {
   };
 
   const percent = usage?.percentUsed ?? 0;
+  const creditsUsed = Math.round((percent / 100) * CREDITS_PER_CYCLE);
+  const creditsLeft = Math.max(0, CREDITS_PER_CYCLE - creditsUsed);
   const barColor = usage?.limitReached ? "bg-rose-500" : percent >= 90 ? "bg-amber-500" : "bg-violet-500";
   const textColor = usage?.limitReached ? "text-rose-400" : percent >= 90 ? "text-amber-400" : "text-violet-400";
 
@@ -83,9 +95,9 @@ export function ConfigSistemaAuroraUso() {
     <div className="max-w-3xl space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Uso de Tokens da Aurora</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Aurora — Consumo & Agentes</h1>
           <p className="text-sm text-slate-400">
-            Consumo de IA de {activeTenantName ?? "sua empresa"} no ciclo mensal atual — mesmo limite que controla o bloqueio automático da Aurora.
+            Consumo de IA de {activeTenantName ?? "sua empresa"} no ciclo mensal atual e os agentes vinculados à Aurora.
           </p>
         </div>
         <Button
@@ -93,7 +105,7 @@ export function ConfigSistemaAuroraUso() {
           onClick={handleRefresh}
           disabled={refreshing}
           size="sm"
-          className="bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/30 font-bold uppercase tracking-wider shrink-0"
+          className="bg-violet-600 hover:bg-violet-500 text-white border border-violet-600 font-bold uppercase tracking-wider shrink-0"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
           Atualizar
@@ -107,7 +119,7 @@ export function ConfigSistemaAuroraUso() {
         </h3>
 
         {loading ? (
-          <p className="text-xs text-slate-500">Carregando uso de tokens...</p>
+          <p className="text-xs text-slate-500">Carregando consumo...</p>
         ) : !usage || usage.tokensLimit === null ? (
           <p className="text-xs text-slate-500">
             Nenhum limite configurado para este tenant ainda — a Aurora está liberada sem restrição de consumo.
@@ -118,7 +130,7 @@ export function ConfigSistemaAuroraUso() {
               <div className="flex items-baseline justify-between">
                 <span className={`text-3xl font-black tabular-nums ${textColor}`}>{percent.toFixed(1)}%</span>
                 <span className="text-xs text-slate-400 tabular-nums">
-                  {formatTokensFull(usage.tokensUsed)} / {formatTokensFull(usage.tokensLimit)} tokens
+                  {formatFull(creditsUsed)} / {formatFull(CREDITS_PER_CYCLE)} créditos
                 </span>
               </div>
               <div className="h-2.5 w-full rounded-full bg-white/[0.06] overflow-hidden">
@@ -151,7 +163,7 @@ export function ConfigSistemaAuroraUso() {
               </div>
               <div className="bg-[var(--color-surface)] border border-white/5 p-3 rounded-xl space-y-0.5">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Restam no mês</p>
-                <p className="font-bold text-white">{formatTokensFull(Math.max(0, usage.tokensLimit - usage.tokensUsed))}</p>
+                <p className="font-bold text-white">{formatFull(creditsLeft)} créditos</p>
               </div>
               <div className="bg-[var(--color-surface)] border border-white/5 p-3 rounded-xl space-y-0.5">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Renova em</p>
