@@ -91,9 +91,11 @@ export function ConfigSistemaAuroraUso() {
         <Button
           type="button"
           onClick={handleRefresh}
-          className="bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold uppercase text-[10px] py-2 px-3 rounded-xl shrink-0"
+          disabled={refreshing}
+          size="sm"
+          className="bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/30 font-bold uppercase tracking-wider shrink-0"
         >
-          <RefreshCw className={`w-3 h-3 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
           Atualizar
         </Button>
       </div>
