@@ -410,6 +410,7 @@ export function ProductsSection({
       preco_unitario: number;
       precoUnitario: number;
       billing_type: 'recurring' | 'one_time';
+      contract_months: number | null;
     }> = [];
 
     linkedItems.forEach((p) => {
@@ -422,6 +423,13 @@ export function ProductsSection({
           preco_unitario: p.price,
           precoUnitario: p.price,
           billing_type: 'recurring',
+          // Prazo REALMENTE fechado nesta venda (pode ter sido negociado
+          // diferente do padrão do catálogo, ex.: 4 meses em vez dos 12 padrão
+          // de uma licença, com pagamento adiantado) — grava explícito no item
+          // em vez de só embutir no texto, senão o cálculo de data de término
+          // do contrato (Propostas.tsx > syncAcceptedProposal) não tem como
+          // saber o prazo real dessa venda específica depois.
+          contract_months: p.contractMonths,
         });
       } else {
         items.push({
@@ -432,6 +440,7 @@ export function ProductsSection({
           preco_unitario: p.price,
           precoUnitario: p.price,
           billing_type: 'one_time',
+          contract_months: null,
         });
       }
 
@@ -444,6 +453,7 @@ export function ProductsSection({
           preco_unitario: p.implFee,
           precoUnitario: p.implFee,
           billing_type: 'one_time',
+          contract_months: null,
         });
       }
     });
@@ -483,6 +493,7 @@ export function ProductsSection({
           quantidade: p.quantidade,
           precoUnitario: p.precoUnitario,
           billingType: p.billing_type,
+          contractMonths: p.contract_months,
         })),
       });
 

@@ -251,7 +251,7 @@ export interface DataContextType {
     tipo?: 'itens' | 'texto' | 'arquivo';
     conteudoTexto?: string | null;
     linkPdf?: string | null;
-    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time' }>;
+    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null }>;
   }) => Promise<string>;
   certificates: any[];
   setCertificates: (v: any[]) => void;

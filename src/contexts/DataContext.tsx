@@ -398,11 +398,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     clientes: r.clientes || [],
   });
 
-  const mapProductRow = (p: any) => ({
-    ...p,
-    typeAttributes: p.typeAttributes || p.type_attributes || {},
-    attachments: Array.isArray(p.attachments) ? p.attachments : [],
-  });
+  const mapProductRow = (p: any) => {
+    // `recurrence`/`billingCycle`/`contractMonths`/`hasImplementation` não são
+    // colunas reais (só `is_recurring`/`recurring_period`/`implementation_fee`
+    // existem na tabela) — o formulário de produto grava esses campos dentro
+    // de type_attributes. Sem "desachatar" de volta aqui, eles só existem no
+    // objeto local otimista antes do primeiro reload; depois de recarregar do
+    // Supabase, `product.contractMonths` sumia (existia só como
+    // `product.typeAttributes.contractMonths`), quebrando qualquer leitura que
+    // dependesse do campo direto (ex.: cálculo de data de término do contrato).
+    const ta = p.typeAttributes || p.type_attributes || {};
+    return {
+      ...p,
+      typeAttributes: ta,
+      recurrence: p.recurrence ?? p.is_recurring ?? ta.isRecurring,
+      billingCycle: p.billingCycle ?? ta.billingCycle,
+      contractMonths: p.contractMonths ?? ta.contractMonths,
+      hasImplementation: p.hasImplementation ?? ta.hasImplementation,
+      implementationFee: p.implementationFee ?? p.implementation_fee ?? ta.implementationFee,
+      attachments: Array.isArray(p.attachments) ? p.attachments : [],
+    };
+  };
 
   const fetchLeads = async () => {
     if (!supabase || !tenantId) return;
@@ -1378,6 +1394,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // `billingCycle` do formulário de produto é em português pra exibição
+  // (Mensal/Trimestral/Semestral/Anual) — a coluna real `recurring_period`
+  // precisa de um valor estável independente de idioma.
+  const billingCycleToRecurringPeriod = (cycle: any): string => {
+    switch (String(cycle || "").toLowerCase()) {
+      case "trimestral": return "quarterly";
+      case "semestral": return "semiannual";
+      case "anual": return "yearly";
+      default: return "monthly";
+    }
+  };
+
   const createCrudHelper = (tableName: string, stateSetter: React.Dispatch<React.SetStateAction<any[]>>, filialAware = false) => {
     return {
       add: async (item: any) => {
@@ -1409,7 +1437,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             const ta = pCopy.type_attributes || {};
             if (ta.isRecurring !== undefined || pCopy.is_recurring !== undefined) {
               pCopy.is_recurring = pCopy.is_recurring ?? !!ta.isRecurring;
-              pCopy.recurring_period = pCopy.is_recurring ? (pCopy.recurring_period ?? 'monthly') : null;
+              pCopy.recurring_period = pCopy.is_recurring ? (pCopy.recurring_period ?? billingCycleToRecurringPeriod(ta.billingCycle)) : null;
             }
             if (ta.implementationFee !== undefined || pCopy.implementation_fee !== undefined) {
               pCopy.implementation_fee = Number(pCopy.implementation_fee ?? ta.implementationFee) || 0;
@@ -1447,7 +1475,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             const ta = safeUpdates.type_attributes || {};
             if (ta.isRecurring !== undefined || safeUpdates.is_recurring !== undefined) {
               safeUpdates.is_recurring = safeUpdates.is_recurring ?? !!ta.isRecurring;
-              safeUpdates.recurring_period = safeUpdates.is_recurring ? (safeUpdates.recurring_period ?? 'monthly') : null;
+              safeUpdates.recurring_period = safeUpdates.is_recurring ? (safeUpdates.recurring_period ?? billingCycleToRecurringPeriod(ta.billingCycle)) : null;
             }
             if (ta.implementationFee !== undefined || safeUpdates.implementation_fee !== undefined) {
               safeUpdates.implementation_fee = Number(safeUpdates.implementation_fee ?? ta.implementationFee) || 0;
@@ -1513,7 +1541,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     tipo?: 'itens' | 'texto' | 'arquivo';
     conteudoTexto?: string | null;
     linkPdf?: string | null;
-    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time' }>;
+    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null }>;
   }) => {
     const proposalId = crypto.randomUUID();
     await proposalCrud.add({
@@ -1540,6 +1568,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         // Sem isso, todo item cai no default 'recurring' da coluna e uma taxa
         // de implantação/setup entra somando no MRR igual a uma mensalidade.
         billing_type: item.billingType || 'recurring',
+        // Prazo REAL fechado nesta venda (pode ser diferente da duração padrão
+        // do catálogo do produto) — usado depois pra calcular a data de
+        // término do contrato com o prazo que foi de fato negociado.
+        contract_months: item.contractMonths ?? null,
       });
     }
     // Sincroniza valor/produtos de volta no lead vinculado — sem isso, o card

@@ -69,7 +69,7 @@ export function LeadCard({
   setSelectedLead, handleTransferToComercial, handleExportIAResume,
   setWebhookModalLead, currentPipeline,
 }: LeadCardProps) {
-  const { products, squads, proposals } = useData();
+  const { products, squads, proposals, proposalItems } = useData();
   const { formatCurrency } = useLocalization();
 
   const isDragging    = draggedLeadId === item.id;
@@ -87,9 +87,21 @@ export function LeadCard({
   // Fallback: quando o lead ainda não tem productIds sincronizado mas já tem
   // uma proposta vinculada (proposals.lead_id), usa o valor dela em vez de
   // mostrar "R$ 0" com uma proposta real (às vezes já aceita) por trás.
-  const linkedProposalValue = (proposals as any[] || [])
+  const latestLeadProposal = (proposals as any[] || [])
     .filter(p => p.lead_id === item.id)
-    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0]?.valor;
+    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+  const linkedProposalValue = latestLeadProposal?.valor;
+  // Prazo de contrato REALMENTE vendido (pode ter sido negociado menor que a
+  // duração padrão do catálogo, ex.: licença de 12 meses fechada por 4 meses
+  // pago adiantado) — vem do item da proposta persistido (contract_months),
+  // não do produto do catálogo, senão o card mostraria o prazo padrão errado.
+  const contractMonths = latestLeadProposal
+    ? (proposalItems as any[] || [])
+        .filter(pi => pi.proposal_id === latestLeadProposal.id)
+        .map(pi => Number(pi.contract_months) || 0)
+        .filter(m => m > 0)
+        .sort((a, b) => b - a)[0]
+    : undefined;
   // `item.value` é a fonte de verdade — soma corretamente múltiplas propostas
   // já realizadas/aceitas pro mesmo lead (mini PDV, aceite de proposta). Somar
   // só o preço atual de catálogo dos produtos vinculados (branch antiga)
@@ -301,7 +313,14 @@ export function LeadCard({
         {/* Footer — value + creation date + idle */}
         <div className="flex items-center justify-between pt-2 border-t border-[var(--color-border-subtle)] gap-1.5">
           <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="font-mono text-xs font-black text-emerald-600 dark:text-emerald-400 leading-none">{displayValue}</span>
+            <span className="font-mono text-xs font-black text-emerald-600 dark:text-emerald-400 leading-none flex items-center gap-1">
+              {displayValue}
+              {!!contractMonths && (
+                <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400" title="Duração do contrato vendida">
+                  {contractMonths}m
+                </span>
+              )}
+            </span>
             {createdLabel && (
               <span className="text-[9px] text-[var(--color-text-faint)] font-medium">{createdLabel}</span>
             )}

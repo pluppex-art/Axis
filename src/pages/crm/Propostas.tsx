@@ -34,6 +34,7 @@ export default function Propostas() {
     addFinanceEntry,
     updateLead,
     leads,
+    products,
     appSettings,
   } = useData();
   const { user, activeTenantName } = useAuth();
@@ -46,6 +47,7 @@ export default function Propostas() {
   const [editPlan, setEditPlan] = useState("");
   const [editMrr, setEditMrr] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [editEndDate, setEditEndDate] = useState("");
   const [contractSearch, setContractSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPropostaModalOpen, setIsPropostaModalOpen] = useState(false);
@@ -113,13 +115,47 @@ export default function Propostas() {
       : (prop.valor || 0);
     const oneTimeTotal = linkedItems.filter((pi: any) => pi.billing_type === 'one_time').reduce((s: number, pi: any) => s + (Number(pi.preco_unitario) || 0) * (Number(pi.quantidade) || 1), 0);
 
+    // `prop.titulo` é só o título genérico da proposta ("Proposta Comercial —
+    // Cliente X"), não o plano/produto vendido — usar isso como "Plano" do
+    // contrato escondia o produto real do catálogo. O plano do contrato passa
+    // a ser os produtos de fato vinculados na proposta (proposal_items.product_name),
+    // caindo no título só quando a proposta não tem itens estruturados (texto/arquivo).
+    const planLabel = linkedItems.length > 0
+      ? [...new Set(linkedItems.map((pi: any) => pi.product_name).filter(Boolean))].join(" + ")
+      : (prop.titulo || "Proposta Comercial");
+
+    // Data de término = assinatura + duração do contrato (em meses). Prioriza
+    // o prazo REALMENTE fechado nesta venda (proposal_items.contract_months —
+    // pode ter sido negociado diferente do padrão do catálogo, ex.: licença de
+    // 12 meses fechada por 4 meses com pagamento adiantado); só cai pro padrão
+    // do produto do catálogo em propostas antigas, criadas antes desse campo
+    // existir. Sem duração em nenhum dos dois lugares, não inventa prazo
+    // nenhum — fica sem data de término (contrato de renovação contínua).
+    const linkedProducts = linkedItems
+      .map((pi: any) => (products as any[] || []).find((p: any) => p.id === pi.product_id))
+      .filter(Boolean);
+    const contractMonths =
+      linkedItems
+        .map((pi: any) => Number(pi.contract_months) || 0)
+        .filter((m: number) => m > 0)
+        .sort((a: number, b: number) => b - a)[0]
+      ?? linkedProducts
+        .map((p: any) => Number(p.contractMonths) || 0)
+        .filter((m: number) => m > 0)
+        .sort((a: number, b: number) => b - a)[0];
+    const signedDate = new Date();
+    const endDate = contractMonths
+      ? new Date(signedDate.getFullYear(), signedDate.getMonth() + contractMonths, signedDate.getDate()).toLocaleDateString("pt-BR")
+      : null;
+
     addContract({
       client: prop.cliente || "Cliente",
-      plan: prop.titulo || "Proposta Comercial",
+      plan: planLabel || prop.titulo || "Proposta Comercial",
       mrr: formatCurrency(recurringTotal),
       totalValue: recurringTotal + oneTimeTotal,
       status: "Ativo",
-      date: new Date().toLocaleDateString("pt-BR"),
+      date: signedDate.toLocaleDateString("pt-BR"),
+      endDate,
       progress: 100,
       proposalId: prop.id,
     }, { silent });
@@ -180,13 +216,14 @@ export default function Propostas() {
     setEditPlan(contract.plan);
     setEditMrr(String(typeof contract.mrr === "number" ? contract.mrr : contract.mrr).replace(/[^\d,.-]/g, ""));
     setEditDate(contract.date || "");
+    setEditEndDate(contract.endDate || "");
   };
 
   const handleSaveEditContract = () => {
     if (!editingContract) return;
     const cleanValue = parseFloat(editMrr.replace(/[^0-9,.]/g, "").replace(",", "."));
     const formattedValue = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(isNaN(cleanValue) ? 0 : cleanValue);
-    updateContract(editingContract.id, { client: editClient, plan: editPlan, mrr: formattedValue, date: editDate });
+    updateContract(editingContract.id, { client: editClient, plan: editPlan, mrr: formattedValue, date: editDate, endDate: editEndDate || null });
     toast.success("Contrato atualizado com sucesso!");
     setEditingContract(null);
   };
@@ -353,6 +390,13 @@ export default function Propostas() {
               type="date"
               value={/^\d{2}\/\d{2}\/\d{4}$/.test(editDate) ? editDate.split("/").reverse().join("-") : editDate}
               onChange={(e) => setEditDate(e.target.value.split("-").reverse().join("/"))}
+            />
+          </FormField>
+          <FormField label="Data de Término (opcional)">
+            <Input
+              type="date"
+              value={/^\d{2}\/\d{2}\/\d{4}$/.test(editEndDate) ? editEndDate.split("/").reverse().join("-") : editEndDate}
+              onChange={(e) => setEditEndDate(e.target.value ? e.target.value.split("-").reverse().join("/") : "")}
             />
           </FormField>
         </div>
