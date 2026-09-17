@@ -1,7 +1,7 @@
 import { Card } from "../../components/ui/card";
 import {
   Download, Calendar, CheckCircle2,
-  Clock, AlertTriangle, Plus, Trash2, X, DollarSign, Pencil, Lock, Repeat
+  Clock, AlertTriangle, Plus, Trash2, DollarSign, Pencil, Lock, Repeat, Layers, User
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
@@ -14,6 +14,9 @@ import { downloadCsv } from "../../lib/csvExport";
 import { useLocalization } from "../../contexts/LocalizationContext";
 
 type Frequencia = "semanal" | "mensal" | "anual";
+type RepeatMode = "none" | "recorrente" | "parcelado";
+
+const PAYMENT_METHODS = ["Pix", "Boleto", "Cartão de Crédito", "Cartão de Débito", "Transferência/TED", "Dinheiro", "Cheque", "Outro"];
 
 function addPeriodo(date: Date, freq: Frequencia, n: number): Date {
   const d = new Date(date);
@@ -21,6 +24,17 @@ function addPeriodo(date: Date, freq: Frequencia, n: number): Date {
   else if (freq === "anual") d.setFullYear(d.getFullYear() + n);
   else d.setMonth(d.getMonth() + n);
   return d;
+}
+
+// Divide o valor total em N parcelas sem perder centavos por arredondamento —
+// a última parcela absorve a diferença (padrão usado por qualquer emissor de
+// carnê/boleto: 100,00 em 3x vira 33,33 + 33,33 + 33,34, nunca 33,33 x 3 =
+// 99,99 sumindo 1 centavo do total).
+function splitInstallments(total: number, count: number): number[] {
+  const cents = Math.round(total * 100);
+  const base = Math.floor(cents / count);
+  const remainder = cents - base * count;
+  return Array.from({ length: count }, (_, i) => (i < count - 1 ? base : base + remainder) / 100);
 }
 
 interface GenericProps {
@@ -36,17 +50,24 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
 
   // New entry form
   const [newDesc, setNewDesc] = useState("");
+  const [newNotes, setNewNotes] = useState("");
   const [newCategory, setNewCategory] = useState("");
+  const [newCounterparty, setNewCounterparty] = useState("");
+  const [newPaymentMethod, setNewPaymentMethod] = useState("");
   const [newValue, setNewValue] = useState("");
   const [newDate, setNewDate] = useState("");
-  const [newIsRecurring, setNewIsRecurring] = useState(false);
+  const [newRepeatMode, setNewRepeatMode] = useState<RepeatMode>("none");
   const [newFrequency, setNewFrequency] = useState<Frequencia>("mensal");
   const [newOcorrencias, setNewOcorrencias] = useState("12");
+  const [newParcelas, setNewParcelas] = useState("2");
 
   // Edit entry form
   const [editingItem, setEditingItem] = useState<(typeof financeEntries)[number] | null>(null);
   const [editDesc, setEditDesc] = useState("");
+  const [editNotes, setEditNotes] = useState("");
   const [editCategory, setEditCategory] = useState("");
+  const [editCounterparty, setEditCounterparty] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState("");
   const [editValue, setEditValue] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editStatus, setEditStatus] = useState<"Pago" | "A Vencer" | "Atrasado">("A Vencer");
@@ -61,47 +82,91 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
     return data.reduce((acc, item) => acc + item.value, 0);
   }, [data]);
 
+  const resetAddForm = () => {
+    setNewDesc("");
+    setNewNotes("");
+    setNewCategory("");
+    setNewCounterparty("");
+    setNewPaymentMethod("");
+    setNewValue("");
+    setNewDate("");
+    setNewRepeatMode("none");
+    setNewFrequency("mensal");
+    setNewOcorrencias("12");
+    setNewParcelas("2");
+  };
+
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDesc || !newValue) return;
 
     const baseDate = newDate ? new Date(newDate + "T12:00:00") : new Date();
-    const ocorrencias = newIsRecurring ? Math.max(1, parseInt(newOcorrencias, 10) || 1) : 1;
-    // Recorrência gera N lançamentos já na criação (um por período), em vez
-    // de só marcar uma flag — assim aparecem de verdade no fluxo de caixa e
-    // nas contas a pagar/receber de cada mês, sem precisar cadastrar de novo
-    // toda vez. Todas compartilham `recurring_group_id` pra serem
-    // identificadas como a mesma recorrência depois.
-    const groupId = newIsRecurring ? crypto.randomUUID() : undefined;
-    for (let i = 0; i < ocorrencias; i++) {
-      const dataOcorrencia = i === 0 ? baseDate : addPeriodo(baseDate, newFrequency, i);
+    const totalValor = parseFloat(newValue) || 0;
+    const baseFields = {
+      description: newDesc,
+      notes: newNotes || null,
+      category: newCategory || "Geral",
+      counterparty: newCounterparty || null,
+      payment_method: newPaymentMethod || null,
+      status: "A Vencer" as const,
+      type: type,
+    };
+
+    if (newRepeatMode === "recorrente") {
+      // Recorrência gera N lançamentos já na criação (um por período), com o
+      // MESMO valor em cada um — assim aparecem de verdade no fluxo de caixa
+      // e nas contas a pagar/receber de cada mês, sem precisar cadastrar de
+      // novo toda vez. Todas compartilham `recurring_group_id`.
+      const ocorrencias = Math.max(1, parseInt(newOcorrencias, 10) || 1);
+      const groupId = crypto.randomUUID();
+      for (let i = 0; i < ocorrencias; i++) {
+        const dataOcorrencia = i === 0 ? baseDate : addPeriodo(baseDate, newFrequency, i);
+        addFinanceEntry({
+          ...baseFields,
+          value: totalValor,
+          date: dataOcorrencia.toLocaleDateString("pt-BR"),
+          is_recurring: true,
+          recurring_frequency: newFrequency,
+          recurring_group_id: groupId,
+        }, { silent: i > 0 });
+      }
+      if (ocorrencias > 1) toast.success(`${ocorrencias} lançamentos recorrentes gerados.`);
+    } else if (newRepeatMode === "parcelado") {
+      // Parcelamento divide o VALOR TOTAL em N partes (diferente de
+      // recorrente, que repete o mesmo valor) — cada parcela vence um
+      // período depois da anterior.
+      const numParcelas = Math.max(2, parseInt(newParcelas, 10) || 2);
+      const valores = splitInstallments(totalValor, numParcelas);
+      const groupId = crypto.randomUUID();
+      valores.forEach((valorParcela, i) => {
+        const dataParcela = i === 0 ? baseDate : addPeriodo(baseDate, newFrequency, i);
+        addFinanceEntry({
+          ...baseFields,
+          value: valorParcela,
+          date: dataParcela.toLocaleDateString("pt-BR"),
+          installment_group_id: groupId,
+          installment_number: i + 1,
+          installment_total: numParcelas,
+        }, { silent: i > 0 });
+      });
+      toast.success(`${numParcelas} parcelas geradas (${formatCurrency(valores[0])} cada, ajustado na última).`);
+    } else {
       addFinanceEntry({
-        description: newDesc,
-        category: newCategory || "Geral",
-        value: parseFloat(newValue),
-        status: "A Vencer",
-        type: type,
-        date: dataOcorrencia.toLocaleDateString("pt-BR"),
-        ...(newIsRecurring ? { is_recurring: true, recurring_frequency: newFrequency, recurring_group_id: groupId } : {}),
-      }, { silent: i > 0 });
+        ...baseFields,
+        value: totalValor,
+        date: baseDate.toLocaleDateString("pt-BR"),
+      });
     }
-    if (newIsRecurring && ocorrencias > 1) toast.success(`${ocorrencias} lançamentos recorrentes gerados.`);
 
     setIsModalOpen(false);
-    setNewDesc("");
-    setNewCategory("");
-    setNewValue("");
-    setNewDate("");
-    setNewIsRecurring(false);
-    setNewFrequency("mensal");
-    setNewOcorrencias("12");
+    resetAddForm();
   };
 
   const handleExport = () => {
     downloadCsv(
       `${type === 'Pagar' ? 'contas_a_pagar' : 'contas_a_receber'}_${Date.now()}.csv`,
-      ["Descrição", "Categoria", "Vencimento", "Status", "Valor"],
-      data.map(item => [item.description, item.category, item.date, item.status, item.value])
+      ["Nome", "Categoria", "Cliente/Fornecedor", "Forma de Pagamento", "Vencimento", "Status", "Valor"],
+      data.map(item => [item.description, item.category, item.counterparty || "", item.payment_method || "", item.date, item.status, item.value])
     );
   };
 
@@ -117,7 +182,10 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
   const openEdit = (item: (typeof data)[number]) => {
     setEditingItem(item);
     setEditDesc(item.description);
+    setEditNotes(item.notes || "");
     setEditCategory(item.category);
+    setEditCounterparty(item.counterparty || "");
+    setEditPaymentMethod(item.payment_method || "");
     setEditValue(String(item.value));
     setEditDate(item.date);
     setEditStatus((item.status as "Pago" | "A Vencer" | "Atrasado") || "A Vencer");
@@ -140,7 +208,10 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
 
     updateFinanceEntry(editingItem.id, {
       description: editDesc,
+      notes: editNotes || null,
       category: editCategory || "Geral",
+      counterparty: editCounterparty || null,
+      payment_method: editPaymentMethod || null,
       value: parseFloat(editValue),
       date: editDate,
       status: editStatus,
@@ -168,6 +239,24 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
     }
   };
 
+  const RepeatBadge = ({ item }: { item: (typeof data)[number] }) => {
+    if (item.is_recurring) {
+      return (
+        <span title={`Recorrente (${item.recurring_frequency})`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25">
+          <Repeat className="w-2.5 h-2.5" /> {item.recurring_frequency}
+        </span>
+      );
+    }
+    if (item.installment_total && item.installment_total > 1) {
+      return (
+        <span title={`Parcela ${item.installment_number} de ${item.installment_total}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+          <Layers className="w-2.5 h-2.5" /> {item.installment_number}/{item.installment_total}
+        </span>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -176,7 +265,7 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
           <p className="text-sm text-[var(--color-text-muted)]">{desc}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
+          <Button
             onClick={() => setIsModalOpen(true)}
             className="h-9 px-4 text-xs font-bold gap-1.5 shadow-xs"
           >
@@ -207,8 +296,10 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
           <table className="w-full text-xs text-left hidden md:table">
             <thead className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-text-muted)] bg-[var(--color-surface-sunken)] border-b border-[var(--color-border-subtle)]">
               <tr>
-                <th className="px-6 py-3.5">Descrição</th>
+                <th className="px-6 py-3.5">Nome</th>
                 <th className="px-6 py-3.5">Categoria</th>
+                <th className="px-6 py-3.5">Cliente/Fornecedor</th>
+                <th className="px-6 py-3.5">Pagamento</th>
                 <th className="px-6 py-3.5">Vencimento</th>
                 <th className="px-6 py-3.5">Status</th>
                 <th className="px-6 py-3.5 text-right">Valor</th>
@@ -218,7 +309,7 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
             <tbody className="divide-y divide-[var(--color-border-subtle)]">
               {data.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-[var(--color-text-muted)]">
+                  <td colSpan={8} className="px-6 py-12 text-center text-[var(--color-text-muted)]">
                     Nenhum lançamento encontrado para este período.
                   </td>
                 </tr>
@@ -228,14 +319,15 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                     <td className="px-6 py-4 font-bold text-[var(--color-text-primary)]">
                       <span className="inline-flex items-center gap-1.5">
                         {item.description}
-                        {item.is_recurring && (
-                          <span title={`Recorrente (${item.recurring_frequency})`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25">
-                            <Repeat className="w-2.5 h-2.5" /> {item.recurring_frequency}
-                          </span>
-                        )}
+                        <RepeatBadge item={item} />
                       </span>
+                      {item.notes && (
+                        <p className="text-[10px] font-normal text-[var(--color-text-faint)] mt-0.5 max-w-[220px] truncate" title={item.notes}>{item.notes}</p>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-[var(--color-text-muted)]">{item.category}</td>
+                    <td className="px-6 py-4 text-[var(--color-text-muted)]">{item.counterparty || "—"}</td>
+                    <td className="px-6 py-4 text-[var(--color-text-muted)]">{item.payment_method || "—"}</td>
                     <td className="px-6 py-4 text-[var(--color-text-muted)] font-mono">{item.date}</td>
                     <td className="px-6 py-4">
                       <span
@@ -276,7 +368,7 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
             </tbody>
             <tfoot className="bg-[var(--color-surface-sunken)] border-t border-[var(--color-border-subtle)] font-bold">
               <tr>
-                <td colSpan={4} className="px-6 py-4 text-[var(--color-text-muted)] text-right uppercase tracking-wider text-[10px]">Total:</td>
+                <td colSpan={6} className="px-6 py-4 text-[var(--color-text-muted)] text-right uppercase tracking-wider text-[10px]">Total:</td>
                 <td className={`px-6 py-4 font-mono font-bold text-sm text-right ${type === 'Pagar' ? 'text-rose-500' : 'text-emerald-500'}`}>
                   {formatCurrency(totalValue)}
                 </td>
@@ -310,16 +402,17 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                 <div>
                   <p className="font-bold text-[var(--color-text-primary)] text-xs mb-1 pr-12 flex items-center gap-1.5 flex-wrap">
                     {item.description}
-                    {item.is_recurring && (
-                      <span title={`Recorrente (${item.recurring_frequency})`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25">
-                        <Repeat className="w-2.5 h-2.5" /> {item.recurring_frequency}
-                      </span>
-                    )}
+                    <RepeatBadge item={item} />
                   </p>
-                  <div className="flex items-center gap-2">
+                  {item.notes && <p className="text-[10px] text-[var(--color-text-faint)] mb-1">{item.notes}</p>}
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase">{item.category}</span>
                     <span className="text-[10px] text-[var(--color-text-faint)] font-mono">{item.date}</span>
+                    {item.payment_method && <span className="text-[10px] text-[var(--color-text-faint)]">· {item.payment_method}</span>}
                   </div>
+                  {item.counterparty && (
+                    <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 flex items-center gap-1"><User className="w-2.5 h-2.5" /> {item.counterparty}</p>
+                  )}
                 </div>
                 <div className="flex items-center justify-between border-t border-[var(--color-border-subtle)] pt-2.5">
                   <span
@@ -343,14 +436,14 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
       {/* Creation Modal */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); resetAddForm(); }}
         title={type === 'Pagar' ? 'Novo Gasto / Despesa' : 'Novo Recebimento / Receita'}
         description="Registre um lançamento financeiro no sistema com classificação de categoria e vencimento."
         maxWidth="max-w-lg"
       >
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
-            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Descrição do Lançamento *</label>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Nome do Lançamento *</label>
             <input
               type="text"
               required
@@ -362,19 +455,56 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
           </div>
 
           <div>
-            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Categoria Financeira</label>
-            <input
-              type="text"
-              placeholder="Ex: Infraestrutura, Operacional, Marketing..."
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Descrição / Observações</label>
+            <textarea
+              rows={2}
+              placeholder="Detalhes adicionais deste lançamento (opcional)"
+              value={newNotes}
+              onChange={(e) => setNewNotes(e.target.value)}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] resize-none"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Valor (R$) *</label>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Categoria Financeira</label>
+              <input
+                type="text"
+                placeholder="Ex: Infraestrutura, Marketing..."
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">{type === 'Pagar' ? 'Fornecedor' : 'Cliente'}</label>
+              <input
+                type="text"
+                placeholder={type === 'Pagar' ? 'Ex: AWS, Fornecedor X' : 'Ex: Nome do cliente'}
+                value={newCounterparty}
+                onChange={(e) => setNewCounterparty(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Forma de {type === 'Pagar' ? 'Pagamento' : 'Recebimento'}</label>
+            <select
+              value={newPaymentMethod}
+              onChange={(e) => setNewPaymentMethod(e.target.value)}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+            >
+              <option value="">Não informado</option>
+              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">
+                {newRepeatMode === "parcelado" ? "Valor Total (R$) *" : "Valor (R$) *"}
+              </label>
               <input
                 type="number"
                 required
@@ -387,7 +517,9 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
             </div>
 
             <div>
-              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Data de Vencimento</label>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">
+                {newRepeatMode === "none" ? "Data de Vencimento" : "1º Vencimento"}
+              </label>
               <input
                 type="date"
                 value={newDate}
@@ -398,13 +530,32 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
           </div>
 
           <div className="bg-[var(--color-surface-sunken)]/60 border border-[var(--color-border-subtle)] rounded-[var(--radius-control)] p-3.5 space-y-3">
-            <Switch
-              checked={newIsRecurring}
-              onCheckedChange={setNewIsRecurring}
-              label="Lançamento recorrente?"
-              description="Gera automaticamente as próximas ocorrências neste mesmo cadastro."
-            />
-            {newIsRecurring && (
+            <label className="text-xs font-bold text-[var(--color-text-muted)] block">Tipo de lançamento</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setNewRepeatMode("none")}
+                className={`flex flex-col items-center gap-1 py-2.5 rounded-[var(--radius-control)] border text-[10px] font-bold uppercase transition-colors cursor-pointer ${newRepeatMode === "none" ? "bg-[var(--color-primary-blue)]/10 border-[var(--color-primary-blue)]/40 text-[var(--color-primary-blue)]" : "bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"}`}
+              >
+                <DollarSign className="w-3.5 h-3.5" /> Único
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewRepeatMode("recorrente")}
+                className={`flex flex-col items-center gap-1 py-2.5 rounded-[var(--radius-control)] border text-[10px] font-bold uppercase transition-colors cursor-pointer ${newRepeatMode === "recorrente" ? "bg-violet-500/10 border-violet-500/40 text-violet-500" : "bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"}`}
+              >
+                <Repeat className="w-3.5 h-3.5" /> Recorrente
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewRepeatMode("parcelado")}
+                className={`flex flex-col items-center gap-1 py-2.5 rounded-[var(--radius-control)] border text-[10px] font-bold uppercase transition-colors cursor-pointer ${newRepeatMode === "parcelado" ? "bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400" : "bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"}`}
+              >
+                <Layers className="w-3.5 h-3.5" /> Parcelado
+              </button>
+            </div>
+
+            {newRepeatMode === "recorrente" && (
               <div className="grid grid-cols-2 gap-4 pt-1">
                 <div>
                   <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Frequência</label>
@@ -431,13 +582,49 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                 </div>
               </div>
             )}
+
+            {newRepeatMode === "parcelado" && (
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <div>
+                  <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Número de Parcelas</label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={60}
+                    value={newParcelas}
+                    onChange={(e) => setNewParcelas(e.target.value)}
+                    className="w-full bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Intervalo entre parcelas</label>
+                  <select
+                    value={newFrequency}
+                    onChange={(e) => setNewFrequency(e.target.value as Frequencia)}
+                    className="w-full bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+                  >
+                    <option value="semanal">Semanal</option>
+                    <option value="mensal">Mensal</option>
+                    <option value="anual">Anual</option>
+                  </select>
+                </div>
+                {newValue && (
+                  <p className="col-span-2 text-[10px] text-[var(--color-text-muted)]">
+                    {Math.max(2, parseInt(newParcelas, 10) || 2)}x de{" "}
+                    <span className="font-mono font-bold text-[var(--color-text-primary)]">
+                      {formatCurrency(splitInstallments(parseFloat(newValue) || 0, Math.max(2, parseInt(newParcelas, 10) || 2))[0])}
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-[var(--color-border-subtle)]">
             <Button
               type="button"
               variant="outline"
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => { setIsModalOpen(false); resetAddForm(); }}
               className="h-9 px-4 text-xs font-bold border-[var(--color-border-default)]"
             >
               Cancelar
@@ -466,8 +653,13 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
               <Repeat className="w-2.5 h-2.5" /> Faz parte de uma recorrência {editingItem.recurring_frequency} — editar aqui só afeta esta ocorrência.
             </div>
           )}
+          {editingItem?.installment_group_id && (
+            <div className="inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+              <Layers className="w-2.5 h-2.5" /> Parcela {editingItem.installment_number} de {editingItem.installment_total} — editar aqui só afeta esta parcela.
+            </div>
+          )}
           <div>
-            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Descrição do Lançamento *</label>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Nome do Lançamento *</label>
             <input
               type="text"
               required
@@ -478,13 +670,46 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
           </div>
 
           <div>
-            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Categoria Financeira</label>
-            <input
-              type="text"
-              value={editCategory}
-              onChange={(e) => setEditCategory(e.target.value)}
-              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Descrição / Observações</label>
+            <textarea
+              rows={2}
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] resize-none"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Categoria Financeira</label>
+              <input
+                type="text"
+                value={editCategory}
+                onChange={(e) => setEditCategory(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">{type === 'Pagar' ? 'Fornecedor' : 'Cliente'}</label>
+              <input
+                type="text"
+                value={editCounterparty}
+                onChange={(e) => setEditCounterparty(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Forma de {type === 'Pagar' ? 'Pagamento' : 'Recebimento'}</label>
+            <select
+              value={editPaymentMethod}
+              onChange={(e) => setEditPaymentMethod(e.target.value)}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+            >
+              <option value="">Não informado</option>
+              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

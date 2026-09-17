@@ -349,6 +349,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       status: r.status,
       date,
       endDate,
+      description: r.description ?? null,
       progress: 100,
       proposalId: r.proposal_id ?? null,
       cancelledAt: r.cancelled_at ?? null,
@@ -1258,6 +1259,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         proposal_id: contract.proposalId ?? null,
         ...(signedDate ? { signed_date: signedDate } : {}),
         end_date: endDate,
+        description: contract.description ?? null,
         notes: `Cliente: ${contract.client} | Plano: ${contract.plan}`,
       });
       if (error) {
@@ -1301,6 +1303,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         ...(willCancelNow ? { cancelled_at: updates.cancelledAt } : {}),
         ...(signedDate ? { signed_date: signedDate } : {}),
         end_date: endDate,
+        description: merged.description ?? null,
         notes: `Cliente: ${merged.client} | Plano: ${merged.plan}`,
       }).eq('id', id);
       if (error) {
@@ -1727,6 +1730,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (planLabel && planLabel !== existingContract.plan) updates.plan = planLabel;
       if (backfillEndDate && backfillEndDate !== existingContract.endDate) updates.endDate = backfillEndDate;
       if (!existingContract.proposalId) updates.proposalId = prop.id;
+      // Descrição = título original da proposta ("Proposta Comercial — Cliente
+      // X") — separado do plano (produto do catálogo) desde a correção acima.
+      if (prop.titulo && prop.titulo !== existingContract.description) updates.description = prop.titulo;
       if (Object.keys(updates).length > 0) updateContract(existingContract.id, updates, { silent: true });
       return false;
     }
@@ -1739,6 +1745,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     addContract({
       client: prop.cliente || "Cliente",
       plan: planLabel || prop.titulo || "Proposta Comercial",
+      description: prop.titulo || null,
       mrr: formatCurrency(recurringTotal),
       totalValue: recurringTotal + oneTimeTotal,
       status: "Ativo",

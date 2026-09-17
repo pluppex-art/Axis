@@ -16,6 +16,7 @@ interface Contract {
   id: string;
   client: string;
   plan: string;
+  description?: string | null;
   mrr: string | number;
   status: string;
   date: string;
@@ -78,6 +79,7 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
             <TableRow>
               <TableHead>Cliente</TableHead>
               <TableHead>Plano</TableHead>
+              <TableHead>Descrição</TableHead>
               <TableHead>MRR</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Assinatura</TableHead>
@@ -97,6 +99,9 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
                   </div>
                 </TableCell>
                 <TableCell className="font-medium text-[var(--color-text-muted)]">{contract.plan}</TableCell>
+                <TableCell className="text-[var(--color-text-muted)] text-xs max-w-[220px] truncate" title={contract.description || undefined}>
+                  {contract.description || "—"}
+                </TableCell>
                 <TableCell className="font-mono font-medium text-success">{contract.mrr}</TableCell>
                 <TableCell>
                   <Badge variant={statusBadgeVariant(contract.status)}>{contract.status}</Badge>

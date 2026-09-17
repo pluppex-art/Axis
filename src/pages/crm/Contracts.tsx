@@ -26,6 +26,7 @@ const contractSchema = z.object({
   }, "Formato de valor inválido. Use formato monetário, ex: 1500,00"),
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Insira uma data válida"),
   dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Insira uma data válida").optional().or(z.literal("")),
+  descricao: z.string().optional(),
 });
 type ContractFormData = z.infer<typeof contractSchema>;
 
@@ -49,10 +50,10 @@ export default function Contracts() {
     const cleanValue = parseFloat(data.valor.replace(/[^0-9,.]/g, "").replace(",", "."));
     const formattedValue = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(cleanValue);
     if (isEditing && editingContract) {
-      updateContract(editingContract.id, { client: data.cliente, plan: data.plano, mrr: formattedValue, date: formattedData, endDate: formattedDataFim });
+      updateContract(editingContract.id, { client: data.cliente, plan: data.plano, description: data.descricao || null, mrr: formattedValue, date: formattedData, endDate: formattedDataFim });
       toast.success("Contrato atualizado com sucesso!");
     } else {
-      addContract({ client: data.cliente, plan: data.plano, mrr: formattedValue, status: "Ativo", date: formattedData, endDate: formattedDataFim, progress: 100 });
+      addContract({ client: data.cliente, plan: data.plano, description: data.descricao || null, mrr: formattedValue, status: "Ativo", date: formattedData, endDate: formattedDataFim, progress: 100 });
       toast.success("Contrato criado com sucesso!");
     }
     reset();
@@ -72,6 +73,7 @@ export default function Contracts() {
       valor: String(typeof contract.mrr === "number" ? contract.mrr : contract.mrr).replace(/[^\d,.-]/g, ""),
       data: dd && mm && yyyy ? `${yyyy}-${mm}-${dd}` : "",
       dataFim: ddFim && mmFim && yyyyFim ? `${yyyyFim}-${mmFim}-${ddFim}` : "",
+      descricao: contract.description || "",
     });
     setIsModalOpen(true);
   };
@@ -171,6 +173,9 @@ export default function Contracts() {
               <option value="Enterprise" />
               <option value="Consultoria Avulsa" />
             </datalist>
+          </FormField>
+          <FormField label="Descrição (opcional)" error={errors.descricao?.message}>
+            <Input type="text" {...register("descricao")} placeholder="Ex: Proposta Comercial — Nome do Cliente" />
           </FormField>
           <FormField label="Valor (MRR)" error={errors.valor?.message}>
             <Input type="text" {...register("valor")} placeholder="Ex: 1500,00" />

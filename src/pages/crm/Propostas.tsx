@@ -39,6 +39,7 @@ export default function Propostas() {
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [editClient, setEditClient] = useState("");
   const [editPlan, setEditPlan] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [editMrr, setEditMrr] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editEndDate, setEditEndDate] = useState("");
@@ -83,6 +84,7 @@ export default function Propostas() {
     setEditingContract(contract);
     setEditClient(contract.client);
     setEditPlan(contract.plan);
+    setEditDescription(contract.description || "");
     setEditMrr(String(typeof contract.mrr === "number" ? contract.mrr : contract.mrr).replace(/[^\d,.-]/g, ""));
     setEditDate(contract.date || "");
     setEditEndDate(contract.endDate || "");
@@ -92,7 +94,7 @@ export default function Propostas() {
     if (!editingContract) return;
     const cleanValue = parseFloat(editMrr.replace(/[^0-9,.]/g, "").replace(",", "."));
     const formattedValue = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(isNaN(cleanValue) ? 0 : cleanValue);
-    updateContract(editingContract.id, { client: editClient, plan: editPlan, mrr: formattedValue, date: editDate, endDate: editEndDate || null });
+    updateContract(editingContract.id, { client: editClient, plan: editPlan, description: editDescription || null, mrr: formattedValue, date: editDate, endDate: editEndDate || null });
     toast.success("Contrato atualizado com sucesso!");
     setEditingContract(null);
   };
@@ -250,6 +252,9 @@ export default function Propostas() {
           </FormField>
           <FormField label="Plano Acordado">
             <Input value={editPlan} onChange={(e) => setEditPlan(e.target.value)} />
+          </FormField>
+          <FormField label="Descrição (opcional)">
+            <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Ex: Proposta Comercial — Nome do Cliente" />
           </FormField>
           <FormField label="Valor (MRR)">
             <Input value={editMrr} onChange={(e) => setEditMrr(e.target.value)} placeholder="Ex: 1500,00" />

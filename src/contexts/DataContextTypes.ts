@@ -33,6 +33,7 @@ export interface GlobalWebhook {
 
 export interface FinanceEntry {
   id: string;
+  /** Nome curto do lançamento (título) — o que aparece na lista/cards. */
   description: string;
   category: string;
   status: 'Pago' | 'A Vencer' | 'Atrasado';
@@ -44,6 +45,19 @@ export interface FinanceEntry {
   /** Liga todas as ocorrências geradas pela mesma recorrência — útil pra
    * identificar/gerenciar o grupo depois (ex.: cancelar as futuras). */
   recurring_group_id?: string | null;
+  /** Texto livre com detalhes/observações — separado do `description` (nome
+   * curto) porque nem todo lançamento precisa de um texto longo. */
+  notes?: string | null;
+  /** Forma de pagamento/recebimento (Pix, Boleto, Cartão, etc.). */
+  payment_method?: string | null;
+  /** Cliente ou fornecedor envolvido no lançamento. */
+  counterparty?: string | null;
+  /** Parcelamento: valor total dividido em N lançamentos (diferente de
+   * recorrente — aqui o valor de cada um é uma FRAÇÃO do total, não o total
+   * repetido). Um lançamento nunca é recorrente E parcelado ao mesmo tempo. */
+  installment_group_id?: string | null;
+  installment_number?: number | null;
+  installment_total?: number | null;
 }
 
 export type Appointment = {
