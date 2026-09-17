@@ -19,6 +19,7 @@ interface Contract {
   mrr: string | number;
   status: string;
   date: string;
+  endDate?: string | null;
   progress?: number;
 }
 
@@ -80,6 +81,7 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
               <TableHead>MRR</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Assinatura</TableHead>
+              <TableHead>Término</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -106,6 +108,9 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
                       <div className="h-full bg-[var(--color-primary-blue)]" style={{ width: `${contract.progress ?? 100}%` }} />
                     </div>
                   </div>
+                </TableCell>
+                <TableCell className="text-[var(--color-text-muted)] text-xs">
+                  {contract.endDate || "—"}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

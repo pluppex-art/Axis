@@ -188,6 +188,8 @@ export interface Contract {
    * parcela recorrente — quando omitido, assume igual a `mrr` (contrato sem
    * componente avulso). */
   totalValue?: number;
+  /** Data de término/vigência do contrato (dd/mm/aaaa), opcional. */
+  endDate?: string | null;
 }
 
 export interface LeadActivity {

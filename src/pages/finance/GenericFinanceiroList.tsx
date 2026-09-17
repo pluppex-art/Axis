@@ -50,6 +50,8 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
   const [editValue, setEditValue] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editStatus, setEditStatus] = useState<"Pago" | "A Vencer" | "Atrasado">("A Vencer");
+  const [editIsRecurring, setEditIsRecurring] = useState(false);
+  const [editFrequency, setEditFrequency] = useState<Frequencia>("mensal");
 
   const data = useMemo(() => {
     return financeEntries.filter(f => f.type === type);
@@ -119,6 +121,8 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
     setEditValue(String(item.value));
     setEditDate(item.date);
     setEditStatus((item.status as "Pago" | "A Vencer" | "Atrasado") || "A Vencer");
+    setEditIsRecurring(!!item.is_recurring);
+    setEditFrequency((item.recurring_frequency as Frequencia) || "mensal");
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -140,6 +144,8 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
       value: parseFloat(editValue),
       date: editDate,
       status: editStatus,
+      is_recurring: editIsRecurring,
+      recurring_frequency: editIsRecurring ? editFrequency : null,
     });
     toast.success("Lançamento atualizado.");
     setEditingItem(null);
@@ -455,7 +461,7 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
         maxWidth="max-w-lg"
       >
         <form onSubmit={handleSaveEdit} className="space-y-4">
-          {editingItem?.is_recurring && (
+          {editingItem?.recurring_group_id && (
             <div className="inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25">
               <Repeat className="w-2.5 h-2.5" /> Faz parte de uma recorrência {editingItem.recurring_frequency} — editar aqui só afeta esta ocorrência.
             </div>
@@ -504,6 +510,33 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                 className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
               />
             </div>
+          </div>
+
+          <div className="bg-[var(--color-surface-sunken)]/60 border border-[var(--color-border-subtle)] rounded-[var(--radius-control)] p-3.5 space-y-3">
+            <Switch
+              checked={editIsRecurring}
+              onCheckedChange={setEditIsRecurring}
+              label="Lançamento recorrente?"
+              description={
+                editingItem?.recurring_group_id
+                  ? "Esta ocorrência já pertence a uma recorrência gerada na criação."
+                  : "Marca este lançamento como recorrente (não gera novas ocorrências, só identifica este)."
+              }
+            />
+            {editIsRecurring && (
+              <div>
+                <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Frequência</label>
+                <select
+                  value={editFrequency}
+                  onChange={(e) => setEditFrequency(e.target.value as Frequencia)}
+                  className="w-full bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+                >
+                  <option value="semanal">Semanal</option>
+                  <option value="mensal">Mensal</option>
+                  <option value="anual">Anual</option>
+                </select>
+              </div>
+            )}
           </div>
 
           <div>

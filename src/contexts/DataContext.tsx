@@ -339,6 +339,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const plan = notesMatch?.[2] || titleParts[0] || "Contrato";
     const dateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(r.signed_date || "");
     const date = dateMatch ? `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}` : "";
+    const endDateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(r.end_date || "");
+    const endDate = endDateMatch ? `${endDateMatch[3]}/${endDateMatch[2]}/${endDateMatch[1]}` : null;
     return {
       id: r.id,
       client,
@@ -346,6 +348,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       mrr: r.mrr_value ?? r.value ?? 0,
       status: r.status,
       date,
+      endDate,
       progress: 100,
       proposalId: r.proposal_id ?? null,
       cancelledAt: r.cancelled_at ?? null,
@@ -1226,6 +1229,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const totalValue = contract.totalValue !== undefined ? parseCurrencyBR(contract.totalValue) : mrrNumber;
       const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(contract.date);
       const signedDate = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : (/^\d{4}-\d{2}-\d{2}$/.test(contract.date) ? contract.date : null);
+      const endDateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(contract.endDate || "");
+      const endDate = endDateMatch ? `${endDateMatch[3]}-${endDateMatch[2]}-${endDateMatch[1]}` : (/^\d{4}-\d{2}-\d{2}$/.test(contract.endDate || "") ? contract.endDate : null);
       const { error } = await supabase.from('contracts').insert({
         id: newContract.id,
         ...(tenantId ? { tenant_id: tenantId } : {}),
@@ -1236,6 +1241,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         status: contract.status,
         proposal_id: contract.proposalId ?? null,
         ...(signedDate ? { signed_date: signedDate } : {}),
+        end_date: endDate,
         notes: `Cliente: ${contract.client} | Plano: ${contract.plan}`,
       });
       if (error) {
@@ -1266,6 +1272,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const signedDate = dateMatch
         ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`
         : (/^\d{4}-\d{2}-\d{2}$/.test(merged.date || "") ? merged.date : null);
+      const endDateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(merged.endDate || "");
+      const endDate = endDateMatch
+        ? `${endDateMatch[3]}-${endDateMatch[2]}-${endDateMatch[1]}`
+        : (/^\d{4}-\d{2}-\d{2}$/.test(merged.endDate || "") ? merged.endDate : null);
       const { error } = await supabase.from('contracts').update({
         title: `${merged.plan} - ${merged.client}`,
         value: totalValue,
@@ -1274,6 +1284,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         proposal_id: merged.proposalId ?? null,
         ...(willCancelNow ? { cancelled_at: updates.cancelledAt } : {}),
         ...(signedDate ? { signed_date: signedDate } : {}),
+        end_date: endDate,
         notes: `Cliente: ${merged.client} | Plano: ${merged.plan}`,
       }).eq('id', id);
       if (error) {
