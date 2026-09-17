@@ -1,5 +1,6 @@
 import { Card } from "../../../../components/ui/card";
 import { useLocalization } from "../../../../contexts/LocalizationContext";
+import { parseCurrencyBR } from "../../../../lib/utils";
 import { Send, CheckCircle2, ArrowUpRight, FileText } from "lucide-react";
 
 interface Proposta {
@@ -16,13 +17,13 @@ export function PropostasKPIs({ propostas }: { propostas: Proposta[] }) {
   const stats = [
     {
       label: "Aguardando Aceite",
-      value: formatCurrency(propostas.filter(p => p.status === 'Enviada').reduce((acc, c) => acc + (c.valor || 0), 0)),
+      value: formatCurrency(propostas.filter(p => p.status === 'Enviada').reduce((acc, c) => acc + parseCurrencyBR(c.valor), 0)),
       icon: Send,
       color: "text-info",
     },
     {
       label: "Convertidas (Mês)",
-      value: formatCurrency(propostas.filter(p => p.status === 'Aceita').reduce((acc, c) => acc + (c.valor || 0), 0)),
+      value: formatCurrency(propostas.filter(p => p.status === 'Aceita').reduce((acc, c) => acc + parseCurrencyBR(c.valor), 0)),
       icon: CheckCircle2,
       color: "text-success",
     },

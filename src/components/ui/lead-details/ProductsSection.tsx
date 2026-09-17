@@ -94,6 +94,7 @@ export function ProductsSection({
     proposals,
     proposalItems,
     appSettings,
+    leads,
   } = useData();
   const empresaDadosBranding = appSettings?.empresa_dados || {};
   const { formatCurrency } = useLocalization();
@@ -408,6 +409,7 @@ export function ProductsSection({
       quantidade: number;
       preco_unitario: number;
       precoUnitario: number;
+      billing_type: 'recurring' | 'one_time';
     }> = [];
 
     linkedItems.forEach((p) => {
@@ -419,6 +421,7 @@ export function ProductsSection({
           quantidade: p.contractMonths * p.quantity,
           preco_unitario: p.price,
           precoUnitario: p.price,
+          billing_type: 'recurring',
         });
       } else {
         items.push({
@@ -428,6 +431,7 @@ export function ProductsSection({
           quantidade: p.quantity,
           preco_unitario: p.price,
           precoUnitario: p.price,
+          billing_type: 'one_time',
         });
       }
 
@@ -439,6 +443,7 @@ export function ProductsSection({
           quantidade: 1,
           preco_unitario: p.implFee,
           precoUnitario: p.implFee,
+          billing_type: 'one_time',
         });
       }
     });
@@ -477,6 +482,7 @@ export function ProductsSection({
           descricao: p.descricao,
           quantidade: p.quantidade,
           precoUnitario: p.precoUnitario,
+          billingType: p.billing_type,
         })),
       });
 
@@ -499,10 +505,17 @@ export function ProductsSection({
       });
 
       // 3. Atualizar Lead no banco (valor, produtos, status fechado, score 100 e dados do pagamento)
+      // Soma com o valor/produtos já existentes no lead (de uma proposta
+      // anterior já realizada/aceita) em vez de sobrescrever — um novo pedido
+      // no mini PDV pra um cliente que já tinha comprado antes precisa
+      // acumular, não substituir o valor total exibido no card do lead.
       if (leadId && updateLead) {
+        const currentLead = (leads || []).find((l: any) => l.id === leadId);
+        const accumulatedValue = (currentLead ? Number(currentLead.value) || 0 : 0) + finalTotal;
+        const accumulatedProductIds = [...new Set([...(currentLead?.productIds || []), ...linkedProductIds])];
         await updateLead(leadId, {
-          value: finalTotal,
-          productIds: linkedProductIds,
+          value: accumulatedValue,
+          productIds: accumulatedProductIds,
           status: "Fechado",
           scoreIA: 100,
           temperature: "quente",

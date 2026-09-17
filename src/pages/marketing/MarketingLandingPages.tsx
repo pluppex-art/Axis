@@ -55,13 +55,16 @@ export default function MarketingLandingPages() {
   const [clientSelected, setClientSelected] = useState("");
   const [copiedScript, setCopiedScript] = useState(false);
 
-  // Normalize pages with realistic metrics if empty
+  // Métricas reais da página — antes, qualquer valor "falsy" (incluindo um
+  // 0 genuíno) era substituído por um número inventado (`1240 + idx*780`
+  // etc.), fazendo toda landing page sem tráfego real mostrar estatísticas
+  // fabricadas em vez de zero.
   const pages = useMemo(() => {
-    return (rawPages || []).map((p: any, idx: number) => {
-      const views = p.views || Math.floor(1240 + idx * 780);
-      const clicks = p.clicks || Math.floor(views * 0.38);
-      const conversions = p.conversions || Math.floor(clicks * 0.22);
-      const salesVal = p.salesVal || conversions * 850;
+    return (rawPages || []).map((p: any) => {
+      const views = p.views ?? 0;
+      const clicks = p.clicks ?? 0;
+      const conversions = p.conversions ?? 0;
+      const salesVal = p.salesVal ?? 0;
       const rate = views > 0 ? parseFloat(((conversions / views) * 100).toFixed(1)) : 0;
       return {
         ...p,

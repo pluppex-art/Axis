@@ -4,6 +4,7 @@ import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { useAuroraTokenUsage } from "../../../hooks/useAuroraTokenUsage";
 import { useAuth } from "../../../contexts/AuthContext";
+import { ConfigSistemaAuroraAgentes } from "./SettingsSistemaAuroraAgentes";
 
 // Esta tela mostrava um painel inteiro de "backup" que não fazia nada:
 // destino de storage (S3/GCS/SFTP), botão "Criar Snapshot Agora" e um card
@@ -158,6 +159,10 @@ export function ConfigSistemaAuroraUso() {
           </>
         )}
       </Card>
+
+      <div className="pt-4 border-t border-white/10">
+        <ConfigSistemaAuroraAgentes />
+      </div>
     </div>
   );
 }

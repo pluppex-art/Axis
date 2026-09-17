@@ -39,6 +39,11 @@ export interface FinanceEntry {
   value: number;
   type: 'Pagar' | 'Receber';
   date: string;
+  is_recurring?: boolean;
+  recurring_frequency?: 'semanal' | 'mensal' | 'anual' | null;
+  /** Liga todas as ocorrências geradas pela mesma recorrência — útil pra
+   * identificar/gerenciar o grupo depois (ex.: cancelar as futuras). */
+  recurring_group_id?: string | null;
 }
 
 export type Appointment = {
@@ -72,6 +77,22 @@ export type Indicacao = {
   notes?: string | null;
   created_at?: string;
 };
+
+export interface AuroraAgent {
+  id: string;
+  tenant_id?: string;
+  name: string;
+  role?: string;
+  description?: string;
+  active: boolean;
+  workflow?: string;
+  permissions?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+  activated_by?: string | null;
+  deactivated_at?: string | null;
+  last_execution_at?: string | null;
+}
 
 export interface Reuniao {
   id: string;
@@ -113,7 +134,7 @@ export interface DataContextType {
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   addContract: (contract: Omit<Contract, 'id'>, options?: { silent?: boolean }) => void;
-  updateContract: (id: string, updates: Partial<Contract>) => void;
+  updateContract: (id: string, updates: Partial<Contract>, options?: { silent?: boolean }) => void;
   deleteContract: (id: string) => void;
   addNotification: (notification: Omit<Notification, 'id' | 'time' | 'date' | 'read'>, push?: boolean) => void;
   markNotificationAsRead: (id: string) => void;
@@ -230,7 +251,7 @@ export interface DataContextType {
     tipo?: 'itens' | 'texto' | 'arquivo';
     conteudoTexto?: string | null;
     linkPdf?: string | null;
-    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number }>;
+    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time' }>;
   }) => Promise<string>;
   certificates: any[];
   setCertificates: (v: any[]) => void;
@@ -270,6 +291,11 @@ export interface DataContextType {
   addIndicacao: (i: Omit<Indicacao, 'id' | 'created_at'>) => void;
   updateIndicacao: (id: string, updates: Partial<Indicacao>) => void;
   deleteIndicacao: (id: string) => void;
+  auroraAgents: AuroraAgent[];
+  addAuroraAgent: (a: Omit<AuroraAgent, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>) => void;
+  updateAuroraAgent: (id: string, updates: Partial<AuroraAgent>) => void;
+  deleteAuroraAgent: (id: string) => void;
+  toggleAuroraAgent: (id: string) => void;
 }
 
 export const DataContext = createContext<DataContextType | undefined>(undefined);

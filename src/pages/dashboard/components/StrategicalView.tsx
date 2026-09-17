@@ -8,6 +8,7 @@ import { BarChart3, RefreshCw, Target, Trophy, Layers, Zap, Briefcase, ChevronDo
 import { useData } from '../../../contexts/DataContext';
 import { useLocalization } from '../../../contexts/LocalizationContext';
 import { parseCurrencyBR } from '../../../lib/utils';
+import { getMRR } from '../../../lib/revenueMetrics';
 
 interface Squad {
   nome: string;
@@ -49,10 +50,8 @@ export function StrategicalView({
   const totalAlcancado = squads.reduce((s, sq) => s + (sq.faturamentoAlcancado || 0), 0);
   const goalPct = totalMeta > 0 ? Math.min(100, Math.round((totalAlcancado / totalMeta) * 100)) : 0;
 
-  // Compute real MRR from contracts
-  const activeMRR = contracts
-    .filter(c => c.status === 'Ativo')
-    .reduce((sum, c) => sum + parseCurrencyBR(c.mrr), 0);
+  // Compute real MRR from contracts (camada única de métricas)
+  const activeMRR = getMRR(contracts);
 
   const hasSquads = squads.length > 0;
   const hasContracts = contracts.length > 0;

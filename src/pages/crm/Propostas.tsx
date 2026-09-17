@@ -16,7 +16,8 @@ import { PropostasTable } from "./components/Propostas/PropostasTable";
 import { ContractsKPIs } from "./components/Contracts/ContractsKPIs";
 import { ContractsTable } from "./components/Contracts/ContractsTable";
 import { handleDownloadPdf } from "./utils/proposalPdf";
-import { cn, parseCurrencyBR as toNumberMRR } from "../../lib/utils";
+import { cn } from "../../lib/utils";
+import { getMRR } from "../../lib/revenueMetrics";
 import type { Contract } from "../../types";
 
 export default function Propostas() {
@@ -72,49 +73,78 @@ export default function Propostas() {
   // estavam "Aceita" antes dessa sincronização existir, e que por isso
   // ficaram para sempre sem contrato/fatura correspondente.
   const syncAcceptedProposal = (prop: any, { silent = false }: { silent?: boolean } = {}) => {
-    const valorFmt = formatCurrency(prop.valor || 0);
+    const linkedItems = (proposalItems || []).filter((pi: any) => pi.proposal_id === prop.id);
 
-    if (prop.lead_id && updateLead) {
-      const linkedItems = (proposalItems || []).filter((pi: any) => pi.proposal_id === prop.id);
+    // Idempotência real: vínculo estável por proposal_id (trava também no
+    // banco via índice único) em vez de comparar client/plan por texto — uma
+    // proposta ou contrato renomeado depois não quebra mais a checagem e
+    // recria um duplicado. Contratos antigos sem proposal_id (criados antes
+    // dessa coluna existir) ainda caem no fallback por nome, uma única vez.
+    const norm = (s: any) => String(s || "").trim().toLowerCase();
+    const jaExiste = (contracts || []).some((c: any) =>
+      c.proposalId === prop.id ||
+      (!c.proposalId && norm(c.client) === norm(prop.cliente) && norm(c.plan) === norm(prop.titulo))
+    );
+
+    // Soma com o valor já existente no lead (de uma proposta anterior já
+    // realizada/aceita) em vez de sobrescrever — mas só na primeira vez que
+    // esta proposta específica é processada (`!jaExiste`), senão a
+    // reconciliação (que roda de novo a cada mudança de propostas/contracts)
+    // somaria o mesmo valor repetidas vezes.
+    if (!jaExiste && prop.lead_id && updateLead) {
       const productIds = linkedItems.map((pi: any) => pi.product_id).filter(Boolean);
       const lead = (leads || []).find((l: any) => l.id === prop.lead_id);
-      // Só grava se o valor/produtos ainda não batem — chamar updateLead
-      // incondicionalmente a cada render (a reconciliação roda em todo change
-      // de propostas/contracts) reescrevia por cima de qualquer edição feita
-      // pelo usuário direto no lead entre uma sincronização e outra.
-      const sameValue = lead ? Number(lead.value) === Number(prop.valor || 0) : false;
-      const sameProducts = lead
-        ? productIds.length === 0 || JSON.stringify([...(lead.productIds || [])].sort()) === JSON.stringify([...productIds].sort())
-        : false;
-      if (!sameValue || !sameProducts) {
-        updateLead(prop.lead_id, {
-          value: prop.valor || 0,
-          ...(productIds.length > 0 ? { productIds } : {}),
-        });
-      }
+      const newValue = (lead ? Number(lead.value) || 0 : 0) + (prop.valor || 0);
+      const newProductIds = [...new Set([...(lead?.productIds || []), ...productIds])];
+      updateLead(prop.lead_id, {
+        value: newValue,
+        ...(newProductIds.length > 0 ? { productIds: newProductIds } : {}),
+      });
     }
 
-    const norm = (s: any) => String(s || "").trim().toLowerCase();
-    const jaExiste = (contracts || []).some((c: any) => norm(c.client) === norm(prop.cliente) && norm(c.plan) === norm(prop.titulo));
     if (jaExiste) return false;
+
+    // MRR real = só os itens recorrentes da proposta; implantação/setup entra
+    // à parte, não conta como receita recorrente mensal (Fase 2). Sem itens
+    // detalhados (proposta sem produtos, ex.: texto/arquivo), cai tudo como
+    // recorrente — mesmo comportamento de antes.
+    const recurringTotal = linkedItems.length > 0
+      ? linkedItems.filter((pi: any) => pi.billing_type !== 'one_time').reduce((s: number, pi: any) => s + (Number(pi.preco_unitario) || 0) * (Number(pi.quantidade) || 1), 0)
+      : (prop.valor || 0);
+    const oneTimeTotal = linkedItems.filter((pi: any) => pi.billing_type === 'one_time').reduce((s: number, pi: any) => s + (Number(pi.preco_unitario) || 0) * (Number(pi.quantidade) || 1), 0);
 
     addContract({
       client: prop.cliente || "Cliente",
       plan: prop.titulo || "Proposta Comercial",
-      mrr: valorFmt,
+      mrr: formatCurrency(recurringTotal),
+      totalValue: recurringTotal + oneTimeTotal,
       status: "Ativo",
       date: new Date().toLocaleDateString("pt-BR"),
       progress: 100,
+      proposalId: prop.id,
     }, { silent });
 
     addFinanceEntry({
       description: `Contrato: ${prop.titulo} (${prop.cliente})`,
-      category: "Contrato / Vendas",
-      value: prop.valor || 0,
+      category: "Contrato / Recorrente",
+      value: recurringTotal,
       type: "Receber",
       date: new Date().toISOString().slice(0, 10),
       status: "A Vencer",
     }, { silent });
+
+    // Implantação/setup é receita única — lançamento à parte, não recorrente,
+    // pra não poluir relatórios de MRR/receita recorrente com valor avulso.
+    if (oneTimeTotal > 0) {
+      addFinanceEntry({
+        description: `Implantação/Setup: ${prop.titulo} (${prop.cliente})`,
+        category: "Implantação / Setup",
+        value: oneTimeTotal,
+        type: "Receber",
+        date: new Date().toISOString().slice(0, 10),
+        status: "A Vencer",
+      }, { silent });
+    }
 
     if (!silent) toast.success("🎉 Proposta Aceita! Contrato ativado e fatura a receber gerada no financeiro!");
     return true;
@@ -142,7 +172,7 @@ export default function Propostas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propostas, contracts]);
 
-  const totalMRR = (contracts || []).filter((c: any) => c.status !== "Cancelado").reduce((acc: number, curr: any) => acc + toNumberMRR(curr.mrr), 0);
+  const totalMRR = getMRR(contracts || []);
 
   const handleEditContract = (contract: Contract) => {
     setEditingContract(contract);

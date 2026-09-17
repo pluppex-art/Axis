@@ -11,7 +11,7 @@ import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
-import { parseCurrencyBR } from "../../lib/utils";
+import { getMRR } from "../../lib/revenueMetrics";
 import { toast } from "sonner";
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -306,7 +306,7 @@ export default function RelatoriosExecutivos() {
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-400">MRR Contratado</span>
                 <span className="font-bold text-emerald-400">
-                  {fmt(contracts.filter(c => c.status === "Ativo").reduce((s, c) => s + parseCurrencyBR(c.mrr), 0))}
+                  {fmt(getMRR(contracts))}
                 </span>
               </div>
             </div>

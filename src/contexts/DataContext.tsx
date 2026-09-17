@@ -18,7 +18,7 @@ import {
   defaultLeadScoreTriggers,
   defaultProducts
 } from './dataMocks';
-import { DataContext, DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao, Indicacao, useData } from './DataContextTypes';
+import { DataContext, DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao, Indicacao, AuroraAgent, useData } from './DataContextTypes';
 import { apiFetch } from "../lib/apiClient";
 import { parseCurrencyBR } from "../lib/utils";
 import { useLocalization } from "./LocalizationContext";
@@ -347,6 +347,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       status: r.status,
       date,
       progress: 100,
+      proposalId: r.proposal_id ?? null,
+      cancelledAt: r.cancelled_at ?? null,
     };
   };
 
@@ -483,6 +485,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [educationContent, setEducationContent] = useState<any[]>([]);
   const [clienteBase, setClienteBase] = useState<any[]>([]);
   const [indicacoes, setIndicacoes] = useState<Indicacao[]>([]);
+  const [auroraAgents, setAuroraAgents] = useState<AuroraAgent[]>([]);
 
   const products = useMemo(() => filterByFilial(productsRaw), [productsRaw, activeFilialId]);
   const proposals = useMemo(() => filterByFilial(proposalsRaw), [proposalsRaw, activeFilialId]);
@@ -578,6 +581,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_exports' }, () => fetchTableData('scheduled_exports', setScheduledExports))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'education_content' }, () => fetchTableData('education_content', setEducationContent))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'indicacoes' }, () => fetchTableData('indicacoes', setIndicacoes as any))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'aurora_agents' }, () => fetchTableData('aurora_agents', setAuroraAgents as any))
         .subscribe();
     }
 
@@ -603,7 +607,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               productsRes, proposalsRes, proposalItemsRes, turmasRes, studentsRes, colabRes, squadMetasRes, certRes, cargosRes,
               clienteBaseRes, reunioesRes, financialGoalsRes, funisRes, filiaisRes,
               financeCategoriesRes, scheduledExportsRes, educationContentRes,
-              marketingFormsRes, nichosRes, financeCommissionEntriesRes, indicacoesRes, mktAutoRes
+              marketingFormsRes, nichosRes, financeCommissionEntriesRes, indicacoesRes, mktAutoRes, auroraAgentsRes
             ] = await Promise.all([
               supabase.from('leads').select('*').eq('tenant_id', tenantId),
               supabase.from('tasks').select('*').eq('tenant_id', tenantId),
@@ -644,6 +648,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               supabase.from('finance_commission_entries').select('*').eq('tenant_id', tenantId),
               supabase.from('indicacoes').select('*').eq('tenant_id', tenantId),
               supabase.from('marketing_automations').select('*').eq('tenant_id', tenantId),
+              supabase.from('aurora_agents').select('*').eq('tenant_id', tenantId),
             ]);
 
             if (!leadsRes.error && leadsRes.data && leadsRes.data.length > 0) {
@@ -685,6 +690,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             if (!financeCommissionEntriesRes.error && financeCommissionEntriesRes.data) setFinanceCommissionEntries(financeCommissionEntriesRes.data);
             if (!indicacoesRes.error && indicacoesRes.data) setIndicacoes(indicacoesRes.data as Indicacao[]);
             if (!mktAutoRes.error && mktAutoRes.data) setMarketingAutomations(mktAutoRes.data);
+            if (!auroraAgentsRes.error && auroraAgentsRes.data) setAuroraAgents(auroraAgentsRes.data as AuroraAgent[]);
             if (!scheduledExportsRes.error && scheduledExportsRes.data) setScheduledExports(scheduledExportsRes.data);
             if (!educationContentRes.error && educationContentRes.data) setEducationContent(educationContentRes.data);
             if (!marketingFormsRes.error && marketingFormsRes.data) setMarketingForms(marketingFormsRes.data);
@@ -1214,6 +1220,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // já que não existem colunas próprias pra eles. Sem esse remapeamento o insert
       // falhava em 100% dos casos (0 linhas na tabela em produção).
       const mrrNumber = parseCurrencyBR(contract.mrr);
+      // `value` guarda o total do contrato (recorrente + avulso/implantação);
+      // `mrr_value` é só a parcela recorrente — são a mesma coisa apenas
+      // quando o contrato não tem componente avulso (totalValue omitido).
+      const totalValue = contract.totalValue !== undefined ? parseCurrencyBR(contract.totalValue) : mrrNumber;
       const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(contract.date);
       const signedDate = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : (/^\d{4}-\d{2}-\d{2}$/.test(contract.date) ? contract.date : null);
       const { error } = await supabase.from('contracts').insert({
@@ -1221,9 +1231,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         ...(tenantId ? { tenant_id: tenantId } : {}),
         filial_id: newContract.filial_id,
         title: `${contract.plan} - ${contract.client}`,
-        value: mrrNumber,
+        value: totalValue,
         mrr_value: mrrNumber,
         status: contract.status,
+        proposal_id: contract.proposalId ?? null,
         ...(signedDate ? { signed_date: signedDate } : {}),
         notes: `Cliente: ${contract.client} | Plano: ${contract.plan}`,
       });
@@ -1234,24 +1245,34 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateContract = async (id: string, updates: Partial<Contract>) => {
-    setContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  const updateContract = async (id: string, updates: Partial<Contract>, options: { silent?: boolean } = {}) => {
+    // Cancelamento carimba `cancelled_at` automaticamente (uma vez só) — é o
+    // dado que a projeção de receita (getRevenueProjection) usa pra medir
+    // churn real ao longo do tempo; sem isso não dá pra saber quando um
+    // contrato realmente parou de contar como recorrente.
     const current = contracts.find(c => c.id === id);
+    const willCancelNow = updates.status === 'Cancelado' && current?.status !== 'Cancelado' && !current?.cancelledAt;
+    if (willCancelNow) updates = { ...updates, cancelledAt: new Date().toISOString() };
+
+    setContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
     if (!current) return;
     const merged = { ...current, ...updates };
-    toast.success('Contrato atualizado!');
+    if (!options.silent) toast.success('Contrato atualizado!');
     if (supabase) {
       // Mesmo remapeamento do addContract — a tabela real não tem client/plan/mrr/date.
       const mrrNumber = parseCurrencyBR(merged.mrr);
+      const totalValue = merged.totalValue !== undefined ? parseCurrencyBR(merged.totalValue) : mrrNumber;
       const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(merged.date || "");
       const signedDate = dateMatch
         ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`
         : (/^\d{4}-\d{2}-\d{2}$/.test(merged.date || "") ? merged.date : null);
       const { error } = await supabase.from('contracts').update({
         title: `${merged.plan} - ${merged.client}`,
-        value: mrrNumber,
+        value: totalValue,
         mrr_value: mrrNumber,
         status: merged.status,
+        proposal_id: merged.proposalId ?? null,
+        ...(willCancelNow ? { cancelled_at: updates.cancelledAt } : {}),
         ...(signedDate ? { signed_date: signedDate } : {}),
         notes: `Cliente: ${merged.client} | Plano: ${merged.plan}`,
       }).eq('id', id);
@@ -1367,10 +1388,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               'id', 'sku', 'name', 'category', 'type', 'price', 'cost', 'margin', 'commission',
               'active', 'stockMin', 'stockMax', 'currentStock', 'dimensions', 'weight', 'material',
               'description', 'provider', 'isBestSeller', 'tags', 'tenant_id', 'currency',
-              'type_attributes', 'attachments'
+              'type_attributes', 'attachments', 'is_recurring', 'recurring_period', 'implementation_fee'
             ];
             const pCopy: any = { ...stamped };
             if (pCopy.typeAttributes && !pCopy.type_attributes) pCopy.type_attributes = pCopy.typeAttributes;
+            // `is_recurring`/`recurring_period`/`implementation_fee` são colunas reais
+            // (não só jsonb) — sem gravar aqui também, o MRR (que lê a coluna, não o
+            // type_attributes) nunca sabe se o produto é recorrente ou avulso.
+            const ta = pCopy.type_attributes || {};
+            if (ta.isRecurring !== undefined || pCopy.is_recurring !== undefined) {
+              pCopy.is_recurring = pCopy.is_recurring ?? !!ta.isRecurring;
+              pCopy.recurring_period = pCopy.is_recurring ? (pCopy.recurring_period ?? 'monthly') : null;
+            }
+            if (ta.implementationFee !== undefined || pCopy.implementation_fee !== undefined) {
+              pCopy.implementation_fee = Number(pCopy.implementation_fee ?? ta.implementationFee) || 0;
+            }
             payloadToDb = Object.fromEntries(Object.entries(pCopy).filter(([k]) => allowed.includes(k)));
             if (payloadToDb.price !== undefined) payloadToDb.price = Number(payloadToDb.price) || 0;
             if (payloadToDb.cost !== undefined) payloadToDb.cost = Number(payloadToDb.cost) || 0;
@@ -1396,10 +1428,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               'id', 'sku', 'name', 'category', 'type', 'price', 'cost', 'margin', 'commission',
               'active', 'stockMin', 'stockMax', 'currentStock', 'dimensions', 'weight', 'material',
               'description', 'provider', 'isBestSeller', 'tags', 'tenant_id', 'currency',
-              'type_attributes', 'attachments'
+              'type_attributes', 'attachments', 'is_recurring', 'recurring_period', 'implementation_fee'
             ];
             if (safeUpdates.typeAttributes && !safeUpdates.type_attributes) {
               safeUpdates.type_attributes = safeUpdates.typeAttributes;
+            }
+            const ta = safeUpdates.type_attributes || {};
+            if (ta.isRecurring !== undefined || safeUpdates.is_recurring !== undefined) {
+              safeUpdates.is_recurring = safeUpdates.is_recurring ?? !!ta.isRecurring;
+              safeUpdates.recurring_period = safeUpdates.is_recurring ? (safeUpdates.recurring_period ?? 'monthly') : null;
+            }
+            if (ta.implementationFee !== undefined || safeUpdates.implementation_fee !== undefined) {
+              safeUpdates.implementation_fee = Number(safeUpdates.implementation_fee ?? ta.implementationFee) || 0;
             }
             safeUpdates = Object.fromEntries(Object.entries(safeUpdates).filter(([k]) => allowed.includes(k)));
             if (safeUpdates.price !== undefined) safeUpdates.price = Number(safeUpdates.price) || 0;
@@ -1462,7 +1502,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     tipo?: 'itens' | 'texto' | 'arquivo';
     conteudoTexto?: string | null;
     linkPdf?: string | null;
-    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number }>;
+    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time' }>;
   }) => {
     const proposalId = crypto.randomUUID();
     await proposalCrud.add({
@@ -1486,6 +1526,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         product_name: item.descricao,
         quantidade: item.quantidade,
         preco_unitario: item.precoUnitario,
+        // Sem isso, todo item cai no default 'recurring' da coluna e uma taxa
+        // de implantação/setup entra somando no MRR igual a uma mensalidade.
+        billing_type: item.billingType || 'recurring',
       });
     }
     // Sincroniza valor/produtos de volta no lead vinculado — sem isso, o card
@@ -1514,6 +1557,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const mktAutoCrud = createCrudHelper('marketing_automations', setMarketingAutomations);
   const squadMetaCrud = createCrudHelper('squad_metas', setSquadMetas);
   const cargoCrud = createCrudHelper('cargos', setCargos);
+  const auroraAgentCrud = createCrudHelper('aurora_agents', setAuroraAgents);
+  const toggleAuroraAgent = (id: string) => {
+    const current = auroraAgents.find(a => a.id === id);
+    if (!current) return;
+    auroraAgentCrud.update(id, {
+      active: !current.active,
+      ...(current.active ? { deactivated_at: new Date().toISOString() } : { deactivated_at: null }),
+    });
+  };
   const empresaFilialCrud = createCrudHelper('empresa_filiais', setEmpresaFiliais);
   const nichoCrud = createCrudHelper('nichos', setNichos);
   const financeCategoryCrud = createCrudHelper('finance_categories', setFinanceCategories);
@@ -1749,6 +1801,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addCargo: cargoCrud.add,
       updateCargo: cargoCrud.update,
       deleteCargo: cargoCrud.del,
+      auroraAgents,
+      addAuroraAgent: auroraAgentCrud.add,
+      updateAuroraAgent: auroraAgentCrud.update,
+      deleteAuroraAgent: auroraAgentCrud.del,
+      toggleAuroraAgent,
       clienteBase,
       setClienteBase,
     }}>

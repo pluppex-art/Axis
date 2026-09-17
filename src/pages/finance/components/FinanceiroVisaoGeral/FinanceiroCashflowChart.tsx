@@ -1,14 +1,16 @@
 import { Card } from "../../../../components/ui/card";
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Cell, PieChart, Pie } from "recharts";
 
-interface ChartEntry { name: string; receita: number; despesa: number; projection: number; }
+interface ChartEntry { name: string; receita: number; despesa: number; }
 
 interface FinanceiroCashflowChartProps {
   chartData: ChartEntry[];
   stabilityScore: number;
+  liquidez: number | null;
+  burnRate: number;
 }
 
-export function FinanceiroCashflowChart({ chartData, stabilityScore }: FinanceiroCashflowChartProps) {
+export function FinanceiroCashflowChart({ chartData, stabilityScore, liquidez, burnRate }: FinanceiroCashflowChartProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
       <Card className="lg:col-span-8 rounded-3xl p-8 border-[var(--color-border-subtle)] bg-[var(--color-surface-elevated)]/80 backdrop-blur-xl relative overflow-hidden">
@@ -17,10 +19,10 @@ export function FinanceiroCashflowChart({ chartData, stabilityScore }: Financeir
             <h3 className="font-black text-lg text-[var(--color-text-primary)] uppercase italic tracking-tighter flex items-center gap-3">
               <div className="w-2 h-8 bg-blue-500 rounded-full" /> Motor de Performance Financeira
             </h3>
-            <p className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest mt-1">Comparativo de fluxo de caixa vs projeção inteligente</p>
+            <p className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-widest mt-1">Histórico real de receita e despesa dos últimos 6 meses</p>
           </div>
           <div className="flex flex-wrap gap-4 bg-[var(--color-surface-sunken)] p-2 rounded-2xl border border-[var(--color-border-subtle)]">
-            {[{ label: "Receita", color: "bg-[#2563EB]" }, { label: "Projeção", color: "bg-[#2563EB]/40" }, { label: "Despesa", color: "bg-rose-500" }].map(l => (
+            {[{ label: "Receita", color: "bg-[#2563EB]" }, { label: "Despesa", color: "bg-rose-500" }].map(l => (
               <div key={l.label} className="flex items-center gap-2 px-2">
                 <div className={`w-2 h-2 rounded-full ${l.color}`} />
                 <span className="text-[9px] text-[var(--color-text-muted)] uppercase font-black tracking-widest">{l.label}</span>
@@ -45,7 +47,6 @@ export function FinanceiroCashflowChart({ chartData, stabilityScore }: Financeir
                 itemStyle={{ fontSize: "11px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em" }}
                 labelStyle={{ fontSize: "12px", fontWeight: 900, marginBottom: "12px", color: "#60a5fa", textTransform: "uppercase" }}
               />
-              <Area type="monotone" dataKey="projection" stroke="#2563EB" strokeWidth={1} fill="transparent" strokeDasharray="10 5" opacity={0.3} />
               <Area type="monotone" dataKey="receita" stroke="#2563EB" strokeWidth={4} fillOpacity={1} fill="url(#colorRec)" />
               <Area type="monotone" dataKey="despesa" stroke="#f43f5e" strokeWidth={2} fill="transparent" strokeDasharray="4 4" />
             </AreaChart>
@@ -73,11 +74,11 @@ export function FinanceiroCashflowChart({ chartData, stabilityScore }: Financeir
         <div className="grid grid-cols-2 gap-4 w-full mt-10">
           <div className="bg-[var(--color-surface-sunken)] p-4 rounded-2xl border border-[var(--color-border-subtle)]">
             <p className="text-[9px] font-black text-[var(--color-text-muted)] uppercase mb-1">Liquidez</p>
-            <span className="text-[var(--color-text-primary)] font-black font-mono">--</span>
+            <span className="text-[var(--color-text-primary)] font-black font-mono">{liquidez !== null ? `${liquidez.toFixed(0)}%` : "—"}</span>
           </div>
           <div className="bg-[var(--color-surface-sunken)] p-4 rounded-2xl border border-[var(--color-border-subtle)]">
             <p className="text-[9px] font-black text-[var(--color-text-muted)] uppercase mb-1">Burn Rate</p>
-            <span className="text-rose-600 dark:text-rose-400 font-black font-mono">--</span>
+            <span className="text-rose-600 dark:text-rose-400 font-black font-mono">{burnRate > 0 ? `R$ ${burnRate.toLocaleString('pt-BR')}` : "R$ 0"}</span>
           </div>
         </div>
       </Card>

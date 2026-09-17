@@ -7,9 +7,10 @@ import { PageContainer } from "../../components/PageContainer";
 import { FinanceiroKPIs } from "./components/FinanceiroVisaoGeral/FinanceiroKPIs";
 import { FinanceiroCashflowChart } from "./components/FinanceiroVisaoGeral/FinanceiroCashflowChart";
 import { FinanceiroBottomPanels } from "./components/FinanceiroVisaoGeral/FinanceiroBottomPanels";
+import { FinanceiroProjecaoReceita } from "./components/FinanceiroVisaoGeral/FinanceiroProjecaoReceita";
 import { downloadCsv } from "../../lib/csvExport";
 import { useLocalization } from "../../contexts/LocalizationContext";
-import { parseCurrencyBR } from "../../lib/utils";
+import { getMRR, getActiveCustomers, getChurnRate, getRevenueProjection } from "../../lib/revenueMetrics";
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
@@ -61,14 +62,28 @@ export default function FinanceiroVisaoGeral() {
     return financeEntries.filter(f => isInCiclo(parseEntryDate(f.date), ciclo, now));
   }, [financeEntries, ciclo]);
 
-  const { receita, despesa, mrr, inadimplencia } = useMemo(() => {
+  const { receita, despesa, mrr, inadimplencia, receitaAvulsa, clientesAtivos, churnRate } = useMemo(() => {
     const receita = cicloEntries.filter(f => f.type === "Receber" && f.status === "Pago").reduce((s, f) => s + f.value, 0);
     const despesa = cicloEntries.filter(f => f.type === "Pagar"   && f.status === "Pago").reduce((s, f) => s + f.value, 0);
-    const mrr = contracts.filter(c => c.status === "Ativo").reduce((s, c) => s + parseCurrencyBR(c.mrr), 0);
+    const mrr = getMRR(contracts);
+    // Implantação/Setup é lançado à parte pela reconciliação de propostas
+    // (Propostas.tsx syncAcceptedProposal) exatamente pra não entrar no MRR —
+    // aqui ela aparece como receita avulsa do período, separada.
+    const receitaAvulsa = cicloEntries.filter(f => f.type === "Receber" && f.status === "Pago" && f.category === "Implantação / Setup").reduce((s, f) => s + f.value, 0);
+    const clientesAtivos = getActiveCustomers(contracts);
+    const churnRate = getChurnRate(contracts);
     const entriesPagar = cicloEntries.filter(f => f.type === "Pagar");
     const inadimplencia = entriesPagar.length > 0 ? (entriesPagar.filter(f => f.status === "Atrasado").length / entriesPagar.length) * 100 : 0;
-    return { receita, despesa, mrr, inadimplencia };
+    return { receita, despesa, mrr, inadimplencia, receitaAvulsa, clientesAtivos, churnRate };
   }, [cicloEntries, contracts]);
+
+  const revenueProjection = useMemo(() => getRevenueProjection(contracts), [contracts]);
+
+  // Liquidez = quanto da despesa paga no período a receita paga cobre (100% =
+  // cobertura total). Burn Rate = queima de caixa do período (só existe
+  // quando a despesa supera a receita — senão não há "queima", há sobra).
+  const liquidez = despesa > 0 ? (receita / despesa) * 100 : (receita > 0 ? 100 : null);
+  const burnRate = despesa > receita ? despesa - receita : 0;
 
   const upcomingEntries = useMemo(() =>
     financeEntries.filter(f => f.status === "A Vencer").slice(0, 4).map(f => ({
@@ -90,7 +105,7 @@ export default function FinanceiroVisaoGeral() {
       });
       const rec = monthEntries.filter(f => f.type === "Receber" && f.status === "Pago").reduce((s, f) => s + f.value, 0);
       const des = monthEntries.filter(f => f.type === "Pagar"   && f.status === "Pago").reduce((s, f) => s + f.value, 0);
-      return { name: MONTH_NAMES[m], receita: rec, despesa: des, projection: Math.round(rec * 1.1) };
+      return { name: MONTH_NAMES[m], receita: rec, despesa: des };
     });
   }, [financeEntries]);
 
@@ -157,7 +172,8 @@ export default function FinanceiroVisaoGeral() {
     >
       <div className="space-y-6 max-w-[1700px] mx-auto pb-12">
         <FinanceiroKPIs receita={receita} despesa={despesa} mrr={mrr} inadimplencia={inadimplencia} />
-        <FinanceiroCashflowChart chartData={chartData} stabilityScore={stabilityScore} />
+        <FinanceiroCashflowChart chartData={chartData} stabilityScore={stabilityScore} liquidez={liquidez} burnRate={burnRate} />
+        <FinanceiroProjecaoReceita mrr={mrr} receitaAvulsa={receitaAvulsa} clientesAtivos={clientesAtivos} churnRate={churnRate} projection={revenueProjection} />
         <FinanceiroBottomPanels upcomingEntries={upcomingEntries} {...operationalInsights} />
       </div>
     </PageContainer>

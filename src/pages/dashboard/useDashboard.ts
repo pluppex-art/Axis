@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseCurrencyBR } from '../../lib/utils';
+import { getMRR, getConversionRate, getActiveLeadsCount, getChurnRate } from '../../lib/revenueMetrics';
 import { FUNIS_DEFAULT } from '../settings/sections/crm/funisTypes';
 
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -26,25 +27,12 @@ export function useDashboard() {
     return squads.filter(sq => (sq.faturamentoAlcancado / sq.meta) >= 0.9);
   }, [squads]);
   
-  // Stats Calculations
-  // parseCurrencyBR (não regex ad-hoc) porque `mrr` pode vir formatado via
-  // Intl.NumberFormat (espaço non-breaking entre "R$" e o valor, ou símbolo
-  // de outra moeda) — o replace('R$ ', '') literal não casava com isso e o
-  // total caía silenciosamente pra 0. Contratos cancelados também não devem
-  // somar em "Receita (MRR)".
-  const totalRevenue = useMemo(() => contracts
-    .filter(c => c.status !== 'Cancelado')
-    .reduce((acc, curr) => acc + parseCurrencyBR(curr.mrr), 0), [contracts]);
-
-  const closedWonLeads = leads.filter(l => l.status === 'Fechado').length;
-  const conversionRate = leads.length > 0 ? ((closedWonLeads / leads.length) * 100).toFixed(1) : "0";
-
-  // "Leads Ativos" deve excluir negócios já fechados/perdidos, senão o card
-  // mostra o total histórico de leads em vez dos que ainda estão em aberto.
-  const activeLeadsCount = useMemo(
-    () => leads.filter(l => l.status !== 'Fechado' && l.status !== 'Perdido').length,
-    [leads]
-  );
+  // Stats Calculations — via camada única de métricas (src/lib/revenueMetrics.ts)
+  // pra usar exatamente a mesma definição de MRR/conversão/leads ativos em
+  // todos os dashboards do sistema, não uma fórmula própria por tela.
+  const totalRevenue = useMemo(() => getMRR(contracts), [contracts]);
+  const conversionRate = useMemo(() => getConversionRate(leads).toFixed(1), [leads]);
+  const activeLeadsCount = useMemo(() => getActiveLeadsCount(leads), [leads]);
 
   // Performance chart: group leads by month of creation (last 7 months)
   const performanceData = useMemo(() => {
@@ -90,13 +78,16 @@ export function useDashboard() {
   // .replace() num l.value que já vem como number (comum após a sincronização
   // lead↔proposta) — o try/catch anterior engolia esse erro e zerava o total.
   const salesRanking = useMemo(() => {
+    // `l.value` é a fonte de verdade (soma corretamente múltiplas propostas já
+    // realizadas/aceitas pro mesmo lead) — só cai pra soma de preço de
+    // catálogo dos produtos vinculados quando o lead não tem valor nenhum.
     const getLeadValue = (l: any) => {
+      const parsed = parseCurrencyBR(l.value ?? l.valor);
+      if (parsed > 0) return parsed;
       const linkedProducts = (products as any[] || []).filter((p: any) => (l.productIds || []).includes(p.id));
       if (linkedProducts.length > 0) {
         return linkedProducts.reduce((s: number, p: any) => s + (Number(p.price) || 0), 0);
       }
-      const parsed = parseCurrencyBR(l.value ?? l.valor);
-      if (parsed > 0) return parsed;
       const linkedProposal = (proposals as any[] || [])
         .filter((p: any) => p.lead_id === l.id)
         .sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
@@ -168,9 +159,7 @@ export function useDashboard() {
   // o card ficava sempre travado em 0.0% pra qualquer tenant sem `appointments`.
   const churnRate = useMemo(() => {
     if (!appointments || appointments.length === 0) {
-      if (!contracts || contracts.length === 0) return 0;
-      const cancelados = contracts.filter(c => c.status === 'Cancelado').length;
-      return parseFloat(((cancelados / contracts.length) * 100).toFixed(1));
+      return getChurnRate(contracts);
     }
 
     // Get unique patients and their last visit date

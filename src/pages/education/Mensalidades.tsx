@@ -10,6 +10,7 @@ import { PageContainer } from "../../components/PageContainer";
 import { supabase } from "../../lib/supabase";
 import { toast } from "sonner";
 import { useLocalization } from "../../contexts/LocalizationContext";
+import { useAuth } from "../../contexts/AuthContext";
 
 type Mensalidade = {
   id: string;
@@ -34,6 +35,7 @@ const STATUS_FILTERS = ["Todos", "Pendente", "Atrasado", "Pago", "Cancelado"];
 
 export default function Mensalidades() {
   const { formatCurrency } = useLocalization();
+  const { activeTenantId } = useAuth();
   const [mensalidades, setMensalidades] = useState<Mensalidade[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -42,10 +44,12 @@ export default function Mensalidades() {
   const [statusFilter, setStatusFilter] = useState("Todos");
 
   const refetch = async () => {
-    if (!supabase) { setLoading(false); return; }
+    if (!supabase || !activeTenantId) { setLoading(false); return; }
+    // Sem o filtro de tenant, mensalidades e alunos de todos os tenants
+    // apareciam misturados nesta tela.
     const [mensRes, studRes] = await Promise.all([
-      supabase.from("mensalidades").select("*").order("vencimento", { ascending: true }),
-      supabase.from("students").select("id, nome"),
+      supabase.from("mensalidades").select("*").eq("tenant_id", activeTenantId).order("vencimento", { ascending: true }),
+      supabase.from("students").select("id, nome").eq("tenant_id", activeTenantId),
     ]);
     if (mensRes.error) toast.error(`Erro ao carregar mensalidades: ${mensRes.error.message}`);
     else if (mensRes.data) setMensalidades(mensRes.data as Mensalidade[]);
@@ -57,7 +61,7 @@ export default function Mensalidades() {
     setLoading(false);
   };
 
-  useEffect(() => { refetch(); }, []);
+  useEffect(() => { refetch(); }, [activeTenantId]);
 
   const handleAtualizarInadimplencia = async () => {
     if (!supabase) return;

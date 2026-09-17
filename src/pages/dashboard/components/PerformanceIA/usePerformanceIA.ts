@@ -5,6 +5,7 @@ import { useData } from "../../../../contexts/DataContext";
 import { apiFetch } from "../../../../lib/apiClient";
 import { useLocalization } from "../../../../contexts/LocalizationContext";
 import { parseCurrencyBR } from "../../../../lib/utils";
+import { getMRR } from "../../../../lib/revenueMetrics";
 
 type AiRecommendation = any;
 
@@ -17,13 +18,13 @@ export function usePerformanceIA() {
 
   const currentMRR = useMemo(() => {
     if (contracts && contracts.length > 0) {
-      return contracts.reduce((acc, c) => acc + parseCurrencyBR(c.mrr), 0);
+      return getMRR(contracts);
     }
 
     // Fallback: estimativa via leads (se MRR for nulo)
     return leads
       .filter((l: any) => l.status === "Fechado")
-      .reduce((acc, l: any) => acc + (l.value || 0), 0) / 12; // Exemplo tosco
+      .reduce((acc, l: any) => acc + parseCurrencyBR(l.value), 0) / 12; // Exemplo tosco
   }, [contracts, leads]);
 
   const currentCAC = useMemo(() => {

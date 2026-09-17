@@ -14,7 +14,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { ContractsKPIs } from "./components/Contracts/ContractsKPIs";
 import { ContractsTable } from "./components/Contracts/ContractsTable";
 import { handleDownloadPdf } from "./utils/proposalPdf";
-import { parseCurrencyBR as toNumberMRR } from "../../lib/utils";
+import { getMRR } from "../../lib/revenueMetrics";
 import type { Contract } from "../../types";
 
 const contractSchema = z.object({
@@ -96,7 +96,7 @@ export default function Contracts() {
     );
   };
 
-  const totalMRR = contracts.filter(c => c.status !== "Cancelado").reduce((acc, curr) => acc + toNumberMRR(curr.mrr), 0);
+  const totalMRR = getMRR(contracts);
 
   return (
     <div className="space-y-6">

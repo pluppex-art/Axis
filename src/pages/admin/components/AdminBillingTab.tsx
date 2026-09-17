@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Card } from "../../../components/ui/card";
 import {
   DollarSign, TrendingDown, Wallet, Download, CheckCircle2,
@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import { useLocalization } from "../../../contexts/LocalizationContext";
 import { useAuth } from "../../../contexts/AuthContext";
-import { useData } from "../../../contexts/DataContext";
+import { supabase } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/button";
 import { toast } from "sonner";
 
@@ -23,7 +23,6 @@ interface AdminBillingTabProps {
 export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabProps) {
   const { formatCurrency } = useLocalization();
   const { tenantIdMap } = useAuth();
-  const { financeEntries } = useData();
 
   const tenantNames = Object.keys(tenantIdMap || {});
 
@@ -33,15 +32,41 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
   const arpu = mesesComReceita.length > 0 ? totalMrr / mesesComReceita.length : 0;
   const ltvEstimado = arpu > 0 ? arpu * 12 : 0;
 
+  // `useData().financeEntries` só enxerga o tenant ativo — usar isso aqui
+  // fazia todo tenant da lista mostrar o MESMO valor (o do tenant atual),
+  // já que o filtro rodava sempre sobre o mesmo array dentro do .map().
+  // Esta tela é master-only, então busca direto por tenant_id — RLS
+  // (has_tenant_access) já libera a conta master pra ver todos os tenants.
+  const [entriesByTenant, setEntriesByTenant] = useState<Record<string, { value: number; count: number }>>({});
+  useEffect(() => {
+    if (!supabase) return;
+    supabase
+      .from("finance_entries")
+      .select("tenant_id, value")
+      .eq("type", "Receber")
+      .eq("status", "Pago")
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        const grouped: Record<string, { value: number; count: number }> = {};
+        data.forEach((row: any) => {
+          const key = row.tenant_id;
+          if (!key) return;
+          if (!grouped[key]) grouped[key] = { value: 0, count: 0 };
+          grouped[key].value += Number(row.value) || 0;
+          grouped[key].count += 1;
+        });
+        setEntriesByTenant(grouped);
+      });
+  }, []);
+
   // Real subscriptions derived from active tenants in the database
   const subscriptions = useMemo(() => {
     return tenantNames.map((name, index) => {
       const isMaster = name === "G-Tech Master";
-      const tenantEntries = financeEntries.filter(
-        f => f.type === "Receber" && f.status === "Pago"
-      );
-      const tenantValue = tenantEntries.length > 0
-        ? Math.round(tenantEntries.reduce((s, e) => s + e.value, 0) / Math.max(tenantEntries.length, 1))
+      const tenantId = tenantIdMap[name];
+      const agg = tenantId ? entriesByTenant[tenantId] : undefined;
+      const tenantValue = agg && agg.count > 0
+        ? Math.round(agg.value / agg.count)
         : (isMaster ? 0 : 997);
 
       return {
@@ -56,7 +81,7 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
         paymentMethod: "Faturamento Direto",
       };
     });
-  }, [tenantNames, financeEntries]);
+  }, [tenantNames, tenantIdMap, entriesByTenant]);
 
   // Export to CSV Functionality
   const handleExportCSV = () => {

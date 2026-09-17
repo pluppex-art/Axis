@@ -67,14 +67,18 @@ export function PipelineKanbanBoard({
   // exibiam valor (via produto) nos cards. Se não há productIds nem value mas
   // existe proposta vinculada (proposals.lead_id), usa o valor dela — mesmo
   // fallback do LeadCard, pro total da coluna bater com os cards.
+  // `l.value` é a fonte de verdade (soma corretamente múltiplas propostas já
+  // realizadas/aceitas pro mesmo lead) — só cai pra soma de preço de catálogo
+  // dos produtos vinculados quando o lead genuinamente não tem valor nenhum
+  // ainda (produto vinculado sem sincronização de valor completa).
   const getLeadValue = (l: any) => {
+    const raw = l.value ?? l.valor;
+    const parsed = parseCurrencyBR(raw);
+    if (parsed > 0) return parsed;
     const linkedProducts = (products as any[]).filter((p) => (l.productIds || []).includes(p.id));
     if (linkedProducts.length > 0) {
       return linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0);
     }
-    const raw = l.value ?? l.valor;
-    const parsed = parseCurrencyBR(raw);
-    if (parsed > 0) return parsed;
     const linkedProposal = (proposals as any[] || [])
       .filter((p) => p.lead_id === l.id)
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];

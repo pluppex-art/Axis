@@ -6,6 +6,7 @@ import { confirmDialog } from "../../../components/ui/confirm-dialog";
 import { exportToCSV } from "../../../lib/exportCsv";
 import { useLocalization } from "../../../contexts/LocalizationContext";
 import { parseCurrencyBR } from "../../../lib/utils";
+import { getMRR } from "../../../lib/revenueMetrics";
 
 export function useIndicadores() {
   const { leads, financeEntries, contracts, financialGoals, scheduledExports, addScheduledExport, updateScheduledExport, deleteScheduledExport } = useData();
@@ -65,8 +66,7 @@ export function useIndicadores() {
     const totalClosedValue = closedLeads.reduce((s, l) => s + parseCurrencyBR(l.value), 0);
     const ticketMedio = closedLeads.length > 0 ? totalClosedValue / closedLeads.length : 0;
 
-    // mrr_value é a coluna real no Supabase; `mrr` é mantido no type por compatibilidade com telas antigas.
-    const mrr = contracts.reduce((acc, c: any) => acc + parseCurrencyBR(c.mrr_value ?? c.mrr ?? 0), 0) || (ticketMedio / 12);
+    const mrr = getMRR(contracts) || (ticketMedio / 12);
     const ltv = mrr * 12; // LTV simples de 1 ano
 
     // Ticket médio por mês (com base em l.date), pra calcular uma tendência real

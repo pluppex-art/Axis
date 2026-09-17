@@ -1,16 +1,27 @@
 import { Card } from "../../components/ui/card";
 import {
   Download, Calendar, CheckCircle2,
-  Clock, AlertTriangle, Plus, Trash2, X, DollarSign, Pencil, Lock
+  Clock, AlertTriangle, Plus, Trash2, X, DollarSign, Pencil, Lock, Repeat
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
+import { Switch } from "../../components/ui/switch";
 import React, { useMemo, useState } from "react";
 import { useData } from "../../contexts/DataContext";
 import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { downloadCsv } from "../../lib/csvExport";
 import { useLocalization } from "../../contexts/LocalizationContext";
+
+type Frequencia = "semanal" | "mensal" | "anual";
+
+function addPeriodo(date: Date, freq: Frequencia, n: number): Date {
+  const d = new Date(date);
+  if (freq === "semanal") d.setDate(d.getDate() + 7 * n);
+  else if (freq === "anual") d.setFullYear(d.getFullYear() + n);
+  else d.setMonth(d.getMonth() + n);
+  return d;
+}
 
 interface GenericProps {
   title: string;
@@ -28,6 +39,9 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
   const [newCategory, setNewCategory] = useState("");
   const [newValue, setNewValue] = useState("");
   const [newDate, setNewDate] = useState("");
+  const [newIsRecurring, setNewIsRecurring] = useState(false);
+  const [newFrequency, setNewFrequency] = useState<Frequencia>("mensal");
+  const [newOcorrencias, setNewOcorrencias] = useState("12");
 
   // Edit entry form
   const [editingItem, setEditingItem] = useState<(typeof financeEntries)[number] | null>(null);
@@ -49,20 +63,36 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
     e.preventDefault();
     if (!newDesc || !newValue) return;
 
-    addFinanceEntry({
-      description: newDesc,
-      category: newCategory || "Geral",
-      value: parseFloat(newValue),
-      status: "A Vencer",
-      type: type,
-      date: newDate ? new Date(newDate).toLocaleDateString("pt-BR") : new Date().toLocaleDateString("pt-BR")
-    });
+    const baseDate = newDate ? new Date(newDate + "T12:00:00") : new Date();
+    const ocorrencias = newIsRecurring ? Math.max(1, parseInt(newOcorrencias, 10) || 1) : 1;
+    // Recorrência gera N lançamentos já na criação (um por período), em vez
+    // de só marcar uma flag — assim aparecem de verdade no fluxo de caixa e
+    // nas contas a pagar/receber de cada mês, sem precisar cadastrar de novo
+    // toda vez. Todas compartilham `recurring_group_id` pra serem
+    // identificadas como a mesma recorrência depois.
+    const groupId = newIsRecurring ? crypto.randomUUID() : undefined;
+    for (let i = 0; i < ocorrencias; i++) {
+      const dataOcorrencia = i === 0 ? baseDate : addPeriodo(baseDate, newFrequency, i);
+      addFinanceEntry({
+        description: newDesc,
+        category: newCategory || "Geral",
+        value: parseFloat(newValue),
+        status: "A Vencer",
+        type: type,
+        date: dataOcorrencia.toLocaleDateString("pt-BR"),
+        ...(newIsRecurring ? { is_recurring: true, recurring_frequency: newFrequency, recurring_group_id: groupId } : {}),
+      }, { silent: i > 0 });
+    }
+    if (newIsRecurring && ocorrencias > 1) toast.success(`${ocorrencias} lançamentos recorrentes gerados.`);
 
     setIsModalOpen(false);
     setNewDesc("");
     setNewCategory("");
     setNewValue("");
     setNewDate("");
+    setNewIsRecurring(false);
+    setNewFrequency("mensal");
+    setNewOcorrencias("12");
   };
 
   const handleExport = () => {
@@ -189,7 +219,16 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
               ) : (
                 data.map((item) => (
                   <tr key={item.id} className="hover:bg-[var(--color-surface-sunken)]/50 transition-colors group">
-                    <td className="px-6 py-4 font-bold text-[var(--color-text-primary)]">{item.description}</td>
+                    <td className="px-6 py-4 font-bold text-[var(--color-text-primary)]">
+                      <span className="inline-flex items-center gap-1.5">
+                        {item.description}
+                        {item.is_recurring && (
+                          <span title={`Recorrente (${item.recurring_frequency})`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25">
+                            <Repeat className="w-2.5 h-2.5" /> {item.recurring_frequency}
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-[var(--color-text-muted)]">{item.category}</td>
                     <td className="px-6 py-4 text-[var(--color-text-muted)] font-mono">{item.date}</td>
                     <td className="px-6 py-4">
@@ -263,7 +302,14 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                   </button>
                 </div>
                 <div>
-                  <p className="font-bold text-[var(--color-text-primary)] text-xs mb-1 pr-12">{item.description}</p>
+                  <p className="font-bold text-[var(--color-text-primary)] text-xs mb-1 pr-12 flex items-center gap-1.5 flex-wrap">
+                    {item.description}
+                    {item.is_recurring && (
+                      <span title={`Recorrente (${item.recurring_frequency})`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25">
+                        <Repeat className="w-2.5 h-2.5" /> {item.recurring_frequency}
+                      </span>
+                    )}
+                  </p>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase">{item.category}</span>
                     <span className="text-[10px] text-[var(--color-text-faint)] font-mono">{item.date}</span>
@@ -345,6 +391,42 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
             </div>
           </div>
 
+          <div className="bg-[var(--color-surface-sunken)]/60 border border-[var(--color-border-subtle)] rounded-[var(--radius-control)] p-3.5 space-y-3">
+            <Switch
+              checked={newIsRecurring}
+              onCheckedChange={setNewIsRecurring}
+              label="Lançamento recorrente?"
+              description="Gera automaticamente as próximas ocorrências neste mesmo cadastro."
+            />
+            {newIsRecurring && (
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <div>
+                  <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Frequência</label>
+                  <select
+                    value={newFrequency}
+                    onChange={(e) => setNewFrequency(e.target.value as Frequencia)}
+                    className="w-full bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+                  >
+                    <option value="semanal">Semanal</option>
+                    <option value="mensal">Mensal</option>
+                    <option value="anual">Anual</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Repetir por quantas vezes</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={newOcorrencias}
+                    onChange={(e) => setNewOcorrencias(e.target.value)}
+                    className="w-full bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] font-mono"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end gap-2 pt-4 border-t border-[var(--color-border-subtle)]">
             <Button
               type="button"
@@ -373,6 +455,11 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
         maxWidth="max-w-lg"
       >
         <form onSubmit={handleSaveEdit} className="space-y-4">
+          {editingItem?.is_recurring && (
+            <div className="inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25">
+              <Repeat className="w-2.5 h-2.5" /> Faz parte de uma recorrência {editingItem.recurring_frequency} — editar aqui só afeta esta ocorrência.
+            </div>
+          )}
           <div>
             <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Descrição do Lançamento *</label>
             <input

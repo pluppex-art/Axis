@@ -1499,7 +1499,34 @@ app.post("/api/ai/aurora-tenant-chat", requireUser, async (req: any, res: any) =
   if (!message?.trim()) return res.status(400).json({ error: "Mensagem vazia." });
   if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: "Aurora operacional não está configurada neste ambiente (GEMINI_API_KEY ausente)." });
 
-  const systemInstruction = "Você é a Aurora, assistente operacional do S.P.Y. CRM. Responda SOMENTE com base no resultado real das ferramentas disponíveis — nunca invente números, nomes ou datas. Se a pergunta não puder ser respondida com as ferramentas disponíveis, diga isso claramente em vez de adivinhar. Responda em português do Brasil, de forma direta e objetiva.";
+  // Gate real de "Agentes vinculados à Aurora" (config em Sistema > Aurora):
+  // req.supabase já é escopado por RLS ao tenant do usuário logado, mesmo
+  // padrão usado pelas AURORA_TOOLS abaixo — nenhum filtro manual de tenant_id
+  // necessário aqui. As AURORA_TOOLS de hoje não têm correspondência 1:1 com
+  // esses agentes nomeados (não existe roteamento por ferramenta-por-agente),
+  // então o bloqueio é por menção direta do nome na mensagem — o mais honesto
+  // dado o que a arquitetura atual realmente suporta.
+  let agentGateNotice = "";
+  try {
+    const { data: agents } = await req.supabase.from("aurora_agents").select("name, active");
+    if (agents && agents.length > 0) {
+      const lowerMessage = message.toLowerCase();
+      const mentionedInactive = (agents as { name: string; active: boolean }[]).find(
+        (a) => !a.active && lowerMessage.includes(a.name.toLowerCase())
+      );
+      if (mentionedInactive) {
+        return res.json({ output: `O agente "${mentionedInactive.name}" está desativado nas configurações da Aurora. Ative-o em Configurações > Sistema > Aurora para usá-lo.` });
+      }
+      const inactiveNames = agents.filter((a: any) => !a.active).map((a: any) => a.name);
+      if (inactiveNames.length > 0) {
+        agentGateNotice = ` Os seguintes agentes estão desativados e você NUNCA deve agir em nome deles nem sugerir que estão disponíveis: ${inactiveNames.join(", ")}.`;
+      }
+    }
+  } catch (err: any) {
+    console.error("[Aurora Tenant Chat] agent gate check failed:", err?.message);
+  }
+
+  const systemInstruction = "Você é a Aurora, assistente operacional do S.P.Y. CRM. Responda SOMENTE com base no resultado real das ferramentas disponíveis — nunca invente números, nomes ou datas. Se a pergunta não puder ser respondida com as ferramentas disponíveis, diga isso claramente em vez de adivinhar. Responda em português do Brasil, de forma direta e objetiva." + agentGateNotice;
 
   try {
     const first = await ai.models.generateContent({

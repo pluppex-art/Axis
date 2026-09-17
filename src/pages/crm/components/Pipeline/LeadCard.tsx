@@ -6,7 +6,7 @@ import {
   History, ArrowRight, FileDown, Activity,
   Zap, Package, Globe, MapPin, Users,
 } from 'lucide-react';
-import { cn } from '../../../../lib/utils';
+import { cn, parseCurrencyBR } from '../../../../lib/utils';
 
 interface LeadCardProps {
   item: any;
@@ -90,9 +90,17 @@ export function LeadCard({
   const linkedProposalValue = (proposals as any[] || [])
     .filter(p => p.lead_id === item.id)
     .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0]?.valor;
-  const displayValue = linkedProducts.length > 0
-    ? formatCurrency(linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0))
-    : (item.value || (linkedProposalValue ? formatCurrency(Number(linkedProposalValue)) : 'R$ 0'));
+  // `item.value` é a fonte de verdade — soma corretamente múltiplas propostas
+  // já realizadas/aceitas pro mesmo lead (mini PDV, aceite de proposta). Somar
+  // só o preço atual de catálogo dos produtos vinculados (branch antiga)
+  // ignorava quantidade, preço histórico da venda e compras repetidas do
+  // mesmo produto — só entra como fallback se o lead genuinamente não tiver
+  // valor nenhum ainda.
+  const displayValue = parseCurrencyBR(item.value) > 0
+    ? formatCurrency(parseCurrencyBR(item.value))
+    : linkedProducts.length > 0
+      ? formatCurrency(linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0))
+      : (linkedProposalValue ? formatCurrency(Number(linkedProposalValue)) : 'R$ 0');
 
   const leadSquad = (squads as any[]).find(s =>
     (s.membros || []).some((m: string) => m === item.seller || m === item.sellerId)
