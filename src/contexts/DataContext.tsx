@@ -1634,6 +1634,159 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!options.silent) toast.success(`${entry.type === 'Pagar' ? 'Despesa' : 'Receita'} registrada!`);
   };
 
+  // Sincroniza o valor de volta no lead vinculado e garante contrato + fatura
+  // a receber para uma proposta aceita, além de recalcular plano real
+  // (produtos do catálogo) e data de término do contrato. Vivia dentro da
+  // página Propostas.tsx — só rodava (reconciliação incluída) enquanto essa
+  // página estivesse montada, então abrir direto /financeiro/faturas (que
+  // renderiza a mesma lista de contratos por outra rota) nunca corrigia
+  // contratos antigos. Centralizado aqui pra rodar uma vez só, globalmente,
+  // pra qualquer tela que use `contracts`/`proposals` — a mesma fonte de
+  // verdade em vez de cada página reimplementar (ou esquecer) essa sincronização.
+  const syncAcceptedProposal = (prop: any, { silent = false }: { silent?: boolean } = {}) => {
+    const linkedItems = (proposalItems || []).filter((pi: any) => pi.proposal_id === prop.id);
+
+    // Idempotência real: vínculo estável por proposal_id (trava também no
+    // banco via índice único) em vez de comparar client/plan por texto — uma
+    // proposta ou contrato renomeado depois não quebra mais a checagem e
+    // recria um duplicado. Contratos antigos sem proposal_id (criados antes
+    // dessa coluna existir) ainda caem no fallback por nome, uma única vez.
+    const norm = (s: any) => String(s || "").trim().toLowerCase();
+    const existingContract = (contracts || []).find((c: any) =>
+      c.proposalId === prop.id ||
+      (!c.proposalId && norm(c.client) === norm(prop.cliente) && norm(c.plan) === norm(prop.titulo))
+    );
+    const jaExiste = !!existingContract;
+
+    // Soma com o valor já existente no lead (de uma proposta anterior já
+    // realizada/aceita) em vez de sobrescrever — mas só na primeira vez que
+    // esta proposta específica é processada (`!jaExiste`), senão a
+    // reconciliação (que roda de novo a cada mudança de propostas/contracts)
+    // somaria o mesmo valor repetidas vezes.
+    if (!jaExiste && prop.lead_id) {
+      const productIds = linkedItems.map((pi: any) => pi.product_id).filter(Boolean);
+      const lead = (leads || []).find((l: any) => l.id === prop.lead_id);
+      const newValue = (lead ? Number(lead.value) || 0 : 0) + (prop.valor || 0);
+      const newProductIds = [...new Set([...(lead?.productIds || []), ...productIds])];
+      updateLead(prop.lead_id, {
+        value: newValue,
+        ...(newProductIds.length > 0 ? { productIds: newProductIds } : {}),
+      });
+    }
+
+    // MRR real = só os itens recorrentes da proposta; implantação/setup entra
+    // à parte, não conta como receita recorrente mensal (Fase 2). Sem itens
+    // detalhados (proposta sem produtos, ex.: texto/arquivo), cai tudo como
+    // recorrente — mesmo comportamento de antes.
+    const recurringTotal = linkedItems.length > 0
+      ? linkedItems.filter((pi: any) => pi.billing_type !== 'one_time').reduce((s: number, pi: any) => s + (Number(pi.preco_unitario) || 0) * (Number(pi.quantidade) || 1), 0)
+      : (prop.valor || 0);
+    const oneTimeTotal = linkedItems.filter((pi: any) => pi.billing_type === 'one_time').reduce((s: number, pi: any) => s + (Number(pi.preco_unitario) || 0) * (Number(pi.quantidade) || 1), 0);
+
+    // `prop.titulo` é só o título genérico da proposta ("Proposta Comercial —
+    // Cliente X"), não o plano/produto vendido — usar isso como "Plano" do
+    // contrato escondia o produto real do catálogo. O plano do contrato passa
+    // a ser os produtos de fato vinculados na proposta (proposal_items.product_name),
+    // caindo no título só quando a proposta não tem itens estruturados (texto/arquivo).
+    const planLabel = linkedItems.length > 0
+      ? [...new Set(linkedItems.map((pi: any) => pi.product_name).filter(Boolean))].join(" + ")
+      : (prop.titulo || "Proposta Comercial");
+
+    // Duração do contrato (em meses). Prioriza o prazo REALMENTE fechado nesta
+    // venda (proposal_items.contract_months — pode ter sido negociado
+    // diferente do padrão do catálogo, ex.: licença de 12 meses fechada por 4
+    // meses com pagamento adiantado); só cai pro padrão do produto do catálogo
+    // em propostas antigas, criadas antes desse campo existir.
+    const linkedProducts = linkedItems
+      .map((pi: any) => (products || []).find((p: any) => p.id === pi.product_id))
+      .filter(Boolean);
+    const contractMonths =
+      linkedItems
+        .map((pi: any) => Number(pi.contract_months) || 0)
+        .filter((m: number) => m > 0)
+        .sort((a: number, b: number) => b - a)[0]
+      ?? linkedProducts
+        .map((p: any) => Number(p.contractMonths) || 0)
+        .filter((m: number) => m > 0)
+        .sort((a: number, b: number) => b - a)[0];
+
+    if (jaExiste) {
+      // Backfill: contratos criados ANTES das correções de plano/data de
+      // término (fase de auditoria) ficaram presos com o título genérico da
+      // proposta e sem data de término — corrige aqui, sem re-somar valor no
+      // lead nem duplicar nada (só plan/endDate/proposalId). Carimba
+      // proposalId também nos que só tinham o vínculo por nome, senão o match
+      // por nome quebra assim que o `plan` muda e recria um duplicado na
+      // próxima reconciliação.
+      const dm = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(existingContract.date || "");
+      const baseDate = dm ? new Date(Number(dm[3]), Number(dm[2]) - 1, Number(dm[1])) : new Date();
+      const backfillEndDate = contractMonths
+        ? new Date(baseDate.getFullYear(), baseDate.getMonth() + contractMonths, baseDate.getDate()).toLocaleDateString("pt-BR")
+        : null;
+      const updates: any = {};
+      if (planLabel && planLabel !== existingContract.plan) updates.plan = planLabel;
+      if (backfillEndDate && backfillEndDate !== existingContract.endDate) updates.endDate = backfillEndDate;
+      if (!existingContract.proposalId) updates.proposalId = prop.id;
+      if (Object.keys(updates).length > 0) updateContract(existingContract.id, updates, { silent: true });
+      return false;
+    }
+
+    const signedDate = new Date();
+    const endDate = contractMonths
+      ? new Date(signedDate.getFullYear(), signedDate.getMonth() + contractMonths, signedDate.getDate()).toLocaleDateString("pt-BR")
+      : null;
+
+    addContract({
+      client: prop.cliente || "Cliente",
+      plan: planLabel || prop.titulo || "Proposta Comercial",
+      mrr: formatCurrency(recurringTotal),
+      totalValue: recurringTotal + oneTimeTotal,
+      status: "Ativo",
+      date: signedDate.toLocaleDateString("pt-BR"),
+      endDate,
+      progress: 100,
+      proposalId: prop.id,
+    }, { silent });
+
+    addFinanceEntry({
+      description: `Contrato: ${prop.titulo} (${prop.cliente})`,
+      category: "Contrato / Recorrente",
+      value: recurringTotal,
+      type: "Receber",
+      date: new Date().toISOString().slice(0, 10),
+      status: "A Vencer",
+    }, { silent });
+
+    // Implantação/setup é receita única — lançamento à parte, não recorrente,
+    // pra não poluir relatórios de MRR/receita recorrente com valor avulso.
+    if (oneTimeTotal > 0) {
+      addFinanceEntry({
+        description: `Implantação/Setup: ${prop.titulo} (${prop.cliente})`,
+        category: "Implantação / Setup",
+        value: oneTimeTotal,
+        type: "Receber",
+        date: new Date().toISOString().slice(0, 10),
+        status: "A Vencer",
+      }, { silent });
+    }
+
+    if (!silent) toast.success("🎉 Proposta Aceita! Contrato ativado e fatura a receber gerada no financeiro!");
+    return true;
+  };
+
+  // Reconciliação: propostas "Aceita" sem contrato correspondente (aceitas
+  // antes dessa sincronização existir) ou com contrato desatualizado (plano
+  // genérico / sem data de término, de antes da correção) — roda globalmente
+  // assim que os dados do tenant carregam, não depende de nenhuma página
+  // específica estar montada.
+  useEffect(() => {
+    if (!proposals || proposals.length === 0 || !contracts) return;
+    (proposals as any[])
+      .filter((p) => p.status === "Aceita")
+      .forEach((p) => syncAcceptedProposal(p, { silent: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proposals, contracts]);
+
   const deleteFinanceEntry = async (id: string) => {
     setFinanceEntries(prev => prev.filter(f => f.id !== id));
     if (supabase) {
@@ -1808,6 +1961,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       deleteProposal: proposalCrud.del,
       proposalItems,
       createProposalWithItems,
+      syncAcceptedProposal,
       certificates,
       setCertificates,
       turmas,

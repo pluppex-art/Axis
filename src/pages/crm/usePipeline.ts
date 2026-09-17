@@ -195,17 +195,24 @@ export function usePipeline() {
     (l.temperature === 'quente' || (l.scoreIA ?? 0) >= 80) && l.status !== 'Fechado' && l.status !== 'Perdido'
   ).length;
 
-  const totalValueSum = filteredItemsList.reduce((sum, item) => {
-    const ids: string[] = Array.isArray(item.productIds) ? item.productIds : [];
-    if (ids.length > 0) {
-      const productTotal = (products as any[]).reduce(
-        (s: number, p: any) => ids.includes(p.id) ? s + (Number(p.price) || 0) : s,
-        0
-      );
-      if (productTotal > 0) return sum + productTotal;
-    }
-    return sum + parseCurrencyBR(item.value ?? (item as any).valor);
-  }, 0);
+  // "Total de Ganhos" — soma só dos leads Fechados (mesmo filtro do card
+  // "Ganhos" ao lado, que conta a quantidade). Antes somava TODO o pipeline
+  // (aberto + ganho + perdido) sob o rótulo genérico "Valor Total", o que não
+  // batia com o conceito de "ganhos" e inflava o número com negócios ainda
+  // não fechados.
+  const totalValueSum = filteredItemsList
+    .filter((item: any) => item.status === 'Fechado')
+    .reduce((sum, item) => {
+      const ids: string[] = Array.isArray(item.productIds) ? item.productIds : [];
+      if (ids.length > 0) {
+        const productTotal = (products as any[]).reduce(
+          (s: number, p: any) => ids.includes(p.id) ? s + (Number(p.price) || 0) : s,
+          0
+        );
+        if (productTotal > 0) return sum + productTotal;
+      }
+      return sum + parseCurrencyBR(item.value ?? (item as any).valor);
+    }, 0);
 
   const formattedTotalValue = formatCurrency(totalValueSum);
 
