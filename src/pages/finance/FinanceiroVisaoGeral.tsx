@@ -132,10 +132,9 @@ export default function FinanceiroVisaoGeral() {
     }).reduce((s, f) => s + f.value, 0);
     const fluxoProjetado30 = previstoReceber30 - previstoPagar30;
 
-    // MRR não tem histórico mensal armazenado — usa o "mês anterior" só se
-    // houver contratos com receita perdida/ganha reconhecíveis; sem isso,
-    // compara contra o próprio MRR atual menos o perdido no mês (aproximação
-    // honesta, não um número inventado do nada).
+    // MRR não tem snapshot histórico por mês salvo em banco — sem isso não dá
+    // pra calcular a variação vs. mês anterior sem inventar número, então o
+    // card de MRR fica sem delta (deltaPct: null) até essa série existir.
     const mrrAtual = getMRR(contracts);
 
     return [
