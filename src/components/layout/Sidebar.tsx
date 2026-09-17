@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Building2, MapPin } from "lucide-react";
+import { Building2, MapPin, ChevronDown } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
@@ -28,6 +29,10 @@ export function Sidebar({
   } = useAuth();
   const { cargos, empresaFiliais, tenantPrimaryColor } = useData();
   const { t } = useLocalization();
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const toggleSection = (title: string) => {
+    setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }));
+  };
 
   // Master vê e troca de cliente (tenant); admin do próprio tenant (ou master, dentro
   // do cliente ativo) vê e troca de filial daquele cliente.
@@ -149,16 +154,24 @@ export function Sidebar({
               return { ...section, items: visibleItems };
             })
             .filter(Boolean)
-            .map((section: any, idx) => (
+            .map((section: any, idx) => {
+              const isOpen = isSidebarCollapsed || !!openSections[section.title];
+
+              return (
               <div key={idx} className="space-y-1">
                 {!isSidebarCollapsed ? (
-                  <div className="px-2.5 text-[10px] font-black text-[var(--color-text-faint)] uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(section.title)}
+                    className="w-full px-2.5 text-[10px] font-black text-[var(--color-text-faint)] uppercase tracking-wider mb-1.5 flex items-center justify-between cursor-pointer bg-transparent border-none hover:text-[var(--color-text-muted)] transition-colors"
+                  >
                     <span>{t(section.title)}</span>
-                  </div>
+                    <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  </button>
                 ) : (
                   <div className="h-2"></div>
                 )}
-                {section.items.map((item: any) => {
+                {isOpen && section.items.map((item: any) => {
                   const isActive = item.path ? location.pathname === item.path || (item.path !== '/app/dashboard' && item.path !== '/app' && location.pathname.startsWith(item.path)) : false;
 
                   const btnContent = (
@@ -206,7 +219,8 @@ export function Sidebar({
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
         </div>
 
         {!isSidebarCollapsed && (
