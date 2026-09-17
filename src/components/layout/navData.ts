@@ -37,7 +37,6 @@ import {
   Server,
   Handshake,
   CalendarDays,
-  Receipt,
   TrendingUp,
   SlidersHorizontal,
   ShoppingCart,
@@ -86,12 +85,7 @@ export const navSections = [
     title: "Gestão Financeira",
     reqModule: "financeiro",
     items: [
-      { name: "Painel Financeiro", path: "/app/financeiro/dashboard", icon: Wallet },
-      { name: "Contas a Receber", path: "/app/financeiro/receber", icon: TrendingUp },
-      { name: "Contas a Pagar", path: "/app/financeiro/pagar", icon: Wallet },
-      { name: "DRE & Resultados", path: "/app/financeiro/dre", icon: PieChart },
-      { name: "Contratos & Faturas", path: "/app/financeiro/faturas", icon: Receipt },
-      { name: "Indicações & Parcerias", path: "/app/financeiro/indicacoes", icon: Handshake },
+      { name: "Financeiro", path: "/app/financeiro/dashboard", icon: Wallet },
     ],
   },
   {

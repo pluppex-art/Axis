@@ -10,6 +10,8 @@ export interface SectionNavItem {
   title: string;
   path: string;
   icon?: LucideIcon;
+  /** Item ainda não implementado — some com um rótulo "Em breve" e não navega. */
+  soon?: boolean;
 }
 
 export interface SectionNavGroup {
@@ -135,6 +137,21 @@ function SectionGroup({
         {group.items.map((item) => {
           const active = isActive(item.path);
           const ItemIcon = item.icon;
+          if (item.soon) {
+            return (
+              <div
+                key={item.path}
+                title={t("Em breve")}
+                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium rounded-[var(--radius-control)] text-[var(--color-text-faint)] border border-transparent cursor-not-allowed opacity-60"
+              >
+                {ItemIcon && <ItemIcon className="w-4 h-4 shrink-0" />}
+                <span className="truncate w-full text-left">{t(item.title)}</span>
+                <span className="text-[8px] font-bold uppercase tracking-wider shrink-0 border border-[var(--color-border-default)] rounded px-1.5 py-0.5">
+                  {t("Em breve")}
+                </span>
+              </div>
+            );
+          }
           return (
             <Link
               key={item.path}
