@@ -358,6 +358,43 @@ function logApiKeyUsage(req: express.Request, statusCode: number) {
     });
 }
 
+// Espelha customFields.reservation (quando presente) na agenda comercial
+// (tabela reunioes) — reaproveita a tela de Agenda/Calendário existente pra
+// mostrar reservas de sistemas externos (ex.: to na pista) como compromissos,
+// já que não existe hoje uma tela de calendário genérica separada de vendas.
+// Upsert por id = reservation.id, então reprocessar a mesma reserva (retry,
+// migração re-rodada) atualiza em vez de duplicar. Best-effort: falha aqui
+// nunca derruba a criação/atualização do lead.
+async function syncReuniaoFromReservation(
+  reservation: any, tenantId: string, leadId: string, leadName: string, leadEmail: string, company: string
+) {
+  if (!reservation?.id || !reservation?.date) return;
+  const s = String(reservation.status || "").toLowerCase();
+  const reuniaoStatus = s.includes("cancel") || s.includes("no-show") || s.includes("no show")
+    || s.includes("não compare") || s.includes("nao compare") ? "Cancelada"
+    : s.includes("check") ? "Concluída"
+    : "Agendada";
+  const time = reservation.time ? String(reservation.time).slice(0, 8) : "00:00:00";
+  const scheduledAt = `${reservation.date}T${time}`;
+  const durationMinutes = Math.max(30, Math.round((Number(reservation.duration) || 1) * 60));
+  const pauta = `Reserva de Boliche${reservation.eventType ? " - " + reservation.eventType : ""}`;
+  const relatorio = [
+    reservation.peopleCount ? `${reservation.peopleCount} pessoa(s)` : null,
+    reservation.laneCount ? `${reservation.laneCount} pista(s)` : null,
+    reservation.totalValue != null ? `R$ ${reservation.totalValue}` : null,
+  ].filter(Boolean).join(" · ");
+
+  const { error } = await supabaseService!.from("reunioes").upsert({
+    id: reservation.id,
+    leadId, leadName, leadEmail, companyName: company || "",
+    closerName: "", closerEmail: "",
+    scheduledAt, durationMinutes,
+    status: reuniaoStatus, pauta, relatorio,
+    tenant_id: tenantId,
+  }, { onConflict: "id" });
+  if (error) console.error("[API v1] Falha ao sincronizar reunião/agenda:", error.message);
+}
+
 app.post("/api/v1/leads", requireApiKey, async (req, res) => {
   const {
     name, company = "", email = "", phone = "", cnpj = "",
@@ -429,6 +466,7 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
       logApiKeyUsage(req, 500);
       return res.status(500).json({ error: "Falha ao atualizar lead no banco." });
     }
+    if (incomingReservation) await syncReuniaoFromReservation(incomingReservation, tenantId, existing.id, name, normalizedEmail, company);
     logApiKeyUsage(req, 200);
     return res.status(200).json({ success: true, lead: data, deduped: true });
   }
@@ -450,6 +488,7 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
     logApiKeyUsage(req, 500);
     return res.status(500).json({ error: "Falha ao salvar lead no banco." });
   }
+  if (incomingReservation) await syncReuniaoFromReservation(incomingReservation, tenantId, id, name, normalizedEmail, company);
   logApiKeyUsage(req, 201);
   return res.status(201).json({ success: true, lead: data ?? newLead, deduped: false });
 });
