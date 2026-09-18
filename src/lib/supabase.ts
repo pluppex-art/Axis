@@ -363,7 +363,8 @@ export async function createTenantAdmin(
   tenantName: string,
   niche: string,
   adminEmail: string,
-  adminPassword: string
+  adminPassword: string,
+  options?: { plan?: string; primaryColor?: string; timezone?: string; modules?: Record<string, boolean> }
 ): Promise<{ success: boolean; error?: string }> {
   if (!supabase) return { success: false, error: 'Supabase não configurado' };
   try {
@@ -372,7 +373,7 @@ export async function createTenantAdmin(
     const res = await fetch('/api/admin/tenant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ tenantName, niche, adminEmail, adminPassword }),
+      body: JSON.stringify({ tenantName, niche, adminEmail, adminPassword, ...options }),
       signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();

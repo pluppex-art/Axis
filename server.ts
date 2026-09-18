@@ -1772,10 +1772,12 @@ app.post("/api/admin/tenant-user/:userId/credentials", requireUser, requireMaste
 app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) => {
   if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." });
 
-  const { tenantName, niche, adminEmail, adminPassword } = req.body ?? {};
+  const { tenantName, niche, adminEmail, adminPassword, plan, primaryColor, timezone, modules } = req.body ?? {};
   if (!tenantName?.trim()) return res.status(400).json({ error: "Informe o nome da empresa." });
   if (!adminEmail?.trim()) return res.status(400).json({ error: "Informe o e-mail do administrador da empresa." });
   if (!adminPassword || adminPassword.length < 6) return res.status(400).json({ error: "A senha do administrador precisa ter pelo menos 6 caracteres." });
+
+  const ALLOWED_PLANS = ["Starter", "Professional", "Enterprise", "Custom"];
 
   try {
     const { data: existingUser } = await supabaseService.from("users").select("id").eq("email", adminEmail.trim()).maybeSingle();
@@ -1786,10 +1788,13 @@ app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) 
       .insert({
         name: tenantName.trim(),
         niche: niche || "Parceira",
-        plan: "Standard",
+        plan: ALLOWED_PLANS.includes(plan) ? plan : "Standard",
         status: "Active",
-        timezone: "America/Sao_Paulo",
-        modules: { crm: true, sdr: false, advDashboard: false, financeiro: true, marketing: false, educacao: false, clinica: false, produtividade: true, rh: false, bi: false, engajamento: false },
+        timezone: timezone?.trim() || "America/Sao_Paulo",
+        primary_color: /^#[0-9A-Fa-f]{6}$/.test(primaryColor) ? primaryColor : "#2563EB",
+        modules: modules && typeof modules === "object"
+          ? modules
+          : { crm: true, sdr: false, advDashboard: false, financeiro: true, marketing: false, educacao: false, clinica: false, produtividade: true, rh: false, bi: false, engajamento: false },
       })
       .select()
       .maybeSingle();

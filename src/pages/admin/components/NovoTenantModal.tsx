@@ -1,8 +1,13 @@
 import React, { useState } from "react";
-import { Building2, ShieldCheck, Sparkles, KeyRound, Mail, DollarSign } from "lucide-react";
+import {
+  Building2, ShieldCheck, KeyRound, Palette, Blocks, Eye, EyeOff, RefreshCw, Check,
+  Target, Sparkles, Clock, DollarSign, Package, Megaphone, MessageSquare, Award,
+  Activity, Users, Columns3, Home, Car, Sun, ShoppingCart, Code2, type LucideIcon,
+} from "lucide-react";
 import { Modal } from "../../../components/ui/modal";
 import { Button } from "../../../components/ui/button";
 import { createTenantAdmin } from "../../../lib/supabase";
+import { BRAND_COLORS } from "../../../lib/theme";
 import { toast } from "sonner";
 
 interface NovoTenantModalProps {
@@ -23,26 +28,109 @@ const NICHES = [
   "Parceira Geral",
 ];
 
+const PLANS = [
+  { value: "Starter", label: "Starter", price: "R$ 497/mês" },
+  { value: "Professional", label: "Professional", price: "R$ 997/mês" },
+  { value: "Enterprise", label: "Enterprise", price: "R$ 2.497/mês" },
+  { value: "Custom", label: "Customizado", price: "Sob medida" },
+];
+
+const MODULES: { id: string; label: string; icon: LucideIcon }[] = [
+  { id: "crm", label: "CRM & Funil de Vendas", icon: Target },
+  { id: "aurora", label: "Aurora Diretoria IA", icon: Sparkles },
+  { id: "produtividade", label: "Tarefas & Produtividade", icon: Clock },
+  { id: "financeiro", label: "Cofre & Financeiro", icon: DollarSign },
+  { id: "catalogo", label: "Catálogo de Produtos", icon: Package },
+  { id: "marketing", label: "Marketing & Campanhas", icon: Megaphone },
+  { id: "engajamento", label: "Engajamento & WhatsApp", icon: MessageSquare },
+  { id: "educacao", label: "Educação & Acadêmico", icon: Award },
+  { id: "clinica", label: "Clínica Médica & Saúde", icon: Activity },
+  { id: "rh", label: "RH & Colaboradores", icon: Users },
+  { id: "bi", label: "BI & Inteligência de Dados", icon: Columns3 },
+  { id: "imobiliaria", label: "Imobiliária", icon: Home },
+  { id: "concessionaria", label: "Concessionária & Automotivo", icon: Car },
+  { id: "solar", label: "Energia Solar", icon: Sun },
+  { id: "varejo", label: "Varejo & PDV", icon: ShoppingCart },
+  { id: "dev", label: "Engenharia & Sprints", icon: Code2 },
+];
+
+const DEFAULT_MODULES_BY_NICHE: Record<string, string[]> = {
+  "Tecnologia": ["crm", "aurora", "produtividade", "financeiro", "bi", "dev"],
+  "Solar": ["crm", "aurora", "produtividade", "financeiro", "solar", "engajamento"],
+  "Imobiliária": ["crm", "aurora", "produtividade", "financeiro", "imobiliaria", "engajamento"],
+  "Educação": ["crm", "aurora", "produtividade", "financeiro", "educacao", "rh"],
+  "Clínica": ["crm", "aurora", "produtividade", "financeiro", "clinica", "rh"],
+  "Agronegócio": ["crm", "aurora", "produtividade", "financeiro", "catalogo", "bi"],
+  "Varejo": ["crm", "aurora", "produtividade", "financeiro", "varejo", "catalogo"],
+  "Concessionária": ["crm", "aurora", "produtividade", "financeiro", "concessionaria", "catalogo"],
+  "Parceira Geral": ["crm", "aurora", "produtividade", "financeiro"],
+};
+
+function buildModulesState(activeIds: string[]): Record<string, boolean> {
+  const state: Record<string, boolean> = {};
+  MODULES.forEach(m => { state[m.id] = activeIds.includes(m.id); });
+  return state;
+}
+
+function generatePassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+  let pwd = "";
+  for (let i = 0; i < 12; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+  return pwd;
+}
+
+const DEFAULT_NICHE = "Tecnologia";
+const DEFAULT_COLOR = BRAND_COLORS[1].hex; // Azul — mesmo default da coluna tenants.primary_color
+
+const labelClass = "text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1";
+const inputClass = "w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] focus:ring-1 focus:ring-[var(--color-primary-blue)] outline-none placeholder-[var(--color-text-faint)] font-medium";
+
 export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalProps) {
   const [name, setName] = useState("");
-  const [niche, setNiche] = useState("Tecnologia");
+  const [niche, setNiche] = useState(DEFAULT_NICHE);
   const [plan, setPlan] = useState("Professional");
+  const [primaryColor, setPrimaryColor] = useState(DEFAULT_COLOR);
+  const [modules, setModules] = useState<Record<string, boolean>>(() => buildModulesState(DEFAULT_MODULES_BY_NICHE[DEFAULT_NICHE]));
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
+  const [adminPasswordConfirm, setAdminPasswordConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const activeModuleCount = Object.values(modules).filter(Boolean).length;
 
   const reset = () => {
     setName("");
-    setNiche("Tecnologia");
+    setNiche(DEFAULT_NICHE);
     setPlan("Professional");
+    setPrimaryColor(DEFAULT_COLOR);
+    setModules(buildModulesState(DEFAULT_MODULES_BY_NICHE[DEFAULT_NICHE]));
     setAdminEmail("");
     setAdminPassword("");
+    setAdminPasswordConfirm("");
+    setShowPassword(false);
     setLoading(false);
   };
 
   const handleClose = () => {
     reset();
     onClose();
+  };
+
+  const handleNicheChange = (value: string) => {
+    setNiche(value);
+    setModules(buildModulesState(DEFAULT_MODULES_BY_NICHE[value] || DEFAULT_MODULES_BY_NICHE["Parceira Geral"]));
+  };
+
+  const toggleModule = (id: string) => {
+    setModules(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleGeneratePassword = () => {
+    const generated = generatePassword();
+    setAdminPassword(generated);
+    setAdminPasswordConfirm(generated);
+    setShowPassword(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,9 +145,18 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
       return;
     }
 
+    if (adminPassword !== adminPasswordConfirm) {
+      toast.error("As senhas informadas não coincidem.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await createTenantAdmin(name.trim(), niche, adminEmail.trim(), adminPassword);
+      const res = await createTenantAdmin(name.trim(), niche, adminEmail.trim(), adminPassword, {
+        plan,
+        primaryColor,
+        modules,
+      });
       if (!res.success) {
         toast.info(`Tenant "${name}" registrado no ambiente.`);
       } else {
@@ -80,6 +177,7 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
+      maxWidth="max-w-2xl"
       title={
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 flex items-center justify-center mt-0.5 text-[var(--color-primary-blue)]">
@@ -111,87 +209,180 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
         </div>
       }
     >
-      <form id="novo-tenant-form" onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
-            Nome da Organização / Empresa *
-          </label>
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="Ex: Alfa Energia Solar S/A"
-            className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-4 py-2.5 text-xs text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] focus:ring-1 focus:ring-[var(--color-primary-blue)] outline-none placeholder-[var(--color-text-faint)] font-medium"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <form id="novo-tenant-form" onSubmit={handleSubmit} className="space-y-5">
+        {/* Dados da empresa */}
+        <div className="space-y-3">
           <div>
-            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
-              Nicho / Vertical de Negócio
-            </label>
-            <select
-              value={niche}
-              onChange={e => setNiche(e.target.value)}
-              className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] outline-none cursor-pointer"
-            >
-              {NICHES.map(n => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
+            <label className={labelClass}>Nome da Organização / Empresa *</label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Ex: Alfa Energia Solar S/A"
+              className={inputClass}
+            />
           </div>
-
-          <div>
-            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
-              Plano de Assinatura Inicial
-            </label>
-            <select
-              value={plan}
-              onChange={e => setPlan(e.target.value)}
-              className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] outline-none cursor-pointer font-bold"
-            >
-              <option value="Starter">Starter (R$ 497/mês)</option>
-              <option value="Professional">Professional (R$ 997/mês)</option>
-              <option value="Enterprise">Enterprise (R$ 2.497/mês)</option>
-              <option value="Custom">Customizado / Sob Medida</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="pt-2 border-t border-[var(--color-border-subtle)] space-y-3">
-          <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-1.5">
-            <KeyRound className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Credenciais do Administrador Inicial
-          </span>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
-                E-mail do Admin *
-              </label>
-              <input
-                type="email"
-                required
-                value={adminEmail}
-                onChange={e => setAdminEmail(e.target.value)}
-                placeholder="admin@empresa.com"
-                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2 text-xs text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] outline-none placeholder-[var(--color-text-faint)]"
-              />
+              <label className={labelClass}>Nicho / Vertical de Negócio</label>
+              <select
+                value={niche}
+                onChange={e => handleNicheChange(e.target.value)}
+                className={`${inputClass} cursor-pointer`}
+              >
+                {NICHES.map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1">
-                Senha de Acesso *
-              </label>
+              <label className={labelClass}>Plano de Assinatura Inicial</label>
+              <select
+                value={plan}
+                onChange={e => setPlan(e.target.value)}
+                className={`${inputClass} cursor-pointer font-bold`}
+              >
+                {PLANS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label} ({p.price})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Identidade visual */}
+        <div className="pt-3 border-t border-[var(--color-border-subtle)] space-y-2.5">
+          <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-1.5">
+            <Palette className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Identidade Visual
+          </span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              {BRAND_COLORS.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  title={c.label}
+                  onClick={() => setPrimaryColor(c.hex)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all"
+                  style={{
+                    backgroundColor: c.hex,
+                    borderColor: primaryColor.toLowerCase() === c.hex.toLowerCase() ? "var(--color-text-primary)" : "transparent",
+                  }}
+                >
+                  {primaryColor.toLowerCase() === c.hex.toLowerCase() && <Check className="w-4 h-4 text-white drop-shadow" />}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className="w-8 h-8 rounded-full border border-[var(--color-border-default)] shrink-0"
+                style={{ backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(primaryColor) ? primaryColor : "transparent" }}
+              />
               <input
-                type="password"
+                type="text"
+                value={primaryColor}
+                onChange={e => setPrimaryColor(e.target.value)}
+                placeholder="#2563EB"
+                maxLength={7}
+                className="w-24 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3 py-1.5 text-xs text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] outline-none font-mono uppercase"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Módulos iniciais */}
+        <div className="pt-3 border-t border-[var(--color-border-subtle)] space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-1.5">
+              <Blocks className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Módulos Iniciais
+            </span>
+            <span className="text-[10px] font-bold text-[var(--color-text-faint)]">{activeModuleCount} de {MODULES.length} ativos</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {MODULES.map(m => {
+              const active = modules[m.id];
+              const Icon = m.icon;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => toggleModule(m.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-left transition-colors ${
+                    active
+                      ? "bg-[var(--color-primary-blue)]/10 border-[var(--color-primary-blue)]/30 text-[var(--color-primary-blue)]"
+                      : "bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-default)]"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[10px] font-bold leading-tight">{m.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Credenciais do administrador */}
+        <div className="pt-3 border-t border-[var(--color-border-subtle)] space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-1.5">
+              <KeyRound className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Credenciais do Administrador Inicial
+            </span>
+            <button
+              type="button"
+              onClick={handleGeneratePassword}
+              className="flex items-center gap-1 text-[10px] font-bold text-[var(--color-primary-blue)] hover:underline"
+            >
+              <RefreshCw className="w-3 h-3" /> Gerar senha segura
+            </button>
+          </div>
+
+          <div>
+            <label className={labelClass}>E-mail do Admin *</label>
+            <input
+              type="email"
+              required
+              value={adminEmail}
+              onChange={e => setAdminEmail(e.target.value)}
+              placeholder="admin@empresa.com"
+              className={inputClass}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Senha de Acesso *</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={adminPassword}
+                  onChange={e => setAdminPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className={`${inputClass} pr-9`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-faint)] hover:text-[var(--color-text-muted)]"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className={labelClass}>Confirmar Senha *</label>
+              <input
+                type={showPassword ? "text" : "password"}
                 required
-                value={adminPassword}
-                onChange={e => setAdminPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2 text-xs text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] outline-none placeholder-[var(--color-text-faint)]"
+                value={adminPasswordConfirm}
+                onChange={e => setAdminPasswordConfirm(e.target.value)}
+                placeholder="Repita a senha"
+                className={inputClass}
               />
             </div>
           </div>
@@ -200,7 +391,7 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
         <div className="p-3 bg-[var(--color-primary-blue)]/5 border border-[var(--color-primary-blue)]/20 rounded-xl flex items-start gap-2 text-[11px] text-[var(--color-text-muted)]">
           <ShieldCheck className="w-4 h-4 text-[var(--color-primary-blue)] shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            Ao provisionar, um novo identificador único de Tenant ID será gerado no Supabase com isolamento de dados RLS e credenciais imediatas para login administrativo.
+            Ao provisionar, um novo identificador único de Tenant ID será gerado no Supabase com isolamento de dados RLS, marca e módulos configurados acima, e credenciais imediatas para login administrativo.
           </p>
         </div>
       </form>
