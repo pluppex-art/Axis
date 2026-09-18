@@ -12,7 +12,7 @@ const EVENTS = [
   { time: "09:45", icon: CalendarCheck2, text: "Follow-up criado no pipeline." },
 ];
 
-export function AxisAoVivoSection() {
+export function SPYAoVivoSection() {
   const { theme } = useLpTheme();
   const reducedMotion = usePrefersReducedMotion();
   const [active, setActive] = useState(0);

@@ -4,7 +4,7 @@ import { useModuleManifest } from "../../../hooks/useModuleManifest";
 import { Button } from "../../../components/ui/button";
 
 /**
- * Module Manifest: catalogo formal de todo modulo/nicho do Axis (generico ou vertical de negocio),
+ * Module Manifest: catalogo formal de todo modulo/nicho do SPY (generico ou vertical de negocio),
  * lido de `module_manifest`. Antes disso, essa informacao so existia espalhada em
  * ConfigModulosDemos.tsx (DEFAULT_MODULES), ModulesCombobox.tsx (ALL_MODULES), navData.ts e
  * App.tsx — sem um catalogo unico e consultavel. Ver memoria gtech_aurora_spi_evolution_audit.

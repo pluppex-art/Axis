@@ -121,7 +121,7 @@ export function formatGoogleCalendarError(reason?: string): string {
 
   switch (reason) {
     case "missing_refresh_token":
-      return "O Google não retornou o token permanente. Remova o acesso ao Axis na sua Conta Google (Segurança > Apps de terceiros) e tente conectar novamente.";
+      return "O Google não retornou o token permanente. Remova o acesso ao SPY na sua Conta Google (Segurança > Apps de terceiros) e tente conectar novamente.";
     case "access_denied":
       return "Acesso cancelado na tela de login do Google.";
     case "invalid_state":

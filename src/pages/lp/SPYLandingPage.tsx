@@ -9,7 +9,7 @@ import { CalculadoraROISection } from "./CalculadoraROI";
 import { ComoFuncionaSection } from "./ComoFunciona";
 import { ComoComecarSection } from "./ComoComecar";
 import { InteligenciaSection } from "./Inteligencia";
-import { AxisAoVivoSection } from "./AxisAoVivo";
+import { SPYAoVivoSection } from "./SPYAoVivo";
 import { ExemploOportunidadeSection } from "./ExemploOportunidade";
 import { RadarOportunidadesSection } from "./RadarOportunidades";
 import { AutomacaoWorkflowSection } from "./AutomacaoWorkflow";
@@ -115,7 +115,7 @@ function LpContent({ initialTheme }: { initialTheme?: LpTheme["id"] }) {
         <ComoFuncionaSection />
         <ComoComecarSection />
         <InteligenciaSection />
-        <AxisAoVivoSection />
+        <SPYAoVivoSection />
         <ExemploOportunidadeSection />
         <RadarOportunidadesSection />
         <AutomacaoWorkflowSection />
@@ -135,7 +135,7 @@ function LpContent({ initialTheme }: { initialTheme?: LpTheme["id"] }) {
   );
 }
 
-export default function AxisLandingPage() {
+export default function SPYLandingPage() {
   useLandingPageSeo();
   const urlTheme = getUrlTheme();
 

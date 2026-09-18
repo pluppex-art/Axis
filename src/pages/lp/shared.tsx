@@ -339,7 +339,7 @@ export function AnimatedCounter({
   );
 }
 
-/** Selo dos pilares (Axis / Aurora) — usado no hero e no fechamento da página. */
+/** Selo dos pilares (SPY / Aurora) — usado no hero e no fechamento da página. */
 export function PillarBadge({ label, tone }: { label: string; tone?: "blue" | "violet" | "emerald" }) {
   const { theme } = useLpTheme();
   const TONE = tone && tone !== "blue" ? {

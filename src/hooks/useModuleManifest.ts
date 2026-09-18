@@ -15,7 +15,7 @@ export interface ModuleManifestEntry {
 }
 
 /**
- * Le `public.module_manifest` — catalogo formal de todo modulo/nicho do Axis, metadado de
+ * Le `public.module_manifest` — catalogo formal de todo modulo/nicho do SPY, metadado de
  * plataforma (mesmo pra todo tenant, sem tenant_id). Substitui a falta de um "Module Manifest"
  * central apontada na auditoria do prompt mestre — ver memoria gtech_aurora_spi_evolution_audit.
  */

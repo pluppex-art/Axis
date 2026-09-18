@@ -56,7 +56,7 @@ const METRICS: Metric[] = [
 
 /** Moldura de janela ao redor do conteúdo — o conteúdo em si usa as mesmas variáveis de tema
  * (--color-surface-elevated, --color-border-default etc.) e a font-sans real do produto (Arial),
- * já que isso precisa ser a interface real do Axis, não uma reinvenção estilizada em tema escuro. */
+ * já que isso precisa ser a interface real do SPY, não uma reinvenção estilizada em tema escuro. */
 function ChromeWindow({ title, children }: { title: string; children: React.ReactNode }) {
   const { glow } = useLpTheme();
   return (

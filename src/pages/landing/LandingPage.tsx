@@ -74,7 +74,7 @@ export default function LandingPage() {
             className="flex items-center gap-2 sm:gap-4 group cursor-pointer shrink-0 pr-4 lg:pr-12"
           >
             <div className="w-8 h-8 sm:w-12 sm:h-12 bg-white rounded-lg sm:rounded-2xl flex items-center justify-center shadow-[0_0_25px_rgba(255,255,255,0.15)] group-hover:rotate-12 transition-transform duration-500 overflow-hidden p-1">
-              <img src="/logo-icon.png" alt="Axis Icon" className="w-full h-full object-contain" />
+              <img src="/logo-icon.png" alt="SPY Icon" className="w-full h-full object-contain" />
             </div>
             <span className="text-lg sm:text-3xl font-display font-black tracking-[-0.05em] group-hover:tracking-[0.05em] transition-all">AXIS</span>
           </motion.div>
@@ -128,7 +128,7 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ duration: 1.5, ease: "easeOut" }}
                 src="/logo-full.png" 
-                alt="Axis Commercial Interface" 
+                alt="SPY Commercial Interface" 
                 className="w-full opacity-100 rounded-2xl sm:rounded-none p-4 sm:p-12 mix-blend-screen"
               />
               <div className="relative sm:absolute bottom-4 left-4 sm:bottom-10 sm:left-10 lg:bottom-20 lg:left-20 z-20 mt-4 sm:mt-0">
@@ -306,7 +306,7 @@ export default function LandingPage() {
             <div className="md:col-span-2">
                <div className="flex items-center gap-4 sm:gap-6 mb-4 sm:mb-6">
                   <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-lg sm:rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.1)] overflow-hidden p-1.5">
-                    <img src="/logo-icon.png" alt="Axis Logo" className="w-full h-full object-contain" />
+                    <img src="/logo-icon.png" alt="SPY Logo" className="w-full h-full object-contain" />
                   </div>
                   <span className="text-xl sm:text-2xl font-display font-black tracking-[-0.05em] italic">AXIS_CORE_SYSTEMS</span>
                </div>
