@@ -420,7 +420,7 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
   if (existing) {
     const { data, error } = await supabaseService.from("leads").update({
       name, company, email: normalizedEmail, phone: normalizedPhone, cnpj,
-      value: rawValue, status, priority, source,
+      value: rawValue, status, priority, source, stageId, pipelineId,
       customFields: mergedCustomFields, tenantName,
       updated_at: new Date().toISOString(),
     }).eq("id", existing.id).select().maybeSingle();
