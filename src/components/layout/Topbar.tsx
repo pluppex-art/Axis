@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -51,10 +52,67 @@ export function Topbar({
     appSettings,
     tenantPrimaryColor,
   } = useData();
+  const { t } = useLocalization();
 
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<NotificationTab>("todas");
+
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const toggleNotifications = () => {
+    setIsNotificationsOpen((prev) => {
+      if (!prev) setIsUserMenuOpen(false);
+      return !prev;
+    });
+  };
+
+  const toggleUserMenu = () => {
+    setIsUserMenuOpen((prev) => {
+      if (!prev) setIsNotificationsOpen(false);
+      return !prev;
+    });
+  };
+
+  useEffect(() => {
+    if (!isNotificationsOpen && !isUserMenuOpen) return;
+
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (
+        isNotificationsOpen &&
+        notificationsRef.current &&
+        !notificationsRef.current.contains(target)
+      ) {
+        setIsNotificationsOpen(false);
+      }
+      if (
+        isUserMenuOpen &&
+        userMenuRef.current &&
+        !userMenuRef.current.contains(target)
+      ) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsNotificationsOpen(false);
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isNotificationsOpen, isUserMenuOpen]);
 
   // Nome/avatar do usuário e da empresa vêm do Supabase (public.users via
   // AuthContext, app_settings via DataContext) — reativos automaticamente,
@@ -132,15 +190,15 @@ export function Topbar({
           type="button"
           onClick={() => toggleTheme()}
           className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] bg-[var(--color-surface-sunken)] hover:bg-[var(--color-border-default)] rounded-xl transition-colors cursor-pointer border-none"
-          title="Alternar Tema (Light/Dark)"
+          title={t("Alternar Tema (Light/Dark)")}
         >
           {theme === "dark" ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500" />}
         </button>
 
-        <div className="relative">
+        <div ref={notificationsRef} className="relative">
           <button
             type="button"
-            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+            onClick={toggleNotifications}
             className={`text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all relative p-2 rounded-xl border border-transparent cursor-pointer ${
               isNotificationsOpen
                 ? "bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] shadow-sm"
@@ -148,7 +206,7 @@ export function Topbar({
                 ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
                 : "hover:bg-[var(--color-surface-sunken)]"
             }`}
-            title="Notificações"
+            title={t("Notificações")}
           >
             <Bell className="w-4 h-4" />
             {unreadNotifications > 0 && (
@@ -159,9 +217,7 @@ export function Topbar({
           </button>
 
           {isNotificationsOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)}></div>
-              <Card className="fixed left-4 right-4 sm:left-auto sm:right-4 md:absolute md:left-auto md:right-0 top-16 md:top-full md:mt-3 md:w-[440px] bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
+            <Card className="fixed left-4 right-4 sm:left-auto sm:right-4 md:absolute md:left-auto md:right-0 top-16 md:top-full md:mt-3 md:w-[440px] bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
                 {/* Header */}
                 <div className="p-4 border-b border-[var(--color-border-subtle)] flex justify-between items-center bg-[var(--color-surface-sunken)]">
                   <div className="flex items-center gap-2">
@@ -170,10 +226,10 @@ export function Topbar({
                     </div>
                     <div>
                       <h4 className="text-xs font-black uppercase tracking-wider text-[var(--color-text-primary)]">
-                        Central de Notificações
+                        {t("Central de Notificações")}
                       </h4>
                       <p className="text-[10px] text-[var(--color-text-muted)]">
-                        {unreadNotifications} {unreadNotifications === 1 ? "pendente de leitura" : "pendentes de leitura"}
+                        {unreadNotifications} {t(unreadNotifications === 1 ? "pendente de leitura" : "pendentes de leitura")}
                       </p>
                     </div>
                   </div>
@@ -184,7 +240,7 @@ export function Topbar({
                       onClick={() => markAllNotificationsAsRead()}
                       className="text-[11px] text-[var(--color-primary-blue)] font-bold hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none"
                     >
-                      <CheckCheck className="w-3.5 h-3.5" /> Ler todas
+                      <CheckCheck className="w-3.5 h-3.5" /> {t("Ler todas")}
                     </button>
                   )}
                 </div>
@@ -208,7 +264,7 @@ export function Topbar({
                           : "bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
                       }`}
                     >
-                      {tab.label}
+                      {t(tab.label)}
                       {tab.count > 0 && (
                         <span className={`px-1 rounded-full text-[8px] font-mono ${activeTab === tab.id ? "bg-white/25 text-white" : "bg-[var(--color-border-default)] text-[var(--color-text-muted)]"}`}>
                           {tab.count}
@@ -268,13 +324,12 @@ export function Topbar({
                     <div className="p-10 flex flex-col items-center justify-center text-center opacity-50">
                       <Bell className="w-8 h-8 mb-2 text-[var(--color-text-faint)]" />
                       <p className="text-xs font-bold text-[var(--color-text-muted)]">
-                        Nenhuma notificação {activeTab !== "todas" ? "nesta categoria" : ""}
+                        {t("Nenhuma notificação")} {activeTab !== "todas" ? t("nesta categoria") : ""}
                       </p>
                     </div>
                   )}
                 </div>
               </Card>
-            </>
           )}
         </div>
 
@@ -283,9 +338,9 @@ export function Topbar({
             <p className="text-xs font-bold text-[var(--color-text-primary)] leading-tight">{liveProfile.name}</p>
             <p className="text-[10px] text-[var(--color-primary-blue)] font-bold uppercase tracking-wider">{liveEmpresaName}</p>
           </div>
-          <div className="relative">
+          <div ref={userMenuRef} className="relative">
             <div
-              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              onClick={toggleUserMenu}
               className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#2563EB] to-blue-700 flex items-center justify-center text-xs font-bold text-white hover:opacity-90 transition-all cursor-pointer shadow-xs overflow-hidden border border-[var(--color-border-default)]"
             >
               {liveProfile.avatar ? (
@@ -295,23 +350,21 @@ export function Topbar({
               )}
             </div>
             {isUserMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
-                <div className="absolute top-full right-0 pt-2 w-48 z-50">
+              <div className="absolute top-full right-0 pt-2 w-48 z-50">
                   <div className="bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-xl shadow-xl p-1 animate-in fade-in slide-in-from-top-2">
                     <button
                       type="button"
                       onClick={() => { setIsUserMenuOpen(false); navigate("/app/configuracoes/usuario/perfil"); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)] rounded-lg transition-colors cursor-pointer border-none bg-transparent text-left"
                     >
-                      <Users className="w-3.5 h-3.5" /> Meu Perfil
+                      <Users className="w-3.5 h-3.5" /> {t("Meu Perfil")}
                     </button>
                     <button
                       type="button"
                       onClick={() => { setIsUserMenuOpen(false); navigate("/app/configuracoes/usuario/preferencias"); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)] rounded-lg transition-colors cursor-pointer border-none bg-transparent text-left"
                     >
-                      <Settings2 className="w-3.5 h-3.5" /> Preferências
+                      <Settings2 className="w-3.5 h-3.5" /> {t("Preferências")}
                     </button>
                     <div className="h-px bg-[var(--color-border-subtle)] my-1"></div>
                     <button
@@ -319,11 +372,10 @@ export function Topbar({
                       onClick={() => { setIsUserMenuOpen(false); handleLogout(); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer border-none bg-transparent text-left"
                     >
-                      <AlertCircle className="w-3.5 h-3.5" /> Sair da Conta
+                      <AlertCircle className="w-3.5 h-3.5" /> {t("Sair da Conta")}
                     </button>
                   </div>
                 </div>
-              </>
             )}
           </div>
         </div>

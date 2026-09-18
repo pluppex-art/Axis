@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface ManutencaoSolarItem {
   id: string;
@@ -105,11 +106,15 @@ export default function ManutencoesSolar() {
     setData("");
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (item: ManutencaoSolarItem) => {
     if (!supabase) return;
-    const { error } = await supabase.from("solar_manutencoes").delete().eq("id", id);
+    if (!(await confirmDialog({
+      title: "Excluir manutenção",
+      description: `Excluir a manutenção de "${item.usina}"? Essa ação não pode ser desfeita.`,
+    }))) return;
+    const { error } = await supabase.from("solar_manutencoes").delete().eq("id", item.id);
     if (error) { toast.error("Erro ao remover manutenção."); return; }
-    setChamados(prev => prev.filter(c => c.id !== id));
+    setChamados(prev => prev.filter(c => c.id !== item.id));
     toast.info("Manutenção removida.");
   };
 
@@ -251,7 +256,7 @@ export default function ManutencoesSolar() {
                 <option value="Aguardando Peça">Aguardando Peça</option>
               </select>
 
-              <Button size="sm" variant="ghost" onClick={() => handleDelete(c.id)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-500/10 rounded-xl">
+              <Button size="sm" variant="ghost" onClick={() => handleDelete(c)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-500/10 rounded-xl">
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </div>

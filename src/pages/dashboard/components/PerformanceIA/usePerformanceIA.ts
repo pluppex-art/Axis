@@ -3,36 +3,28 @@ import { toast } from "sonner";
 
 import { useData } from "../../../../contexts/DataContext";
 import { apiFetch } from "../../../../lib/apiClient";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
+import { parseCurrencyBR } from "../../../../lib/utils";
+import { getMRR } from "../../../../lib/revenueMetrics";
 
 type AiRecommendation = any;
 
 export function usePerformanceIA() {
   const { leads, financeEntries, contracts } = useData();
+  const { formatCurrency } = useLocalization();
 
   const [isSimulating, setIsSimulating] = useState(false);
   const [aiRecommendations, setAiRecommendations] = useState<AiRecommendation[]>([]);
 
   const currentMRR = useMemo(() => {
     if (contracts && contracts.length > 0) {
-      return contracts.reduce((acc, c) => {
-        const raw = c.mrr;
-        const val =
-          typeof raw === "number"
-            ? raw
-            : parseFloat(
-                String(raw)
-                  .replace(/[^0-9.,]/g, "")
-                  .replace(".", "")
-                  .replace(",", ".")
-              );
-        return acc + (isNaN(val) ? 0 : val);
-      }, 0);
+      return getMRR(contracts);
     }
 
     // Fallback: estimativa via leads (se MRR for nulo)
     return leads
       .filter((l: any) => l.status === "Fechado")
-      .reduce((acc, l: any) => acc + (l.value || 0), 0) / 12; // Exemplo tosco
+      .reduce((acc, l: any) => acc + parseCurrencyBR(l.value), 0) / 12; // Exemplo tosco
   }, [contracts, leads]);
 
   const currentCAC = useMemo(() => {
@@ -113,7 +105,7 @@ export function usePerformanceIA() {
           },
           {
             title: "Expansão de Receita Recorrente (MRR)",
-            desc: `MRR atual em R$ ${currentMRR.toLocaleString("pt-BR")}. Implemente planos anuais com desconto para reduzir churn e estabilizar fluxo de caixa.`,
+            desc: `MRR atual em ${formatCurrency(currentMRR)}. Implemente planos anuais com desconto para reduzir churn e estabilizar fluxo de caixa.`,
             impact: "+25% Previsibilidade",
             color: "text-purple-400"
           }
@@ -138,7 +130,7 @@ export function usePerformanceIA() {
         },
         {
           title: "Expansão de Receita Recorrente (MRR)",
-          desc: `MRR atual em R$ ${currentMRR.toLocaleString("pt-BR")}. Implemente planos anuais com desconto para reduzir churn e estabilizar fluxo de caixa.`,
+          desc: `MRR atual em ${formatCurrency(currentMRR)}. Implemente planos anuais com desconto para reduzir churn e estabilizar fluxo de caixa.`,
           impact: "+25% Previsibilidade",
           color: "text-purple-400"
         }

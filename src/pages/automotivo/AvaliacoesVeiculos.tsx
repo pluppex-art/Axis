@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Modal } from "../../components/ui/modal";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface AvaliacaoItem {
   id: string;
@@ -135,6 +136,11 @@ export default function AvaliacoesVeiculos() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const avaliacao = avaliacoes.find(a => a.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir avaliação",
+      description: `Excluir a avaliação de "${avaliacao?.veiculo || "este veículo"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("automotivo_avaliacoes").delete().eq("id", id);
     if (error) { toast.error("Erro ao remover avaliação."); return; }
     setAvaliacoes(prev => prev.filter(a => a.id !== id));

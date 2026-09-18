@@ -200,7 +200,7 @@ export function AlunoGradesModal({ isOpen, student, onClose, onAddGrade, onRemov
                           </div>
                           <button
                             onClick={() => onRemoveGrade(student.id, idx)}
-                            className="p-2 opacity-0 group-hover:opacity-100 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
+                            className="p-2 bg-white/5 border border-white/10 opacity-0 group-hover:opacity-100 text-rose-500 hover:bg-rose-500/10 hover:border-rose-500/25 rounded-xl transition-all"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

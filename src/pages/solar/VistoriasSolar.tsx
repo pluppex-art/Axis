@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface VistoriaSolarItem {
   id: string;
@@ -112,11 +113,15 @@ export default function VistoriasSolar() {
     setResponsavel("");
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (item: VistoriaSolarItem) => {
     if (!supabase) return;
-    const { error } = await supabase.from("solar_vistorias").delete().eq("id", id);
+    if (!(await confirmDialog({
+      title: "Excluir vistoria",
+      description: `Excluir a vistoria de "${item.cliente}"? Essa ação não pode ser desfeita.`,
+    }))) return;
+    const { error } = await supabase.from("solar_vistorias").delete().eq("id", item.id);
     if (error) { toast.error("Erro ao remover vistoria."); return; }
-    setVistorias(prev => prev.filter(v => v.id !== id));
+    setVistorias(prev => prev.filter(v => v.id !== item.id));
     toast.info("Vistoria removida.");
   };
 
@@ -266,7 +271,7 @@ export default function VistoriasSolar() {
                 <option value="Reprovada / Ajuste Necessário">Reprovada</option>
               </select>
 
-              <Button size="sm" variant="ghost" onClick={() => handleDelete(v.id)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-500/10 rounded-xl">
+              <Button size="sm" variant="ghost" onClick={() => handleDelete(v)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-500/10 rounded-xl">
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </div>

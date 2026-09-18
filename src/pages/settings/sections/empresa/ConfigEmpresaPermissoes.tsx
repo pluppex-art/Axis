@@ -5,6 +5,7 @@ import { Plus, ShieldCheck, Pencil, Trash2, CheckCircle2 } from "lucide-react";
 import { useData } from "../../../../contexts/DataContext";
 import { toast } from "sonner";
 import { PermissaoModal } from "./PermissaoModal";
+import { confirmDialog } from "../../../../components/ui/confirm-dialog";
 
 const MODULE_LABELS: Record<string, string> = {
   crm: "CRM & Pipeline", financeiro: "Financeiro", engajamento: "Engajamento",
@@ -30,6 +31,15 @@ export function ConfigEmpresaPermissoes() {
     const cargo = cargos.find((c) => c.id === cargoId);
     toast.success(`Permissões de "${cargo?.nome}" salvas com sucesso!`);
     setIsModalOpen(false);
+  };
+
+  const handleRemovePermissoes = async (cargo: any) => {
+    if (!(await confirmDialog({
+      title: "Remover permissões",
+      description: `Remover todas as permissões de "${cargo.nome}"? O cargo perderá acesso a todos os módulos liberados.`,
+    }))) return;
+    updateCargo(cargo.id, { modulos: [] });
+    toast.success(`Permissões de "${cargo.nome}" resetadas.`);
   };
 
   return (
@@ -104,10 +114,10 @@ export function ConfigEmpresaPermissoes() {
                   >
                     <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="xs" 
-                    onClick={() => { updateCargo(cargo.id, { modulos: [] }); toast.success(`Permissões de "${cargo.nome}" resetadas.`); }} 
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => handleRemovePermissoes(cargo)}
                     className="h-8 w-8 p-0 text-[var(--color-text-faint)] hover:text-rose-500 hover:bg-rose-500/10"
                     title="Remover permissões"
                   >

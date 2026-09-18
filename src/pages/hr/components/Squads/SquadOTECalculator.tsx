@@ -205,7 +205,7 @@ export function SquadOTECalculator({
                     <td className="py-2 pr-3 text-right text-slate-300 font-mono">{(entry.meta ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     <td className="py-2 pr-3 text-right text-emerald-400 font-mono">{(entry.realizado ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     <td className="py-2 pr-3 text-right">
-                      <button onClick={() => handleDelete(entry.id, entry.nome)} className="text-slate-500 hover:text-red-400">
+                      <button onClick={() => handleDelete(entry.id, entry.nome)} className="p-1 rounded-lg bg-white/5 border border-white/10 text-slate-500 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/25 transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </td>

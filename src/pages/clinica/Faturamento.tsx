@@ -12,10 +12,12 @@ import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
 import { exportToCSV } from "../../lib/exportCsv";
 import { toast } from "sonner";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 const COLORS = ['#2563EB', '#10B981', '#8B5CF6', '#F59E0B', '#64748B'];
 
 export default function FaturamentoClinico() {
+  const { formatCurrency } = useLocalization();
   const { financeEntries, appointments } = useData();
 
   const receivables = financeEntries.filter(f => f.type === 'Receber');
@@ -82,7 +84,7 @@ export default function FaturamentoClinico() {
       .sort((a, b) => b.value - a.value);
   }, [receivables]);
 
-  const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
+  const fmt = (n: number) => formatCurrency(n);
 
   return (
     <PageContainer 

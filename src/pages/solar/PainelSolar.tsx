@@ -8,6 +8,7 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { supabase } from "../../lib/supabase";
 
 interface SolarRow {
@@ -31,10 +32,9 @@ interface SolarRow {
 // etapas nunca contam nenhum projeto.
 const STATUS_FLOW = ["Análise Concluída", "Visita Técnica", "Proposta Enviada", "Homologação", "Instalação", "Concluído"];
 
-const fmtBRL = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
-
 export default function PainelSolar() {
   const { activeTenantId } = useAuth();
+  const { formatCurrency: fmtBRL } = useLocalization();
 
   const [rows, setRows] = useState<SolarRow[]>([]);
 

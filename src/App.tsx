@@ -53,6 +53,19 @@ import FinanceiroCobrancas from "./pages/finance/FinanceiroCobrancas";
 import FinanceiroConciliacao from "./pages/finance/FinanceiroConciliacao";
 import FinanceiroCentrosCusto from "./pages/finance/FinanceiroCentrosCusto";
 import FinanceiroDRE from "./pages/finance/FinanceiroDRE";
+import FinanceiroContasBancarias from "./pages/finance/FinanceiroContasBancarias";
+import FinanceiroTransferencias from "./pages/finance/FinanceiroTransferencias";
+import FinanceiroInadimplencia from "./pages/finance/FinanceiroInadimplencia";
+import FinanceiroMRR from "./pages/finance/FinanceiroMRR";
+import FinanceiroProjecao from "./pages/finance/FinanceiroProjecao";
+import FinanceiroRelatorios from "./pages/finance/FinanceiroRelatorios";
+import FinanceiroRelatorioAgrupado from "./pages/finance/FinanceiroRelatorioAgrupado";
+import FinanceiroExtrato from "./pages/finance/FinanceiroExtrato";
+import FinanceiroPerformanceMensal from "./pages/finance/FinanceiroPerformanceMensal";
+import FinanceiroPerformanceAnual from "./pages/finance/FinanceiroPerformanceAnual";
+import FinanceiroBuscaGlobal from "./pages/finance/FinanceiroBuscaGlobal";
+import FinanceiroImportarMovimentacoes from "./pages/finance/FinanceiroImportarMovimentacoes";
+import FinanceiroContatos from "./pages/finance/FinanceiroContatos";
 import Indicacoes from "./pages/finance/Indicacoes";
 
 import Calendario from "./pages/agenda/Calendario";
@@ -89,6 +102,8 @@ import {
   ConfigInteligenciaArtificialAurora,
   ConfigIntegracoesSDR,
   ConfigFinanceiroSquads,
+  ConfigFinanceiroBloqueioPeriodo,
+  ConfigFinanceiroAuditoria,
   ConfigRodizioLeads,
   ConfigKanbanBoards
 } from "./pages/settings/SettingsPages";
@@ -164,6 +179,7 @@ import ProjetoDetalhesDev from "./pages/dev/ProjetoDetalhesDev";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import { DataProvider, useData } from "./contexts/DataContext";
+import { LocalizationProvider } from "./contexts/LocalizationContext";
 import { Toaster } from "sonner";
 import { InteractiveForm } from "./pages/common/InteractiveForm";
 import { ConfirmDialogHost } from "./components/ui/confirm-dialog";
@@ -286,7 +302,20 @@ function AppContent() {
             <Route path="cobrancas" element={<FinanceiroCobrancas />} />
             <Route path="conciliacao" element={<FinanceiroConciliacao />} />
             <Route path="centros-custo" element={<FinanceiroCentrosCusto />} />
+            <Route path="bancos" element={<FinanceiroContasBancarias />} />
+            <Route path="transferencias" element={<FinanceiroTransferencias />} />
             <Route path="dre" element={<FinanceiroDRE />} />
+            <Route path="inadimplencia" element={<FinanceiroInadimplencia />} />
+            <Route path="mrr" element={<FinanceiroMRR />} />
+            <Route path="projecao" element={<FinanceiroProjecao />} />
+            <Route path="relatorios" element={<FinanceiroRelatorios />} />
+            <Route path="relatorios/extrato" element={<FinanceiroExtrato />} />
+            <Route path="relatorios/performance-mensal" element={<FinanceiroPerformanceMensal />} />
+            <Route path="relatorios/performance-anual" element={<FinanceiroPerformanceAnual />} />
+            <Route path="relatorios/:slug" element={<FinanceiroRelatorioAgrupado />} />
+            <Route path="busca" element={<FinanceiroBuscaGlobal />} />
+            <Route path="importar" element={<FinanceiroImportarMovimentacoes />} />
+            <Route path="contatos" element={<FinanceiroContatos />} />
             <Route path="indicacoes" element={<Indicacoes />} />
             <Route path="faturas" element={<Contracts />} />
             <Route path="categorias" element={<SettingsGenericForm />} />
@@ -432,7 +461,7 @@ function AppContent() {
             <Route path="usuario/preferencias" element={<ConfigPreferenciasSistema />} />
             <Route path="usuario/notificacoes" element={<ConfigNotificacoesPreferencias />} />
             <Route path="empresa/dados" element={<ConfigEmpresaDados />} />
-            <Route path="empresa/modulos" element={<ConfigModulosDemos />} />
+            <Route path="empresa/modulos" element={<Navigate to="/app/admin?tab=tenants" replace />} />
             <Route path="empresa/filiais" element={<ConfigEmpresaFiliais />} />
             <Route path="empresa/nichos" element={<ConfigNichos />} />
             <Route path="empresa/equipe" element={<ConfigEmpresaEquipe />} />
@@ -452,6 +481,8 @@ function AppContent() {
 
             <Route path="financeiro/categorias" element={<ConfigFinanceiroCategorias />} />
             <Route path="financeiro/squads" element={<ConfigFinanceiroSquads />} />
+            <Route path="financeiro/bloqueio-periodo" element={<ConfigFinanceiroBloqueioPeriodo />} />
+            <Route path="financeiro/auditoria" element={<ConfigFinanceiroAuditoria />} />
 
             <Route path="engajamento/modelos" element={<ConfigEngajamentoModelos />} />
             <Route path="engajamento/automacoes" element={<ConfigEngajamentoAutomacoes />} />
@@ -488,7 +519,7 @@ function AppContent() {
           </Route>
 
           <Route path="admin" element={<ProtectedRoute requireMaster><AdminSaaS /></ProtectedRoute>} />
-          <Route path="parceiros" element={<PartnersOverview />} />
+          <Route path="parceiros" element={<ProtectedRoute requirePartner><PartnersOverview /></ProtectedRoute>} />
         </Route>
 
         {/* Portfólio público do corretor — sem autenticação */}
@@ -514,11 +545,13 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <DataProvider>
-        <Router>
-          <AppContent />
-        </Router>
-      </DataProvider>
+      <LocalizationProvider>
+        <DataProvider>
+          <Router>
+            <AppContent />
+          </Router>
+        </DataProvider>
+      </LocalizationProvider>
     </AuthProvider>
   );
 }

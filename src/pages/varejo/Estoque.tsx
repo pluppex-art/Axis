@@ -13,6 +13,7 @@ import { FormField } from "../../components/ui/form-field";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Modal } from "../../components/ui/modal";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
@@ -29,13 +30,10 @@ interface Movimentacao {
   operador?: string;
 }
 
-function formatPrice(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
 export default function VarejoEstoque() {
   const { products, setProducts, addProduct, updateProduct, deleteProduct } = useData();
   const { user, activeTenantId } = useAuth();
+  const { formatCurrency: formatPrice } = useLocalization();
   const tenantId = activeTenantId || "default";
 
   const [activeTab, setActiveTab] = useState<"tabela" | "movimentar" | "historico">("tabela");
@@ -654,7 +652,7 @@ export default function VarejoEstoque() {
 
                               <button
                                 onClick={() => handleOpenEditarProduto(p)}
-                                className="p-1.5 rounded-lg hover:bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                                className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-elevated)] hover:border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
                                 title="Editar Produto"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
@@ -662,7 +660,7 @@ export default function VarejoEstoque() {
 
                               <button
                                 onClick={() => handleDeleteProduto(p)}
-                                className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors"
+                                className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] hover:bg-red-500/10 hover:border-red-500/25 text-red-400 hover:text-red-300 transition-colors"
                                 title="Excluir Produto"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />

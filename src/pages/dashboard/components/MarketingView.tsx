@@ -4,14 +4,17 @@ import { Card } from '../../../components/ui/card';
 import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, PieChart, Pie, Cell } from 'recharts';
 import { Globe, Share2, Sparkles, MousePointer2, Layers, Users, DollarSign } from 'lucide-react';
 import { useData } from '../../../contexts/DataContext';
+import { useLocalization } from '../../../contexts/LocalizationContext';
+import { parseCurrencyBR } from '../../../lib/utils';
 
 const COLORS = ['#3b82f6', '#f43f5e', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4'];
 
 export function MarketingView() {
   const { leads, financeEntries, contracts, marketingLandingPages } = useData();
+  const { formatCurrency } = useLocalization();
 
   // Calculate real metrics from database
-  const totalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + (l.value || 0), 0);
+  const totalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + parseCurrencyBR(l.value), 0);
   const totalSpent = financeEntries.filter(f => f.type === 'Pagar' && (f.category?.toLowerCase().includes('marketing') || f.category?.toLowerCase().includes('anúncio')) && f.status === 'Pago').reduce((s, f) => s + f.value, 0);
   
   const totalLeads = leads.length;
@@ -75,13 +78,6 @@ export function MarketingView() {
     }));
   }, [leads]);
 
-  const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { 
-    style: 'currency', 
-    currency: 'BRL', 
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2
-  }).format(n);
-
   return (
     <motion.div 
       key="marketing"
@@ -123,7 +119,7 @@ export function MarketingView() {
            <div className="mt-8 grid grid-cols-3 gap-4">
               <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
                  <p className="text-[9px] text-slate-500 font-black uppercase mb-1">CPL Médio</p>
-                 <p className="text-lg font-black text-white font-mono tracking-tighter">{fmt(cpl)} <span className="text-[10px] text-emerald-400 font-bold ml-1">{cpl > 0 ? '-12%' : '—'}</span></p>
+                 <p className="text-lg font-black text-white font-mono tracking-tighter">{formatCurrency(cpl)} <span className="text-[10px] text-emerald-400 font-bold ml-1">{cpl > 0 ? '-12%' : '—'}</span></p>
               </div>
               <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
                  <p className="text-[9px] text-slate-500 font-black uppercase mb-1">ROAS Global</p>
@@ -197,7 +193,7 @@ export function MarketingView() {
            { icon: MousePointer2, label: "CTR Médio", value: "—", color: "text-indigo-500", bg: "bg-indigo-500/10" },
            { icon: Layers, label: "Conv. Landing Pages", value: lpConversionRate !== null ? `${lpConversionRate.toFixed(1)}%` : "—", color: "text-blue-500", bg: "bg-blue-500/10" },
            { icon: Users, label: "Leads de Marketing", value: totalLeads.toString(), color: "text-emerald-500", bg: "bg-emerald-500/10" },
-           { icon: DollarSign, label: "Total Investido", value: totalSpent > 0 ? `R$ ${totalSpent.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}` : "R$ 0", color: "text-amber-500", bg: "bg-amber-500/10" },
+           { icon: DollarSign, label: "Total Investido", value: formatCurrency(totalSpent), color: "text-amber-500", bg: "bg-amber-500/10" },
          ].map((metric, i) => (
             <Card key={i} className="p-6 bg-[var(--color-surface-elevated)]/80 border-white/5 group hover:border-white/10 transition-all rounded-3xl">
                <div className="flex items-center gap-4 mb-4">

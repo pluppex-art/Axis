@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface PedidoItem {
   id: string;
@@ -138,6 +139,12 @@ export default function PedidosVarejo() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+
+    const pedido = pedidos.find(p => p.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir pedido",
+      description: `Excluir o pedido de "${pedido?.cliente || "este cliente"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
 
     const { error } = await supabase.from("varejo_pedidos").delete().eq("id", id);
 

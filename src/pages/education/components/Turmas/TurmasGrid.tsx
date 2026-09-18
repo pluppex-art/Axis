@@ -44,7 +44,7 @@ export function TurmasGrid({ turmas, onSelect }: TurmasGridProps) {
                   {turma.name}
                 </h3>
               </div>
-              <button className="p-2 text-slate-600 hover:text-white transition-colors">
+              <button className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
                 <MoreVertical className="w-5 h-5" />
               </button>
             </div>

@@ -345,7 +345,7 @@ export default function AnaliseFatura() {
                     {a.status !== "Concluído" && (
                       <button onClick={() => handleAdvanceStatus(a)} className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-400">Avançar</button>
                     )}
-                    <button onClick={() => handleDelete(a.id, a.cliente)} className="p-1.5 text-[var(--color-text-faint)] hover:text-danger">
+                    <button onClick={() => handleDelete(a.id, a.cliente)} className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-danger hover:bg-danger/10 hover:border-danger/25 transition-colors">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>

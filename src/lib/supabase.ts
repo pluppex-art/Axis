@@ -349,6 +349,54 @@ export async function fetchTenantIdMap(): Promise<Record<string, string>> {
   }
 }
 
+/** Tenant Pluppex (dona comercial do S.P.Y.) — mesmo id fixo já usado em
+ * src/pages/marketing/EEmpreendaEditor.tsx para acesso cross-tenant. */
+const PLUPPEX_TENANT_ID = "27ef95ee-84dd-499e-9f25-cd9baecb5fe4";
+
+export interface SpyLicenseProduct {
+  id: string;
+  productName: string;
+  /** Rótulo do plano extraído do produto (ex.: "Start"), exibido no dropdown. */
+  label: string;
+  /** Valor persistido em tenants.plan (slug em minúsculas, ex.: "start"). */
+  value: string;
+  price: number;
+}
+
+/**
+ * Busca os planos de licença do S.P.Y. a partir do catálogo de produtos real
+ * da Pluppex (tabela `products`, módulo Catálogo de Produtos & SKUs) — em vez
+ * de uma lista fixa no front, os planos oferecidos no provisionamento de
+ * tenant vêm do que a Pluppex de fato cadastrou como produto de licença.
+ */
+export async function fetchSpyLicenseProducts(): Promise<SpyLicenseProduct[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, name, price')
+      .eq('tenant_id', PLUPPEX_TENANT_ID)
+      .eq('active', true)
+      .ilike('name', '%S.P.Y%');
+    if (error || !data) return [];
+    return data
+      .map((p: any) => {
+        const parts = String(p.name).split('|');
+        const tier = (parts.length > 1 ? parts[parts.length - 1] : p.name).trim();
+        return {
+          id: p.id,
+          productName: p.name,
+          label: tier,
+          value: tier.toLowerCase(),
+          price: Number(p.price) || 0,
+        };
+      })
+      .sort((a, b) => a.price - b.price);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Cria um novo tenant parceiro junto com o usuário administrador inicial
  * desse tenant (e-mail/senha reais no Supabase Auth). Passa pelo backend
@@ -363,7 +411,8 @@ export async function createTenantAdmin(
   tenantName: string,
   niche: string,
   adminEmail: string,
-  adminPassword: string
+  adminPassword: string,
+  options?: { plan?: string; primaryColor?: string; timezone?: string; modules?: Record<string, boolean> }
 ): Promise<{ success: boolean; error?: string }> {
   if (!supabase) return { success: false, error: 'Supabase não configurado' };
   try {
@@ -372,7 +421,7 @@ export async function createTenantAdmin(
     const res = await fetch('/api/admin/tenant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ tenantName, niche, adminEmail, adminPassword }),
+      body: JSON.stringify({ tenantName, niche, adminEmail, adminPassword, ...options }),
       signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();

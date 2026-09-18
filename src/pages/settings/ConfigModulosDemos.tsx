@@ -4,14 +4,14 @@ import { toast } from "sonner";
 import {
   Cpu, Activity, Layers, Database, UserCheck,
   Target, Award, DollarSign, Package, MessageSquare, Users, Columns3, Clock, Code2,
-  Plus, X, Building2, RefreshCw, ChevronDown, Megaphone, Pencil, Trash2, AlertTriangle,
-  Sparkles, Search, CheckCircle2, ShieldCheck, ArrowRight, HeartPulse, Home, Sun, ShoppingCart, Car
+  Plus, Building2, RefreshCw, ChevronDown, Megaphone, Pencil, Trash2,
+  Sparkles, Search, CheckCircle2, ShieldCheck, ArrowRight, HeartPulse, Home, Sun, ShoppingCart, Car, Server
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 import {
   supabase,
-  createTenantAdmin,
   fetchTenants,
   fetchTenantsDetailed,
   updateTenantInfo,
@@ -113,7 +113,15 @@ const CredentialFields = memo(function CredentialFields({
   );
 });
 
-export default function ConfigModulosDemos() {
+export default function ConfigModulosDemos({
+  embedded = false,
+  onOpenNewTenant,
+  reloadTrigger
+}: {
+  embedded?: boolean;
+  onOpenNewTenant?: () => void;
+  reloadTrigger?: number;
+}) {
   const { login, user, allTenantModules, updateTenantModules, getTenantModules } = useAuth();
   const { setSidebarModules } = useData();
 
@@ -144,13 +152,10 @@ export default function ConfigModulosDemos() {
   const [searchTenant, setSearchTenant] = useState("");
   const [simulationRole, setSimulationRole] = useState("Administrador / Sócio");
 
-  // Add partner state
-  const [showAddTenant, setShowAddTenant] = useState(false);
-  const [newTenantName, setNewTenantName] = useState("");
-  const [newTenantNiche, setNewTenantNiche] = useState("Parceira");
-  const [newTenantEmail, setNewTenantEmail] = useState("");
-  const [newTenantPassword, setNewTenantPassword] = useState("");
-  const [savingTenant, setSavingTenant] = useState(false);
+  // Sub-navegação da aba: substitui o antigo padrão de scrollIntoView entre
+  // seções (tudo empilhado numa rolagem só) por duas visões reais — diretório
+  // de empresas (visão padrão) e configuração de módulos da empresa selecionada.
+  const [subView, setSubView] = useState<"directory" | "modules">("directory");
   const [reloading, setReloading] = useState(false);
 
   // Edit/Delete partner state
@@ -166,7 +171,6 @@ export default function ConfigModulosDemos() {
   const [editAdminPassword, setEditAdminPassword] = useState("");
   const [loadingAdminUser, setLoadingAdminUser] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingTenant, setDeletingTenant] = useState(false);
 
   const loadTenantDetails = async () => {
@@ -193,6 +197,12 @@ export default function ConfigModulosDemos() {
   useEffect(() => {
     setTenantOptions(Object.keys(allTenantModules));
   }, [allTenantModules]);
+
+  useEffect(() => {
+    if (reloadTrigger !== undefined && reloadTrigger > 0) {
+      handleReloadTenants(true);
+    }
+  }, [reloadTrigger]);
 
   useEffect(() => {
     const modules = getTenantModules(selectedTenant);
@@ -289,7 +299,6 @@ export default function ConfigModulosDemos() {
     setEditAdminUserId(null);
     setEditAdminEmail("");
     setEditAdminPassword("");
-    setConfirmingDelete(false);
     setShowEditTenant(willShow);
 
     if (willShow && current) {
@@ -308,12 +317,6 @@ export default function ConfigModulosDemos() {
         setLoadingAdminUser(false);
       }
     }
-  };
-
-  const openDeleteConfirm = (tenantName: string) => {
-    setSelectedTenant(tenantName);
-    setShowEditTenant(false);
-    setConfirmingDelete(v => !(v && selectedTenant === tenantName));
   };
 
   const handleSaveEditTenant = async () => {
@@ -358,53 +361,29 @@ export default function ConfigModulosDemos() {
     setSavingEdit(false);
   };
 
-  const handleDeleteTenant = async () => {
-    const current = tenantDetails.find(t => t.name === selectedTenant);
+  const handleDeactivateTenant = async (tenantName: string) => {
+    const current = tenantDetails.find(t => t.name === tenantName);
     if (!current) {
       toast.error("Empresa não encontrada no banco de dados.");
       return;
     }
+    if (!(await confirmDialog({
+      title: `Desativar empresa "${tenantName}"?`,
+      description: "A empresa deixará de aparecer na lista de parceiros ativos e os acessos de usuários serão suspensos. O histórico de dados é preservado com segurança.",
+      confirmText: "Confirmar Desativação",
+    }))) return;
+
     setDeletingTenant(true);
     const result = await deactivateTenant(current.id);
     if (result.success) {
       toast.success(`Empresa "${current.name}" desativada com sucesso.`);
-      setConfirmingDelete(false);
       setShowEditTenant(false);
-      setSelectedTenant("G-Tech Master");
+      if (selectedTenant === tenantName) setSelectedTenant("G-Tech Master");
       await handleReloadTenants(true);
     } else {
       toast.error(`Erro: ${result.error}`);
     }
     setDeletingTenant(false);
-  };
-
-  const handleAddTenant = async () => {
-    if (!newTenantName.trim()) {
-      toast.error("Informe o nome da empresa.");
-      return;
-    }
-    if (!newTenantEmail.trim()) {
-      toast.error("Informe o e-mail do administrador da empresa.");
-      return;
-    }
-    if (newTenantPassword.length < 6) {
-      toast.error("A senha do administrador precisa ter pelo menos 6 caracteres.");
-      return;
-    }
-    setSavingTenant(true);
-    const result = await createTenantAdmin(newTenantName.trim(), newTenantNiche, newTenantEmail.trim(), newTenantPassword);
-    if (result.success) {
-      toast.success(`Empresa "${newTenantName}" cadastrada — acesso gerado para ${newTenantEmail}.`);
-      setNewTenantName("");
-      setNewTenantNiche("Parceira");
-      setNewTenantEmail("");
-      setNewTenantPassword("");
-      setShowAddTenant(false);
-      await handleReloadTenants(true);
-    } else {
-      toast.error(`Erro: ${result.error}`);
-    }
-    setSavingTenant(false);
   };
 
   const filteredTenants = useMemo(() => {
@@ -455,159 +434,131 @@ export default function ConfigModulosDemos() {
   return (
     <div className="space-y-6 max-w-6xl pb-24 animate-in fade-in duration-300">
 
-      {/* Hero Header Card */}
-      <div className="border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] p-6 sm:p-7 rounded-3xl relative overflow-hidden shadow-sm">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-[var(--color-primary-blue)]/5 blur-3xl rounded-full pointer-events-none" />
+      {/* Hero Header Card (shown only if not embedded) */}
+      {!embedded && (
+        <div className="border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] p-6 sm:p-7 rounded-3xl relative overflow-hidden shadow-sm">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-[var(--color-primary-blue)]/5 blur-3xl rounded-full pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 rounded-full text-[10px] text-[var(--color-primary-blue)] font-bold uppercase tracking-wider">
-              <Cpu className="w-3.5 h-3.5" /> Arquitetura Multitenant Modular
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-[var(--color-text-primary)] tracking-tight">
-              Gestão de Empresas & Módulos
-            </h1>
-            <p className="text-xs sm:text-sm text-[var(--color-text-muted)] max-w-2xl leading-relaxed">
-              Cadastre e gerencie as empresas parceiras da plataforma e configure os módulos visíveis para cada operação.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] p-4 rounded-2xl shrink-0 shadow-xs">
-            <div className="w-12 h-12 rounded-xl bg-[var(--color-primary-blue)] flex items-center justify-center text-white shadow-xs">
-              <Database className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider">Tenant Ativo</span>
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 rounded-full text-[10px] text-[var(--color-primary-blue)] font-bold uppercase tracking-wider">
+                <Cpu className="w-3.5 h-3.5" /> Arquitetura Multitenant Modular
               </div>
-              <h4 className="text-sm font-black text-[var(--color-text-primary)] max-w-[220px] truncate mt-0.5">
-                {user?.tenantName || "G-Tech Master"}
-              </h4>
-              <span className="inline-block text-[9px] font-extrabold uppercase tracking-widest text-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 px-2 py-0.5 rounded-md mt-1 border border-[var(--color-primary-blue)]/20">
-                Nicho: {user?.tenantNiche || "Master"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* EMPRESAS PARCEIRAS — Central de Gerenciamento */}
-      {user?.isMaster && (
-        <Card className="border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] rounded-3xl p-6 sm:p-7 space-y-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-[var(--color-primary-blue)]" /> Empresas Parceiras
-              </h2>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                Selecione a empresa para personalizar seus módulos ou crie novos acessos corporativos.
+              <h1 className="text-2xl sm:text-3xl font-black text-[var(--color-text-primary)] tracking-tight">
+                Gestão de Empresas & Módulos
+              </h1>
+              <p className="text-xs sm:text-sm text-[var(--color-text-muted)] max-w-2xl leading-relaxed">
+                Cadastre e gerencie as empresas parceiras da plataforma e configure os módulos visíveis para cada operação.
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-4 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] p-4 rounded-2xl shrink-0 shadow-xs">
+              <div className="w-12 h-12 rounded-xl bg-[var(--color-primary-blue)] flex items-center justify-center text-white shadow-xs">
+                <Database className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider">Tenant Ativo</span>
+                </div>
+                <h4 className="text-sm font-black text-[var(--color-text-primary)] max-w-[220px] truncate mt-0.5">
+                  {user?.tenantName || "G-Tech Master"}
+                </h4>
+                <span className="inline-block text-[9px] font-extrabold uppercase tracking-widest text-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 px-2 py-0.5 rounded-md mt-1 border border-[var(--color-primary-blue)]/20">
+                  Nicho: {user?.tenantNiche || "Master"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EMPRESAS PARCEIRAS — Central de Gerenciamento & Seletor Rápido */}
+      {user?.isMaster && (
+        <Card className="border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] rounded-3xl p-5 sm:p-6 space-y-5 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 flex items-center justify-center text-[var(--color-primary-blue)] shrink-0">
+                <Building2 className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] block">
+                  Empresa / Tenant Selecionado
+                </span>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <select
+                    value={selectedTenant}
+                    onChange={e => setSelectedTenant(e.target.value)}
+                    className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2 text-xs font-black text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-blue)] cursor-pointer"
+                  >
+                    {tenantOptions.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 px-2.5 py-1 rounded-lg">
+                    Nicho: {selectedTenantDetail?.niche || (selectedTenant === "G-Tech Master" ? "Infraestrutura" : "Parceira")}
+                  </span>
+                  <span className="text-[10px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] px-2.5 py-1 rounded-lg">
+                    <strong className="text-[var(--color-primary-blue)]">{activeModulesCount}</strong> de 16 módulos ativos
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => handleReloadTenants()}
                 disabled={reloading}
                 title="Recarregar parceiros do banco"
-                className="p-2.5 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
+                className="p-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
               >
                 <RefreshCw className={`w-4 h-4 ${reloading ? 'animate-spin' : ''}`} />
               </button>
 
+              {selectedTenant !== "G-Tech Master" && (
+                <button
+                  type="button"
+                  onClick={() => openEditTenant(selectedTenant)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] text-xs font-bold text-[var(--color-text-primary)] rounded-xl transition-all cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Editar Empresa
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={() => { setShowAddTenant(v => !v); setShowEditTenant(false); setConfirmingDelete(false); }}
-                className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-primary-blue)] hover:opacity-90 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs cursor-pointer"
+                onClick={() => onOpenNewTenant?.()}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-[var(--color-primary-blue)] hover:opacity-90 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs cursor-pointer"
               >
-                {showAddTenant ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                {showAddTenant ? "Cancelar" : "Nova Empresa"}
+                <Plus className="w-3.5 h-3.5" /> Nova Empresa
               </button>
             </div>
           </div>
 
-          {/* Search bar when multiple tenants exist */}
-          {tenantOptions.length > 3 && (
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
-              <input
-                type="text"
-                placeholder="Buscar empresa por nome..."
-                value={searchTenant}
-                onChange={e => setSearchTenant(e.target.value)}
-                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl pl-10 pr-4 py-2.5 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)]"
-              />
-            </div>
-          )}
-
-          {/* Form: Cadastrar Nova Empresa */}
-          {showAddTenant && (
-            <ErrorBoundary compact>
-              <div className="p-5 bg-[var(--color-surface-sunken)] border border-[var(--color-primary-blue)]/30 rounded-2xl space-y-4 shadow-sm animate-in fade-in duration-200">
-                <div className="flex items-center gap-2 text-[var(--color-primary-blue)] text-xs font-bold uppercase tracking-wider">
-                  <Building2 className="w-4 h-4" /> Cadastrar Nova Empresa Parceira
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider">
-                      Nome da Empresa
-                    </label>
-                    <input
-                      value={newTenantName}
-                      onChange={e => setNewTenantName(e.target.value)}
-                      placeholder="Ex: Prime Incorporadora Ltda"
-                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)]"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider">
-                      Nicho Operacional
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={newTenantNiche}
-                        onChange={e => setNewTenantNiche(e.target.value)}
-                        className="w-full appearance-none bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-blue)] pr-8 cursor-pointer font-bold"
-                      >
-                        {niches.map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-muted)] pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-[var(--color-border-subtle)]">
-                  <CredentialFields
-                    email={newTenantEmail}
-                    onEmailChange={setNewTenantEmail}
-                    password={newTenantPassword}
-                    onPasswordChange={setNewTenantPassword}
-                    passwordLabel="Senha Provisória"
-                    passwordPlaceholder="Mínimo 6 caracteres"
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddTenant(false)}
-                    className="px-4 py-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs font-bold rounded-xl transition-all cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAddTenant}
-                    disabled={savingTenant}
-                    className="px-6 py-2.5 bg-[var(--color-primary-blue)] hover:opacity-90 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs cursor-pointer"
-                  >
-                    {savingTenant ? "Cadastrando..." : "Cadastrar Empresa"}
-                  </button>
-                </div>
-              </div>
-            </ErrorBoundary>
-          )}
+          {/* Sub-navegação: Diretório de Empresas vs. Configurar Módulos da empresa selecionada */}
+          <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-2xl w-fit">
+            <button
+              type="button"
+              onClick={() => setSubView("directory")}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subView === "directory"
+                  ? "bg-[var(--color-primary-blue)] text-white shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                }`}
+            >
+              <Server className="w-3.5 h-3.5" /> Diretório de Empresas ({tenantOptions.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubView("modules")}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${subView === "modules"
+                  ? "bg-[var(--color-primary-blue)] text-white shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                }`}
+            >
+              <Cpu className="w-3.5 h-3.5" /> Configurar Módulos
+            </button>
+          </div>
 
           {/* Form: Editar Empresa */}
           {showEditTenant && (
@@ -659,444 +610,488 @@ export default function ConfigModulosDemos() {
                   />
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex justify-between gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowEditTenant(false)}
-                    className="px-4 py-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs font-bold rounded-xl transition-all cursor-pointer"
+                    onClick={() => handleDeactivateTenant(selectedTenant)}
+                    disabled={deletingTenant}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 border border-rose-500/30 text-rose-500 text-xs font-bold rounded-xl transition-all cursor-pointer"
                   >
-                    Cancelar
+                    <Trash2 className="w-3.5 h-3.5" /> {deletingTenant ? "Desativando..." : "Desativar Empresa"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveEditTenant}
-                    disabled={savingEdit}
-                    className="px-6 py-2 bg-[var(--color-primary-blue)] hover:opacity-90 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
-                  >
-                    {savingEdit ? "Salvando..." : "Salvar Alterações"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditTenant(false)}
+                      className="px-4 py-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs font-bold rounded-xl transition-all cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveEditTenant}
+                      disabled={savingEdit}
+                      className="px-6 py-2 bg-[var(--color-primary-blue)] hover:opacity-90 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+                    >
+                      {savingEdit ? "Salvando..." : "Salvar Alterações"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </ErrorBoundary>
           )}
 
-          {/* Delete confirmation modal */}
-          {confirmingDelete && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-3 animate-in fade-in duration-200">
-              <div className="flex items-center gap-2 text-rose-500 text-xs font-bold uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4" /> Desativar Empresa "{selectedTenant}"?
+          {/* Module Configuration for Selected Tenant */}
+          {subView === "modules" && (
+            <>
+              <div className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
+                      <Layers className="w-5 h-5 text-[var(--color-primary-blue)]" /> Módulos de "{selectedTenant}"
+                    </h3>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                      Ative ou desative seções inteiras da barra lateral para personalizar a interface e as ferramentas desta empresa.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-sunken)] px-3 py-1 rounded-full border border-[var(--color-border-default)] shrink-0 self-start sm:self-auto">
+                    <strong className="text-[var(--color-primary-blue)]">{activeModulesCount}</strong> de 16 módulos ativos
+                  </span>
+                </div>
+
+                {/* Presets Estratégicos */}
+                <div className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] p-4 sm:p-5 rounded-2xl space-y-3 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary-blue)] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" /> Presets Estratégicos de Operação em 1 Clique
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => applyPreset("ALL_ACTIVE")}
+                      className="flex flex-col items-center justify-center p-3 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] hover:border-[var(--color-primary-blue)]/50 text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-xl transition-all cursor-pointer shadow-2xs group"
+                    >
+                      <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🌐</span>
+                      <span className="text-[11px] font-bold">Geral Full</span>
+                      <span className="text-[9px] text-[var(--color-text-muted)]">Todos Ativos</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applyPreset("SDR_CLOSER")}
+                      className="flex flex-col items-center justify-center p-3 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
+                    >
+                      <span className="text-lg mb-1 group-hover:scale-110 transition-transform">⚡</span>
+                      <span className="text-[11px] font-bold">SDR & Closers</span>
+                      <span className="text-[9px] opacity-80">Funil Comercial</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applyPreset("EDUCACAO")}
+                      className="flex flex-col items-center justify-center p-3 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
+                    >
+                      <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🎓</span>
+                      <span className="text-[11px] font-bold">Escola / Edu</span>
+                      <span className="text-[9px] opacity-80">Turmas & Aulas</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applyPreset("CLINICA")}
+                      className="flex flex-col items-center justify-center p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
+                    >
+                      <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🩺</span>
+                      <span className="text-[11px] font-bold">Clínica & Saúde</span>
+                      <span className="text-[9px] opacity-80">Prontuários EHR</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applyPreset("IMOBILIARIA")}
+                      className="flex flex-col items-center justify-center p-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
+                    >
+                      <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🏢</span>
+                      <span className="text-[11px] font-bold">Imobiliária</span>
+                      <span className="text-[9px] opacity-80">Portfólio de Imóveis</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applyPreset("CONCESSIONARIA")}
+                      className="flex flex-col items-center justify-center p-3 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
+                    >
+                      <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🚗</span>
+                      <span className="text-[11px] font-bold">Concessionária</span>
+                      <span className="text-[9px] opacity-80">Estoque de Veículos</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applyPreset("VAREJO")}
+                      className="flex flex-col items-center justify-center p-3 bg-pink-500/10 hover:bg-pink-500/20 text-pink-600 dark:text-pink-400 border border-pink-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
+                    >
+                      <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🛍️</span>
+                      <span className="text-[11px] font-bold">Varejo & Lojas</span>
+                      <span className="text-[9px] opacity-80">Catálogo & Estoque</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applyPreset("SOLAR")}
+                      className="flex flex-col items-center justify-center p-3 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
+                    >
+                      <span className="text-lg mb-1 group-hover:scale-110 transition-transform">☀️</span>
+                      <span className="text-[11px] font-bold">Energia Solar</span>
+                      <span className="text-[9px] opacity-80">Funil Fotovoltaico</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Individual Modules Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+                  {[
+                    { id: 'crm', title: "CRM & Pipeline Comercial", desc: "Leads, Funil Comercial, Rodízio e SDR IA", icon: Target, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
+                    { id: 'aurora', title: "Aurora Diretoria IA", desc: "Assistente de voz, WhatsApp e IA Executiva", icon: Sparkles, color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20" },
+                    { id: 'produtividade', title: "Tarefas & Produtividade", desc: "Quadro Kanban operacional e follow-ups", icon: Clock, color: "text-cyan-500 bg-cyan-500/10 border-cyan-500/20" },
+                    { id: 'financeiro', title: "Cofre & Financeiro", desc: "Receitas, despesas, DRE e metas financeiras", icon: DollarSign, color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
+                    { id: 'catalogo', title: "Catálogo de Produtos & SKUs", desc: "Estoque, rastreamento e tabela de preços", icon: Package, color: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
+                    { id: 'marketing', title: "Marketing & Campanhas", desc: "Conteúdos, landing pages e social media", icon: Megaphone, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
+                    { id: 'engajamento', title: "Engajamento & WhatsApp", desc: "Disparos, webhooks, NPS e central de mensagens", icon: MessageSquare, color: "text-rose-500 bg-rose-500/10 border-rose-500/20" },
+                    { id: 'educacao', title: "Educação & Acadêmico", desc: "Turmas, matrículas, certificados e alunos", icon: Award, color: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
+                    { id: 'clinica', title: "Clínica Médica & Saúde", desc: "Prontuários EHR, telemedicina e consultas", icon: Activity, color: "text-teal-500 bg-teal-500/10 border-teal-500/20" },
+                    { id: 'rh', title: "RH & Colaboradores", desc: "Equipe interna, comissões e organograma", icon: Users, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
+                    { id: 'bi', title: "BI & Inteligência de Dados", desc: "Dashboards analíticos, OTE e métricas avançadas", icon: Columns3, color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20" },
+                    { id: 'imobiliaria', title: "Imobiliária", desc: "Portfólio de imóveis, visitas, corretores e funil de leads", icon: Home, color: "text-orange-500 bg-orange-500/10 border-orange-500/20" },
+                    { id: 'concessionaria', title: "Concessionária", desc: "Estoque de veículos, financiamento, consignação e funil de leads", icon: Car, color: "text-orange-500 bg-orange-500/10 border-orange-500/20" },
+                    { id: 'solar', title: "Energia Solar", desc: "Análise de fatura por IA, dimensionamento e funil fotovoltaico", icon: Sun, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
+                    { id: 'varejo', title: "Varejo & Ponto de Venda", desc: "Carrinho, baixa de estoque na venda e catálogo público compartilhável", icon: ShoppingCart, color: "text-lime-500 bg-lime-500/10 border-lime-500/20" },
+                    { id: 'dev', title: "Engenharia & Sprint Dev", desc: "Quadro de sprints, releases e demandas tech", icon: Code2, color: "text-slate-500 bg-slate-500/10 border-slate-500/20" },
+                  ].map((mod) => {
+                    const isEnabled = activeModules[mod.id] ?? true;
+                    const isAurora = mod.id === 'aurora';
+                    const isExpanded = isAurora && expandedModuleId === 'aurora';
+
+                    return (
+                      <div
+                        key={mod.id}
+                        className={`rounded-2xl border transition-all overflow-hidden ${
+                          isEnabled
+                            ? 'bg-[var(--color-surface)] border-[var(--color-primary-blue)]/50 shadow-xs'
+                            : 'bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] opacity-60 hover:opacity-100'
+                        } ${isAurora ? 'sm:col-span-2 lg:col-span-3' : ''}`}
+                      >
+                        <div
+                          onClick={() => handleToggleModule(mod.id)}
+                          className="p-4 flex items-center justify-between gap-3.5 cursor-pointer select-none"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`p-2.5 rounded-xl border shrink-0 ${mod.color}`}>
+                              <mod.icon className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-bold text-[var(--color-text-primary)] block truncate">
+                                {mod.title}
+                              </span>
+                              <span className="text-[10px] text-[var(--color-text-muted)] block truncate mt-0.5">
+                                {mod.desc}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {isAurora && (
+                              <button
+                                type="button"
+                                title="Ver agentes por plano"
+                                onClick={(e) => { e.stopPropagation(); setExpandedModuleId(isExpanded ? null : 'aurora'); }}
+                                className="p-1.5 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
+                              >
+                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? "rotate-180" : ""}`} />
+                              </button>
+                            )}
+                            {/* Switch Toggle */}
+                            <div className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
+                              isEnabled ? 'bg-[var(--color-primary-blue)] justify-end' : 'bg-slate-400 dark:bg-slate-700 justify-start'
+                            }`}>
+                              <div className="w-4 h-4 rounded-full bg-white transition-transform shadow-xs" />
+                            </div>
+                          </div>
+                        </div>
+
+                        {isAurora && isExpanded && (
+                          <div className="border-t border-[var(--color-border-subtle)] p-4 sm:p-5 space-y-4 bg-[var(--color-surface-sunken)]/50 animate-in fade-in duration-200">
+                            {/* Seletor de plano */}
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
+                                Plano de "{selectedTenant}":
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {PLAN_TIERS.map((tier) => {
+                                  const isActive = currentPlan === tier.key;
+                                  return (
+                                    <button
+                                      key={tier.key}
+                                      type="button"
+                                      disabled={savingPlan}
+                                      onClick={(e) => { e.stopPropagation(); handleChangePlan(tier.key); }}
+                                      className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all cursor-pointer disabled:opacity-50 ${
+                                        isActive
+                                          ? 'bg-[var(--color-primary-blue)] text-white border-[var(--color-primary-blue)]'
+                                          : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border-default)] hover:text-[var(--color-text-primary)]'
+                                      }`}
+                                    >
+                                      {tier.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Agentes inclusos no plano atual */}
+                            <div className="space-y-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3 h-3" /> {agentsByInclusion.included.length} agentes ativos neste plano
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                                {agentsByInclusion.included.map((tool) => (
+                                  <div key={tool.workflowId} className="flex items-center gap-2 text-[11px] text-[var(--color-text-primary)] bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                    <span className="truncate">{tool.name.replace(/^\[G-TECH AI OS\]\s*/, '')}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Agentes de planos superiores (bloqueados) */}
+                            {agentsByInclusion.locked.length > 0 && (
+                              <div className="space-y-1.5 pt-2 border-t border-[var(--color-border-subtle)]">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-faint)]">
+                                  {agentsByInclusion.locked.length} agentes de planos superiores (não inclusos)
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                                  {agentsByInclusion.locked.map((tool) => (
+                                    <div key={tool.workflowId} className="flex items-center gap-2 text-[11px] text-[var(--color-text-faint)] bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5 opacity-70">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-faint)] shrink-0" />
+                                      <span className="truncate">{tool.name.replace(/^\[G-TECH AI OS\]\s*/, '')}</span>
+                                      <span className="ml-auto text-[8px] font-black uppercase tracking-wider shrink-0">{tool.minPlanTier}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <p className="text-[9px] text-[var(--color-text-faint)] leading-relaxed">
+                              Esta lista é informativa por enquanto — mudar o plano aqui ainda não bloqueia o uso dos agentes na Aurora, só reflete o que está contratado.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                A empresa deixará de aparecer na lista de parceiros ativos e os acessos de usuários serão suspensos. O histórico de dados é preservado com segurança.
-              </p>
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(false)}
-                  className="px-4 py-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs font-bold rounded-xl transition-all cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteTenant}
-                  disabled={deletingTenant}
-                  className="px-5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
-                >
-                  {deletingTenant ? "Desativando..." : "Confirmar Desativação"}
-                </button>
+
+              {/* Simulador de Cargos & Permissões */}
+              <div className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-4">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-indigo-500" /> Simulador de Visão por Cargo
+                  </h2>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                    Alterne os níveis de autorização para validar como a interface e o menu lateral se comportam para cada perfil de usuário.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { title: "Administrador / Sócio", desc: "Acesso irrestrito a todas as áreas, finanças e configurações globais." },
+                    { title: "Médico / Clínico Closer", desc: "Focado em prontuários eletrônicos EHR, telemedicina e agenda clínica." },
+                    { title: "SDR / Pré-Vendas", desc: "Focado em triagem de leads, contatos rápidos e agendamento de reuniões." },
+                    { title: "Professor / Mentor", desc: "Acesso restrito ao módulo acadêmico, turmas, aulas e certificados." },
+                  ].map((role) => {
+                    const isSelected = simulationRole === role.title;
+                    return (
+                      <button
+                        key={role.title}
+                        type="button"
+                        onClick={() => handleSwitchRole(role.title)}
+                        className={`text-left p-3.5 rounded-2xl border text-xs transition-all flex flex-col justify-between gap-2 cursor-pointer ${isSelected
+                          ? "bg-[var(--color-primary-blue)]/10 border-[var(--color-primary-blue)] text-[var(--color-text-primary)] font-bold shadow-xs"
+                          : "bg-[var(--color-surface-sunken)] border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface)]"
+                          }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <h5 className="font-bold text-xs text-[var(--color-text-primary)]">{role.title}</h5>
+                          <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? "border-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]" : "border-slate-400"
+                            }`}>
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
+                          {role.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="p-3 bg-[var(--color-primary-blue)]/5 rounded-xl border border-[var(--color-primary-blue)]/15 text-[10px] text-[var(--color-text-muted)] leading-relaxed flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[var(--color-primary-blue)] shrink-0" />
+                  <span>
+                    <strong>Regra de Governança Multitenant:</strong> Todas as alterações de módulos aplicadas são gravadas em tempo real no banco de dados e refletidas na barra lateral do tenant selecionado.
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* DIRETÓRIO GLOBAL DE TENANTS & INSTÂNCIAS */}
+          {subView === "directory" && (
+            <div className="bg-[var(--color-surface-sunken)]/40 border border-[var(--color-border-subtle)] rounded-3xl p-4 sm:p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Server className="w-5 h-5 text-[var(--color-primary-blue)]" />
+                    <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">
+                      Diretório Global de Instâncias & Tenants
+                    </h3>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+                      {tenantOptions.length} Ativos
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                    Lista completa de instâncias e operações multi-tenant da plataforma com isolamento RLS e controle modular.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nome, nicho..."
+                      value={searchTenant}
+                      onChange={e => setSearchTenant(e.target.value)}
+                      className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl pl-9 pr-3 py-2 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleReloadTenants()}
+                    disabled={reloading}
+                    title="Atualizar lista"
+                    className="p-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${reloading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid de Instâncias */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredTenants.map((name) => {
+                  const detail = tenantDetails.find(t => t.name === name);
+                  const isMaster = name === "G-Tech Master";
+                  const isSelected = selectedTenant === name;
+                  const mods = getTenantModules(name);
+                  const activeCount = Object.values(mods).filter(Boolean).length;
+
+                  return (
+                    <div
+                      key={name}
+                      className={`bg-[var(--color-surface)] border rounded-2xl p-4 space-y-3.5 transition-all shadow-xs group ${isSelected
+                        ? 'border-[var(--color-primary-blue)] ring-2 ring-[var(--color-primary-blue)]/20 shadow-md'
+                        : 'border-[var(--color-border-default)] hover:border-slate-600'
+                        }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isSelected
+                            ? 'bg-[var(--color-primary-blue)] text-white'
+                            : 'bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)] border border-[var(--color-primary-blue)]/20'
+                            }`}>
+                            <Building2 className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="text-xs font-black text-[var(--color-text-primary)] truncate">
+                                {name}
+                              </h4>
+                              {isSelected && (
+                                <span className="text-[9px] font-black uppercase tracking-wider text-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 px-1.5 py-0.5 rounded border border-[var(--color-primary-blue)]/20">
+                                  Ativo
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-[var(--color-text-muted)] font-mono truncate mt-0.5">
+                              ID: {detail?.id || (isMaster ? "master-root" : name.toLowerCase().replace(/\s+/g, '-'))}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+                          <CheckCircle2 className="w-2.5 h-2.5" /> Ativo
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--color-border-subtle)] text-xs">
+                        <div>
+                          <span className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block">Nicho</span>
+                          <span className="font-bold text-[var(--color-text-primary)] text-[11px] truncate block">
+                            {isMaster ? "Infraestrutura" : detail?.niche || "Parceira"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block">Módulos</span>
+                          <span className="font-bold text-[var(--color-primary-blue)] text-[11px] flex items-center gap-1">
+                            <Layers className="w-3 h-3" /> {activeCount} de 16
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-[var(--color-border-subtle)] flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTenant(name);
+                            setSubView("modules");
+                          }}
+                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs ${isSelected
+                            ? 'bg-[var(--color-primary-blue)] text-white'
+                            : 'bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)]'
+                            }`}
+                        >
+                          <Cpu className="w-3.5 h-3.5 text-blue-400" /> Configurar Módulos
+                        </button>
+
+                        {!isMaster && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEditTenant(name)}
+                              title="Editar dados e credenciais"
+                              className="p-2 bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] rounded-xl transition-all cursor-pointer shrink-0"
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeactivateTenant(name)}
+                              disabled={deletingTenant}
+                              title="Desativar empresa"
+                              className="p-2 bg-[var(--color-surface-sunken)] hover:bg-rose-500/10 disabled:opacity-50 border border-[var(--color-border-default)] hover:border-rose-500/30 text-[var(--color-text-muted)] hover:text-rose-500 rounded-xl transition-all cursor-pointer shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
-
-          {/* Tenants List Grid */}
-          <div className="grid grid-cols-1 gap-2.5">
-            {filteredTenants.map((name) => {
-              const detail = tenantDetails.find(t => t.name === name);
-              const isMaster = name === "G-Tech Master";
-              const isSelected = selectedTenant === name;
-
-              return (
-                <div
-                  key={name}
-                  className={`flex items-center justify-between gap-3 p-3.5 rounded-2xl border transition-all ${
-                    isSelected
-                      ? 'bg-[var(--color-primary-blue)]/5 border-[var(--color-primary-blue)] ring-1 ring-[var(--color-primary-blue)]/40 shadow-xs'
-                      : 'bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] hover:border-[var(--color-border-default)] hover:bg-[var(--color-surface)]'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTenant(name)}
-                    className="flex-1 min-w-0 flex items-center gap-3.5 text-left cursor-pointer border-none bg-transparent"
-                  >
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black shrink-0 transition-all ${
-                      isSelected
-                        ? 'bg-[var(--color-primary-blue)] text-white shadow-xs'
-                        : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border-default)]'
-                    }`}>
-                      {name[0].toUpperCase()}
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs sm:text-sm font-bold text-[var(--color-text-primary)] truncate">
-                          {name}
-                        </p>
-                        {isMaster && (
-                          <span className="text-[9px] font-black uppercase tracking-wider text-purple-500 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
-                            Master Admin
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase tracking-wider mt-0.5">
-                        Nicho: {isMaster ? "Infraestrutura" : detail?.niche || "Parceira"}
-                      </p>
-                    </div>
-                  </button>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    {isSelected ? (
-                      <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/30 px-3 py-1 rounded-full">
-                        <CheckCircle2 className="w-3 h-3" /> Gerenciando
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTenant(name)}
-                        className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] px-3 py-1 rounded-full border border-[var(--color-border-default)] hover:bg-[var(--color-surface-elevated)] transition-all cursor-pointer"
-                      >
-                        Selecionar
-                      </button>
-                    )}
-
-                    {!isMaster && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => openEditTenant(name)}
-                          title="Editar empresa e credenciais"
-                          className="p-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openDeleteConfirm(name)}
-                          title="Desativar empresa"
-                          className="p-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 rounded-xl text-rose-500 hover:text-rose-600 transition-all cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Module Configuration for Selected Tenant */}
-          <div className="pt-6 border-t border-[var(--color-border-subtle)] space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h3 className="text-lg font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
-                  <Layers className="w-5 h-5 text-[var(--color-primary-blue)]" /> Módulos de "{selectedTenant}"
-                </h3>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                  Ative ou desative seções inteiras da barra lateral para personalizar a interface e as ferramentas desta empresa.
-                </p>
-              </div>
-              <span className="text-[11px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-sunken)] px-3 py-1 rounded-full border border-[var(--color-border-default)] shrink-0 self-start sm:self-auto">
-                <strong className="text-[var(--color-primary-blue)]">{activeModulesCount}</strong> de 13 módulos ativos
-              </span>
-            </div>
-
-            {/* Presets Estratégicos */}
-            <div className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] p-4 sm:p-5 rounded-2xl space-y-3 shadow-xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary-blue)] flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> Presets Estratégicos de Operação em 1 Clique
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => applyPreset("ALL_ACTIVE")}
-                  className="flex flex-col items-center justify-center p-3 bg-[var(--color-surface)] hover:bg-[var(--color-surface-elevated)] hover:border-[var(--color-primary-blue)]/50 text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-xl transition-all cursor-pointer shadow-2xs group"
-                >
-                  <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🌐</span>
-                  <span className="text-[11px] font-bold">Geral Full</span>
-                  <span className="text-[9px] text-[var(--color-text-muted)]">Todos Ativos</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset("SDR_CLOSER")}
-                  className="flex flex-col items-center justify-center p-3 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
-                >
-                  <span className="text-lg mb-1 group-hover:scale-110 transition-transform">⚡</span>
-                  <span className="text-[11px] font-bold">SDR & Closers</span>
-                  <span className="text-[9px] opacity-80">Funil Comercial</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset("EDUCACAO")}
-                  className="flex flex-col items-center justify-center p-3 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
-                >
-                  <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🎓</span>
-                  <span className="text-[11px] font-bold">Escola / Edu</span>
-                  <span className="text-[9px] opacity-80">Turmas & Aulas</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset("CLINICA")}
-                  className="flex flex-col items-center justify-center p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
-                >
-                  <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🩺</span>
-                  <span className="text-[11px] font-bold">Clínica & Saúde</span>
-                  <span className="text-[9px] opacity-80">Prontuários EHR</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset("IMOBILIARIA")}
-                  className="flex flex-col items-center justify-center p-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
-                >
-                  <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🏢</span>
-                  <span className="text-[11px] font-bold">Imobiliária</span>
-                  <span className="text-[9px] opacity-80">Portfólio de Imóveis</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset("CONCESSIONARIA")}
-                  className="flex flex-col items-center justify-center p-3 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
-                >
-                  <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🚗</span>
-                  <span className="text-[11px] font-bold">Concessionária</span>
-                  <span className="text-[9px] opacity-80">Estoque de Veículos</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset("VAREJO")}
-                  className="flex flex-col items-center justify-center p-3 bg-pink-500/10 hover:bg-pink-500/20 text-pink-600 dark:text-pink-400 border border-pink-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
-                >
-                  <span className="text-lg mb-1 group-hover:scale-110 transition-transform">🛍️</span>
-                  <span className="text-[11px] font-bold">Varejo & Lojas</span>
-                  <span className="text-[9px] opacity-80">Catálogo & Estoque</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyPreset("SOLAR")}
-                  className="flex flex-col items-center justify-center p-3 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/25 rounded-xl transition-all cursor-pointer shadow-2xs group"
-                >
-                  <span className="text-lg mb-1 group-hover:scale-110 transition-transform">☀️</span>
-                  <span className="text-[11px] font-bold">Energia Solar</span>
-                  <span className="text-[9px] opacity-80">Funil Fotovoltaico</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Individual Modules Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
-              {[
-                { id: 'crm', title: "CRM & Pipeline Comercial", desc: "Leads, Funil Comercial, Rodízio e SDR IA", icon: Target, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
-                { id: 'aurora', title: "Aurora Diretoria IA", desc: "Assistente de voz, WhatsApp e IA Executiva", icon: Sparkles, color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20" },
-                { id: 'produtividade', title: "Tarefas & Produtividade", desc: "Quadro Kanban operacional e follow-ups", icon: Clock, color: "text-cyan-500 bg-cyan-500/10 border-cyan-500/20" },
-                { id: 'financeiro', title: "Cofre & Financeiro", desc: "Receitas, despesas, DRE e metas financeiras", icon: DollarSign, color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
-                { id: 'catalogo', title: "Catálogo de Produtos & SKUs", desc: "Estoque, rastreamento e tabela de preços", icon: Package, color: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
-                { id: 'marketing', title: "Marketing & Campanhas", desc: "Conteúdos, landing pages e social media", icon: Megaphone, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
-                { id: 'engajamento', title: "Engajamento & WhatsApp", desc: "Disparos, webhooks, NPS e central de mensagens", icon: MessageSquare, color: "text-rose-500 bg-rose-500/10 border-rose-500/20" },
-                { id: 'educacao', title: "Educação & Acadêmico", desc: "Turmas, matrículas, certificados e alunos", icon: Award, color: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
-                { id: 'clinica', title: "Clínica Médica & Saúde", desc: "Prontuários EHR, telemedicina e consultas", icon: Activity, color: "text-teal-500 bg-teal-500/10 border-teal-500/20" },
-                { id: 'rh', title: "RH & Colaboradores", desc: "Equipe interna, comissões e organograma", icon: Users, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
-                { id: 'bi', title: "BI & Inteligência de Dados", desc: "Dashboards analíticos, OTE e métricas avançadas", icon: Columns3, color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20" },
-                { id: 'imobiliaria', title: "Imobiliária", desc: "Portfólio de imóveis, visitas, corretores e funil de leads", icon: Home, color: "text-orange-500 bg-orange-500/10 border-orange-500/20" },
-                { id: 'concessionaria', title: "Concessionária", desc: "Estoque de veículos, financiamento, consignação e funil de leads", icon: Car, color: "text-orange-500 bg-orange-500/10 border-orange-500/20" },
-                { id: 'solar', title: "Energia Solar", desc: "Análise de fatura por IA, dimensionamento e funil fotovoltaico", icon: Sun, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
-                { id: 'varejo', title: "Varejo & Ponto de Venda", desc: "Carrinho, baixa de estoque na venda e catálogo público compartilhável", icon: ShoppingCart, color: "text-lime-500 bg-lime-500/10 border-lime-500/20" },
-                { id: 'dev', title: "Engenharia & Sprint Dev", desc: "Quadro de sprints, releases e demandas tech", icon: Code2, color: "text-slate-500 bg-slate-500/10 border-slate-500/20" },
-              ].map((mod) => {
-                const isEnabled = activeModules[mod.id] ?? true;
-                const isAurora = mod.id === 'aurora';
-                const isExpanded = isAurora && expandedModuleId === 'aurora';
-
-                return (
-                  <div
-                    key={mod.id}
-                    className={`rounded-2xl border transition-all overflow-hidden ${
-                      isEnabled
-                        ? 'bg-[var(--color-surface)] border-[var(--color-primary-blue)]/50 shadow-xs'
-                        : 'bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] opacity-60 hover:opacity-100'
-                    } ${isAurora ? 'sm:col-span-2 lg:col-span-3' : ''}`}
-                  >
-                    <div
-                      onClick={() => handleToggleModule(mod.id)}
-                      className="p-4 flex items-center justify-between gap-3.5 cursor-pointer select-none"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`p-2.5 rounded-xl border shrink-0 ${mod.color}`}>
-                          <mod.icon className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-xs font-bold text-[var(--color-text-primary)] block truncate">
-                            {mod.title}
-                          </span>
-                          <span className="text-[10px] text-[var(--color-text-muted)] block truncate mt-0.5">
-                            {mod.desc}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {isAurora && (
-                          <button
-                            type="button"
-                            title="Ver agentes por plano"
-                            onClick={(e) => { e.stopPropagation(); setExpandedModuleId(isExpanded ? null : 'aurora'); }}
-                            className="p-1.5 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-all cursor-pointer"
-                          >
-                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? "rotate-180" : ""}`} />
-                          </button>
-                        )}
-                        {/* Switch Toggle */}
-                        <div className={`w-9 h-5 rounded-full p-0.5 transition-colors flex items-center ${
-                          isEnabled ? 'bg-[var(--color-primary-blue)] justify-end' : 'bg-slate-400 dark:bg-slate-700 justify-start'
-                        }`}>
-                          <div className="w-4 h-4 rounded-full bg-white transition-transform shadow-xs" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {isAurora && isExpanded && (
-                      <div className="border-t border-[var(--color-border-subtle)] p-4 sm:p-5 space-y-4 bg-[var(--color-surface-sunken)]/50 animate-in fade-in duration-200">
-                        {/* Seletor de plano */}
-                        <div className="flex flex-wrap items-center gap-2.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
-                            Plano de "{selectedTenant}":
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            {PLAN_TIERS.map((tier) => {
-                              const isActive = currentPlan === tier.key;
-                              return (
-                                <button
-                                  key={tier.key}
-                                  type="button"
-                                  disabled={savingPlan}
-                                  onClick={(e) => { e.stopPropagation(); handleChangePlan(tier.key); }}
-                                  className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all cursor-pointer disabled:opacity-50 ${
-                                    isActive
-                                      ? 'bg-[var(--color-primary-blue)] text-white border-[var(--color-primary-blue)]'
-                                      : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border-default)] hover:text-[var(--color-text-primary)]'
-                                  }`}
-                                >
-                                  {tier.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Agentes inclusos no plano atual */}
-                        <div className="space-y-1.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3 h-3" /> {agentsByInclusion.included.length} agentes ativos neste plano
-                          </span>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                            {agentsByInclusion.included.map((tool) => (
-                              <div key={tool.workflowId} className="flex items-center gap-2 text-[11px] text-[var(--color-text-primary)] bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                                <span className="truncate">{tool.name.replace(/^\[G-TECH AI OS\]\s*/, '')}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Agentes de planos superiores (bloqueados) */}
-                        {agentsByInclusion.locked.length > 0 && (
-                          <div className="space-y-1.5 pt-2 border-t border-[var(--color-border-subtle)]">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-faint)]">
-                              {agentsByInclusion.locked.length} agentes de planos superiores (não inclusos)
-                            </span>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                              {agentsByInclusion.locked.map((tool) => (
-                                <div key={tool.workflowId} className="flex items-center gap-2 text-[11px] text-[var(--color-text-faint)] bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5 opacity-70">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-faint)] shrink-0" />
-                                  <span className="truncate">{tool.name.replace(/^\[G-TECH AI OS\]\s*/, '')}</span>
-                                  <span className="ml-auto text-[8px] font-black uppercase tracking-wider shrink-0">{tool.minPlanTier}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <p className="text-[9px] text-[var(--color-text-faint)] leading-relaxed">
-                          Esta lista é informativa por enquanto — mudar o plano aqui ainda não bloqueia o uso dos agentes na Aurora, só reflete o que está contratado.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Simulador de Cargos & Permissões */}
-          <div className="pt-6 border-t border-[var(--color-border-subtle)] space-y-4">
-            <div>
-              <h2 className="text-base sm:text-lg font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
-                <UserCheck className="w-5 h-5 text-indigo-500" /> Simulador de Visão por Cargo
-              </h2>
-              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                Alterne os níveis de autorização para validar como a interface e o menu lateral se comportam para cada perfil de usuário.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { title: "Administrador / Sócio", desc: "Acesso irrestrito a todas as áreas, finanças e configurações globais." },
-                { title: "Médico / Clínico Closer", desc: "Focado em prontuários eletrônicos EHR, telemedicina e agenda clínica." },
-                { title: "SDR / Pré-Vendas", desc: "Focado em triagem de leads, contatos rápidos e agendamento de reuniões." },
-                { title: "Professor / Mentor", desc: "Acesso restrito ao módulo acadêmico, turmas, aulas e certificados." },
-              ].map((role) => {
-                const isSelected = simulationRole === role.title;
-                return (
-                  <button
-                    key={role.title}
-                    type="button"
-                    onClick={() => handleSwitchRole(role.title)}
-                    className={`text-left p-3.5 rounded-2xl border text-xs transition-all flex flex-col justify-between gap-2 cursor-pointer ${
-                      isSelected
-                        ? "bg-[var(--color-primary-blue)]/10 border-[var(--color-primary-blue)] text-[var(--color-text-primary)] font-bold shadow-xs"
-                        : "bg-[var(--color-surface-sunken)] border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface)]"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <h5 className="font-bold text-xs text-[var(--color-text-primary)]">{role.title}</h5>
-                      <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                        isSelected ? "border-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]" : "border-slate-400"
-                      }`}>
-                        {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
-                      {role.desc}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="p-3 bg-[var(--color-primary-blue)]/5 rounded-xl border border-[var(--color-primary-blue)]/15 text-[10px] text-[var(--color-text-muted)] leading-relaxed flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-[var(--color-primary-blue)] shrink-0" />
-              <span>
-                <strong>Regra de Governança Multitenant:</strong> Todas as alterações de módulos aplicadas são gravadas em tempo real no banco de dados e refletidas na barra lateral do tenant selecionado.
-              </span>
-            </div>
-          </div>
         </Card>
       )}
     </div>

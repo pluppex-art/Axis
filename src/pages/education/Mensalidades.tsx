@@ -9,6 +9,8 @@ import { Badge } from "../../components/ui/badge";
 import { PageContainer } from "../../components/PageContainer";
 import { supabase } from "../../lib/supabase";
 import { toast } from "sonner";
+import { useLocalization } from "../../contexts/LocalizationContext";
+import { useAuth } from "../../contexts/AuthContext";
 
 type Mensalidade = {
   id: string;
@@ -32,6 +34,8 @@ const statusColor = (s: string) => {
 const STATUS_FILTERS = ["Todos", "Pendente", "Atrasado", "Pago", "Cancelado"];
 
 export default function Mensalidades() {
+  const { formatCurrency } = useLocalization();
+  const { activeTenantId } = useAuth();
   const [mensalidades, setMensalidades] = useState<Mensalidade[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -40,10 +44,12 @@ export default function Mensalidades() {
   const [statusFilter, setStatusFilter] = useState("Todos");
 
   const refetch = async () => {
-    if (!supabase) { setLoading(false); return; }
+    if (!supabase || !activeTenantId) { setLoading(false); return; }
+    // Sem o filtro de tenant, mensalidades e alunos de todos os tenants
+    // apareciam misturados nesta tela.
     const [mensRes, studRes] = await Promise.all([
-      supabase.from("mensalidades").select("*").order("vencimento", { ascending: true }),
-      supabase.from("students").select("id, nome"),
+      supabase.from("mensalidades").select("*").eq("tenant_id", activeTenantId).order("vencimento", { ascending: true }),
+      supabase.from("students").select("id, nome").eq("tenant_id", activeTenantId),
     ]);
     if (mensRes.error) toast.error(`Erro ao carregar mensalidades: ${mensRes.error.message}`);
     else if (mensRes.data) setMensalidades(mensRes.data as Mensalidade[]);
@@ -55,7 +61,7 @@ export default function Mensalidades() {
     setLoading(false);
   };
 
-  useEffect(() => { refetch(); }, []);
+  useEffect(() => { refetch(); }, [activeTenantId]);
 
   const handleAtualizarInadimplencia = async () => {
     if (!supabase) return;
@@ -143,9 +149,9 @@ export default function Mensalidades() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: "A Receber (Pendente)", value: `R$ ${totalPendente.toLocaleString("pt-BR")}`, icon: Clock, color: "text-amber-500" },
-            { label: "Em Atraso", value: `R$ ${totalAtrasado.toLocaleString("pt-BR")}`, icon: AlertTriangle, color: "text-rose-500" },
-            { label: "Recebido neste Mês", value: `R$ ${totalRecebidoMes.toLocaleString("pt-BR")}`, icon: DollarSign, color: "text-emerald-500" },
+            { label: "A Receber (Pendente)", value: formatCurrency(totalPendente), icon: Clock, color: "text-amber-500" },
+            { label: "Em Atraso", value: formatCurrency(totalAtrasado), icon: AlertTriangle, color: "text-rose-500" },
+            { label: "Recebido neste Mês", value: formatCurrency(totalRecebidoMes), icon: DollarSign, color: "text-emerald-500" },
             { label: "Alunos Inadimplentes", value: countAtrasado.toString(), icon: Wallet, color: "text-[var(--color-primary-blue)]" },
           ].map((stat, i) => (
             <Card key={i} className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm">
@@ -211,7 +217,7 @@ export default function Mensalidades() {
                       <td className="p-3.5 text-xs text-[var(--color-text-muted)] font-mono">{m.competencia}</td>
                       <td className="p-3.5 text-xs text-[var(--color-text-muted)]">{m.parcela}</td>
                       <td className="p-3.5 text-xs text-[var(--color-text-primary)] font-mono">{m.vencimento}</td>
-                      <td className="p-3.5 text-xs font-bold text-[var(--color-text-primary)] font-mono">R$ {Number(m.valor).toLocaleString("pt-BR")}</td>
+                      <td className="p-3.5 text-xs font-bold text-[var(--color-text-primary)] font-mono">{formatCurrency(Number(m.valor))}</td>
                       <td className="p-3.5"><Badge variant={statusColor(m.status)}>{m.status}</Badge></td>
                       <td className="p-3.5 text-right">
                         {m.status !== "Pago" && m.status !== "Cancelado" && (

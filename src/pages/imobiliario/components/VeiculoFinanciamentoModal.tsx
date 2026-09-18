@@ -3,6 +3,7 @@ import { X, Landmark, Calculator, Percent, Sparkles, Share2, CheckCircle2 } from
 import { Button } from "../../../components/ui/button";
 import { Modal } from "../../../components/ui/modal";
 import { toast } from "sonner";
+import { useLocalization } from "../../../contexts/LocalizationContext";
 
 const FIELD = "w-full bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-faint)] focus:outline-none focus:border-blue-500/50";
 const LABEL = "text-[10px] font-black text-[var(--color-text-faint)] uppercase tracking-wider mb-1.5 block";
@@ -20,6 +21,7 @@ export function VeiculoFinanciamentoModal({
   onClose,
   onSave,
 }: VeiculoFinanciamentoModalProps) {
+  const { formatCurrency } = useLocalization();
   const [form, setForm] = useState({
     cliente: "",
     telefone: "",
@@ -82,11 +84,11 @@ export function VeiculoFinanciamentoModal({
     }
     const msg = encodeURIComponent(
       `Olá, ${form.cliente}!\n\nSegue a simulação de financiamento para o *${veiculoNome}*:\n` +
-      `🚗 *Valor do Veículo:* ${veiculoValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\n` +
-      `💵 *Entrada:* ${entrada.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} (${percentualEntrada.toFixed(0)}%)\n` +
-      (trocaValor > 0 ? `🔄 *Veículo na Troca:* ${trocaValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\n` : "") +
-      `🏦 *Valor Financiado:* ${valorFinanciado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\n` +
-      `📅 *Plano:* ${numParcelas}x de *${valorParcelaEstimada.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}*\n` +
+      `🚗 *Valor do Veículo:* ${formatCurrency(veiculoValor)}\n` +
+      `💵 *Entrada:* ${formatCurrency(entrada)} (${percentualEntrada.toFixed(0)}%)\n` +
+      (trocaValor > 0 ? `🔄 *Veículo na Troca:* ${formatCurrency(trocaValor)}\n` : "") +
+      `🏦 *Valor Financiado:* ${formatCurrency(valorFinanciado)}\n` +
+      `📅 *Plano:* ${numParcelas}x de *${formatCurrency(valorParcelaEstimada)}*\n` +
       `🏛️ *Banco/Financeira:* ${form.banco_financeira}\n\nFicamos à disposição para aprovação da sua ficha!`
     );
     const phone = form.telefone.replace(/\D/g, "");
@@ -108,7 +110,7 @@ export function VeiculoFinanciamentoModal({
               Simulador de Financiamento Automotivo
             </h2>
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              {veiculoNome} · Valor: <strong className="text-emerald-500 font-mono">{veiculoValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
+              {veiculoNome} · Valor: <strong className="text-emerald-500 font-mono">{formatCurrency(veiculoValor)}</strong>
             </p>
           </div>
         </div>
@@ -277,7 +279,7 @@ export function VeiculoFinanciamentoModal({
               Valor Total Financiado
             </span>
             <span className="text-base font-black font-mono text-[var(--color-text-primary)]">
-              {valorFinanciado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              {formatCurrency(valorFinanciado)}
             </span>
           </div>
 
@@ -286,7 +288,7 @@ export function VeiculoFinanciamentoModal({
               {numParcelas}x Parcelas Estimadas
             </span>
             <span className="text-2xl font-black font-mono text-emerald-400">
-              {valorParcelaEstimada.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              {formatCurrency(valorParcelaEstimada)}
               <span className="text-xs font-normal text-slate-400">/mês</span>
             </span>
           </div>

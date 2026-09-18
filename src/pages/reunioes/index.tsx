@@ -254,21 +254,21 @@ export default function ReunioesList() {
                       <div className="flex items-center gap-2 pt-1">
                         <Button
                           onClick={() => navigate(`/app/reunioes/${r.id}`)}
-                          className="flex-1 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/20 h-8 text-[10px] font-black uppercase tracking-widest rounded-xl"
+                          className="flex-1 bg-blue-600 hover:bg-blue-500 text-white border border-blue-600 h-8 text-[10px] font-black uppercase tracking-widest rounded-xl"
                         >
                           <Video className="w-3 h-3 mr-1.5" /> Entrar
                         </Button>
-                        <div className="flex items-center gap-0.5 bg-white/[0.03] border border-white/[0.08] rounded-xl p-0.5 shrink-0">
+                        <div className="flex items-center gap-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-xl p-0.5 shrink-0">
                           <button
                             onClick={() => { navigator.clipboard.writeText(r.meetLink); toast.success("Link copiado!"); }}
-                            className="h-7 w-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.07] transition-all"
+                            className="h-7 w-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-elevated)] transition-all"
                             title="Copiar link"
                           >
                             <Copy className="w-3.5 h-3.5" />
                           </button>
                           <a href={r.meetLink} target="_blank" rel="noopener noreferrer">
                             <button
-                              className="h-7 w-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.07] transition-all"
+                              className="h-7 w-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-elevated)] transition-all"
                               title="Abrir no Meet"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
@@ -276,7 +276,7 @@ export default function ReunioesList() {
                           </a>
                           <button
                             onClick={() => setReuniaoToDelete(r.id)}
-                            className="h-7 w-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                            className="h-7 w-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-rose-500/10 transition-all"
                             title="Excluir reunião"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -390,13 +390,13 @@ export default function ReunioesList() {
                           <div className="flex items-center gap-2">
                             <Button
                               onClick={() => navigate(`/app/reunioes/${r.id}`)}
-                              className="flex-1 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/20 h-8 text-[10px] font-black uppercase tracking-widest rounded-xl"
+                              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white border border-blue-600 h-8 text-[10px] font-black uppercase tracking-widest rounded-xl"
                             >
                               <Video className="w-3 h-3 mr-1.5" /> Entrar na Reunião
                             </Button>
                             <button
                               onClick={() => setReuniaoToDelete(r.id)}
-                              className="h-8 w-8 flex items-center justify-center rounded-xl border border-white/[0.08] text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0"
+                              className="h-8 w-8 flex items-center justify-center rounded-xl border border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-rose-500/10 transition-all shrink-0"
                               title="Excluir reunião"
                             >
                               <Trash2 className="w-3.5 h-3.5" />

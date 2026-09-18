@@ -10,6 +10,7 @@ import {
   Calendar, ArrowUpRight, Target, Columns3,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
 
 type ImovelRow = {
   id: string; titulo: string; tipo: string; status: string;
@@ -73,6 +74,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function ImobiliarioPainel() {
+  const { activeTenantId } = useAuth();
   const [imoveis, setImoveis] = useState<ImovelRow[]>([]);
   const [veiculos, setVeiculos] = useState<VeiculoRow[]>([]);
   const [corretores, setCorretores] = useState<CorretorRow[]>([]);
@@ -81,14 +83,18 @@ export default function ImobiliarioPainel() {
   const [activePie, setActivePie] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     const today = new Date().toISOString().split("T")[0];
+    // Sem o filtro de tenant, essas 5 queries agregavam dados imobiliários de
+    // TODOS os tenants juntos — vazamento cross-tenant. E o `.limit(5)` em
+    // visitas, usado só pra não poluir a lista "Próximas Visitas", também
+    // capava o KPI de contagem e o gráfico semanal, que precisam do total real.
     Promise.all([
-      supabase.from("imobiliario_imoveis").select("id,titulo,tipo,status,valor,bairro,cidade,visitas,created_at,operacao"),
-      supabase.from("imobiliario_veiculos").select("id,marca,modelo,status,valor"),
-      supabase.from("imobiliario_corretores").select("nome,vendas_mes,vgv_mes,meta,avaliacao").order("vendas_mes", { ascending: false }),
-      supabase.from("imobiliario_visitas").select("data,hora,imovel,cliente,corretor,status").gte("data", today).order("data").limit(5),
-      supabase.from("imobiliario_leads").select("etapa,orcamento,status"),
+      supabase.from("imobiliario_imoveis").select("id,titulo,tipo,status,valor,bairro,cidade,visitas,created_at,operacao").eq("tenant_id", activeTenantId),
+      supabase.from("imobiliario_veiculos").select("id,marca,modelo,status,valor").eq("tenant_id", activeTenantId),
+      supabase.from("imobiliario_corretores").select("nome,vendas_mes,vgv_mes,meta,avaliacao").eq("tenant_id", activeTenantId).order("vendas_mes", { ascending: false }),
+      supabase.from("imobiliario_visitas").select("data,hora,imovel,cliente,corretor,status").eq("tenant_id", activeTenantId).gte("data", today).order("data"),
+      supabase.from("imobiliario_leads").select("etapa,orcamento,status").eq("tenant_id", activeTenantId),
     ]).then(([im, vei, cor, vis, lea]) => {
       setImoveis(im.data ?? []);
       setVeiculos(vei.data ?? []);
@@ -98,7 +104,7 @@ export default function ImobiliarioPainel() {
     }).catch(err => {
       console.error("[Supabase] Imobiliario painel:", err);
     });
-  }, []);
+  }, [activeTenantId]);
 
   // KPIs
   const disponiveis = imoveis.filter(i => i.status === "Disponível").length;
@@ -381,7 +387,7 @@ export default function ImobiliarioPainel() {
                 <div className="flex items-center justify-center h-20 text-slate-600 text-sm">Nenhuma visita agendada</div>
               ) : (
                 <div className="space-y-2.5">
-                  {visitas.map((v, i) => (
+                  {visitas.slice(0, 5).map((v, i) => (
                     <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all">
                       <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
                         <Calendar className="w-3.5 h-3.5 text-blue-400" />

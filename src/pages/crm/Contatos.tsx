@@ -26,7 +26,7 @@ type Contato = {
 type ClienteOption = { id: string; name: string };
 
 export default function Contatos() {
-  const { user } = useAuth();
+  const { user, activeTenantId } = useAuth();
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [clientes, setClientes] = useState<ClienteOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,8 +66,10 @@ export default function Contatos() {
   };
 
   const fetchClientes = async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase.from("clientes").select("id, name").order("name");
+    if (!supabase || !activeTenantId) return;
+    // Sem o filtro de tenant, contas de parceiro (has_tenant_access verdadeiro
+    // pra vários tenants) recebiam via RLS clientes de todos os tenants acessíveis.
+    const { data, error } = await supabase.from("clientes").select("id, name").eq("tenant_id", activeTenantId).order("name");
     if (error) {
       console.warn("clientes fetch notice:", error.message);
     } else if (data) {
@@ -78,7 +80,7 @@ export default function Contatos() {
   useEffect(() => {
     fetchContatos();
     fetchClientes();
-  }, []);
+  }, [activeTenantId]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -260,7 +262,7 @@ export default function Contatos() {
                   <td className="px-4 py-3.5 text-right">
                     <button
                       onClick={() => handleDelete(c.id, c.nome)}
-                      className="p-1.5 rounded-lg hover:bg-rose-500/10 text-[var(--color-text-muted)] hover:text-rose-500 transition-colors"
+                      className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] hover:bg-rose-500/10 hover:border-rose-500/25 text-[var(--color-text-muted)] hover:text-rose-500 transition-colors"
                       title="Excluir"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

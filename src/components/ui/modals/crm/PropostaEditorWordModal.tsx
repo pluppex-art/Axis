@@ -243,7 +243,8 @@ export function PropostaEditorWordModal({
         tipo: "texto",
         conteudo_texto: conteudoTexto,
       },
-      itens
+      itens,
+      { logoUrl: empresaDados?.logoUrl, tenantName }
     );
     toast.success("PDF da Proposta gerado com sucesso!");
   };
@@ -269,12 +270,18 @@ export function PropostaEditorWordModal({
       {/* ── TOP BAR: IDENTIDADE DO DOCUMENTO + FECHAR ── */}
       <div className="px-6 pt-3.5 pb-2.5 border-b border-[var(--color-border-default)] bg-[var(--color-surface)] flex items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-base shadow-md shrink-0"
-            style={{ backgroundColor: brandColor }}
-          >
-            {tenantName.charAt(0).toUpperCase()}
-          </div>
+          {empresaDados?.logoUrl ? (
+            <div className="w-10 h-10 rounded-xl bg-white border border-[var(--color-border-default)] flex items-center justify-center shadow-md shrink-0 overflow-hidden">
+              <img src={empresaDados.logoUrl} alt={tenantName} className="w-full h-full object-contain p-1" />
+            </div>
+          ) : (
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-base shadow-md shrink-0"
+              style={{ backgroundColor: brandColor }}
+            >
+              {tenantName.charAt(0).toUpperCase()}
+            </div>
+          )}
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-black uppercase tracking-wider" style={{ color: brandColor }}>
@@ -506,7 +513,7 @@ export function PropostaEditorWordModal({
       )}
 
       {/* ── DESK ENVIRONMENT / FOLHA A4 CENTRALIZADA ── */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-10 scrollbar-thin bg-[var(--color-surface-sunken)]">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-10 scrollbar-thin bg-[var(--color-surface-sunken)]">
         {/* A4 PAPER CANVAS — sempre branca, simulando uma folha impressa independente do tema do app */}
         <div
           style={{
@@ -520,28 +527,37 @@ export function PropostaEditorWordModal({
             className="pb-5 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2"
             style={{ borderColor: brandColor }}
           >
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className="text-xl font-black tracking-tight"
-                  style={{ color: brandColor }}
-                >
-                  {tenantName.toUpperCase()}
-                </span>
-                <span
-                  className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border"
-                  style={{
-                    backgroundColor: `${brandColor}15`,
-                    color: brandColor,
-                    borderColor: `${brandColor}30`,
-                  }}
-                >
-                  Documento Comercial Oficial
-                </span>
+            <div className="flex items-center gap-3">
+              {empresaDados?.logoUrl && (
+                <img
+                  src={empresaDados.logoUrl}
+                  alt={tenantName}
+                  className="h-10 max-w-[140px] object-contain shrink-0"
+                />
+              )}
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="text-xl font-black tracking-tight"
+                    style={{ color: brandColor }}
+                  >
+                    {tenantName.toUpperCase()}
+                  </span>
+                  <span
+                    className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border"
+                    style={{
+                      backgroundColor: `${brandColor}15`,
+                      color: brandColor,
+                      borderColor: `${brandColor}30`,
+                    }}
+                  >
+                    Documento Comercial Oficial
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {empresaDados?.razaoSocial || "Sistema Integrado de Gestão & Contratos Comerciais"}
+                </p>
               </div>
-              <p className="text-xs text-slate-500">
-                {empresaDados?.razaoSocial || "Sistema Integrado de Gestão & Contratos Comerciais"}
-              </p>
             </div>
 
             <div className="text-left sm:text-right space-y-0.5 text-xs text-slate-600">

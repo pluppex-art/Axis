@@ -1,11 +1,12 @@
 import { useData } from '../../../../contexts/DataContext';
+import { useLocalization } from '../../../../contexts/LocalizationContext';
 import { Card } from '../../../../components/ui/card';
 import {
   Flame, MoreVertical, Calendar, FileText,
   History, ArrowRight, FileDown, Activity,
   Zap, Package, Globe, MapPin, Users,
 } from 'lucide-react';
-import { cn } from '../../../../lib/utils';
+import { cn, parseCurrencyBR } from '../../../../lib/utils';
 
 interface LeadCardProps {
   item: any;
@@ -62,17 +63,14 @@ function formatCreatedAt(iso: string | undefined | null): string | null {
   return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value);
-}
-
 export function LeadCard({
   item, tasks, stageName, draggedLeadId, setDraggedLeadId, updateLead,
   tempDropdownId, setTempDropdownId, openDropdownId, setOpenDropdownId,
   setSelectedLead, handleTransferToComercial, handleExportIAResume,
   setWebhookModalLead, currentPipeline,
 }: LeadCardProps) {
-  const { products, squads } = useData();
+  const { products, squads, proposals, proposalItems } = useData();
+  const { formatCurrency } = useLocalization();
 
   const isDragging    = draggedLeadId === item.id;
   const hasDelayedTask = tasks.some(
@@ -86,9 +84,35 @@ export function LeadCard({
 
   const linkedProducts = (products as any[]).filter(p => (item.productIds || []).includes(p.id));
   const primaryProduct = linkedProducts[0] ?? null;
-  const displayValue = linkedProducts.length > 0
-    ? formatCurrency(linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0))
-    : (item.value || 'R$ 0');
+  // Fallback: quando o lead ainda não tem productIds sincronizado mas já tem
+  // uma proposta vinculada (proposals.lead_id), usa o valor dela em vez de
+  // mostrar "R$ 0" com uma proposta real (às vezes já aceita) por trás.
+  const latestLeadProposal = (proposals as any[] || [])
+    .filter(p => p.lead_id === item.id)
+    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+  const linkedProposalValue = latestLeadProposal?.valor;
+  // Prazo de contrato REALMENTE vendido (pode ter sido negociado menor que a
+  // duração padrão do catálogo, ex.: licença de 12 meses fechada por 4 meses
+  // pago adiantado) — vem do item da proposta persistido (contract_months),
+  // não do produto do catálogo, senão o card mostraria o prazo padrão errado.
+  const contractMonths = latestLeadProposal
+    ? (proposalItems as any[] || [])
+        .filter(pi => pi.proposal_id === latestLeadProposal.id)
+        .map(pi => Number(pi.contract_months) || 0)
+        .filter(m => m > 0)
+        .sort((a, b) => b - a)[0]
+    : undefined;
+  // `item.value` é a fonte de verdade — soma corretamente múltiplas propostas
+  // já realizadas/aceitas pro mesmo lead (mini PDV, aceite de proposta). Somar
+  // só o preço atual de catálogo dos produtos vinculados (branch antiga)
+  // ignorava quantidade, preço histórico da venda e compras repetidas do
+  // mesmo produto — só entra como fallback se o lead genuinamente não tiver
+  // valor nenhum ainda.
+  const displayValue = parseCurrencyBR(item.value) > 0
+    ? formatCurrency(parseCurrencyBR(item.value))
+    : linkedProducts.length > 0
+      ? formatCurrency(linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0))
+      : (linkedProposalValue ? formatCurrency(Number(linkedProposalValue)) : 'R$ 0');
 
   const leadSquad = (squads as any[]).find(s =>
     (s.membros || []).some((m: string) => m === item.seller || m === item.sellerId)
@@ -289,7 +313,14 @@ export function LeadCard({
         {/* Footer — value + creation date + idle */}
         <div className="flex items-center justify-between pt-2 border-t border-[var(--color-border-subtle)] gap-1.5">
           <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="font-mono text-xs font-black text-emerald-600 dark:text-emerald-400 leading-none">{displayValue}</span>
+            <span className="font-mono text-xs font-black text-emerald-600 dark:text-emerald-400 leading-none flex items-center gap-1">
+              {displayValue}
+              {!!contractMonths && (
+                <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400" title="Duração do contrato vendida">
+                  {contractMonths}m
+                </span>
+              )}
+            </span>
             {createdLabel && (
               <span className="text-[9px] text-[var(--color-text-faint)] font-medium">{createdLabel}</span>
             )}

@@ -2,25 +2,75 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Plus, DollarSign, TrendingUp, AlertCircle, Briefcase, Target, Zap } from "lucide-react";
+import { Plus, DollarSign, TrendingUp, AlertCircle, Briefcase, Target, Zap, Pencil, Trash2 } from "lucide-react";
 import { useData } from "../../../contexts/DataContext";
 import { NovaCategoriaTarefaModal } from "../../../components/ui/modals/productivity/NovaCategoriaTarefaModal";
-import { NovoPlanoContasModal } from "../../../components/ui/modals/settings/NovoPlanoContasModal";
+import { NovoPlanoContasModal, type FinanceCategorySubtipo } from "../../../components/ui/modals/settings/NovoPlanoContasModal";
+import { confirmDialog } from "../../../components/ui/confirm-dialog";
 import { toast } from "sonner";
+
+const SUBTIPO_LABELS: Record<FinanceCategorySubtipo, string> = {
+    DESPESA_FIXA: "Fixa",
+    DESPESA_VARIAVEL: "Variável",
+    PESSOAS: "Pessoas",
+    IMPOSTOS: "Impostos",
+};
+
+const TASK_CATEGORIES_SETTING_KEY = "produtividade_categorias_tarefa";
+const DEFAULT_TASK_CATEGORIES = [
+    { id: "1", nome: "Follow-up", cor: "bg-blue-500" },
+    { id: "2", nome: "Reunião", cor: "bg-purple-500" },
+    { id: "3", nome: "Proposta", cor: "bg-emerald-500" }
+];
+// O modal usa nomes de cor em português (Azul, Verde...); as categorias
+// armazenadas usam classes Tailwind (bg-blue-500...) — sem esse mapeamento,
+// uma categoria nova salvava "Azul" como classe CSS e a bolinha de cor
+// nunca aparecia.
+const CATEGORIA_COR_TO_CLASS: Record<string, string> = {
+    Azul: "bg-blue-500",
+    Verde: "bg-emerald-500",
+    Vermelho: "bg-rose-500",
+    Laranja: "bg-orange-500",
+    Roxo: "bg-purple-500",
+};
+const CATEGORIA_CLASS_TO_COR: Record<string, string> = {
+    "bg-blue-500": "Azul",
+    "bg-emerald-500": "Verde",
+    "bg-rose-500": "Vermelho",
+    "bg-orange-500": "Laranja",
+    "bg-purple-500": "Roxo",
+};
 
 export function ConfigProdutividadeCategorias() {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const { squads, leads } = useData();
-    const [categories, setCategories] = useState<any[]>([
-        { id: "1", nome: "Follow-up", cor: "bg-blue-500" },
-        { id: "2", nome: "Reunião", cor: "bg-purple-500" },
-        { id: "3", nome: "Proposta", cor: "bg-emerald-500" }
-    ]);
+    const [editingCategory, setEditingCategory] = useState<any | null>(null);
+    const { squads, leads, appSettings, saveAppSetting } = useData();
+    const [categories, setCategories] = useState<any[]>(DEFAULT_TASK_CATEGORIES);
+    const [hydrated, setHydrated] = useState(false);
 
-    const handleSave = (data: any) => {
-        setCategories([{ ...data, id: Date.now().toString() }, ...categories]);
-        toast.success("Categoria de tarefa criada!");
+    useEffect(() => {
+        if (hydrated) return;
+        const saved = appSettings?.[TASK_CATEGORIES_SETTING_KEY];
+        if (saved) { setCategories(saved); setHydrated(true); }
+    }, [appSettings, hydrated]);
+
+    const persistCategories = (next: any[]) => {
+        setCategories(next);
+        setHydrated(true);
+        saveAppSetting(TASK_CATEGORIES_SETTING_KEY, next);
+    };
+
+    const handleSave = (data: { nome: string; cor: string }) => {
+        const corClass = CATEGORIA_COR_TO_CLASS[data.cor] || "bg-blue-500";
+        if (editingCategory) {
+            persistCategories(categories.map((c) => (c.id === editingCategory.id ? { ...c, nome: data.nome, cor: corClass } : c)));
+            toast.success("Categoria de tarefa atualizada!");
+        } else {
+            persistCategories([{ id: Date.now().toString(), nome: data.nome, cor: corClass }, ...categories]);
+            toast.success("Categoria de tarefa criada!");
+        }
         setIsModalOpen(false);
+        setEditingCategory(null);
     };
 
     const cacData = useMemo(() => {
@@ -53,7 +103,7 @@ export function ConfigProdutividadeCategorias() {
                     <h1 className="text-2xl font-bold tracking-tight">Categorias & Produtividade</h1>
                     <p className="text-sm text-slate-400">Organize as tarefas e visualize o CAC por time comercial.</p>
                 </div>
-                <Button onClick={() => setIsModalOpen(true)} className="bg-[#2563EB] hover:bg-blue-600 font-bold px-6 shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4 mr-2" /> Nova Categoria</Button>
+                <Button onClick={() => { setEditingCategory(null); setIsModalOpen(true); }} className="bg-[#2563EB] hover:bg-blue-600 font-bold px-6 shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4 mr-2" /> Nova Categoria</Button>
             </div>
 
             {/* CAC Visualization Section */}
@@ -111,20 +161,30 @@ export function ConfigProdutividadeCategorias() {
             </Card>
 
             <div className="grid md:grid-cols-2 gap-4">
-                {categories.map((cat: any, i) => (
-                    <Card key={i} className="p-4 bg-[var(--color-surface-elevated)]/80 backdrop-blur-xl border border-white/10 flex justify-between items-center group">
+                {categories.map((cat: any) => (
+                    <Card key={cat.id} className="p-4 bg-[var(--color-surface-elevated)]/80 backdrop-blur-xl border border-white/10 flex justify-between items-center group">
                         <div className="flex items-center gap-3">
                             <div className={`w-3 h-3 rounded-full ${cat.cor}`}></div>
                             <span className="font-semibold text-slate-200">{cat.nome}</span>
                         </div>
-                        <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">Editar</Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setEditingCategory(cat); setIsModalOpen(true); }}
+                            className="text-slate-400 hover:text-white"
+                        >
+                            Editar
+                        </Button>
                     </Card>
                 ))}
             </div>
 
             <NovaCategoriaTarefaModal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
+                onClose={() => { setIsModalOpen(false); setEditingCategory(null); }}
+                initialValue={editingCategory ? { nome: editingCategory.nome, cor: (CATEGORIA_CLASS_TO_COR[editingCategory.cor] || "Azul") as "Azul" | "Verde" | "Vermelho" | "Laranja" | "Roxo" } : null}
+                title={editingCategory ? "Editar Categoria de Tarefa" : "Nova Categoria de Tarefa"}
+                submitText={editingCategory ? "Salvar Alterações" : "Salvar"}
                 onSave={handleSave}
             />
         </div>
@@ -133,54 +193,97 @@ export function ConfigProdutividadeCategorias() {
 
 export function ConfigFinanceiroCategorias() {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const { financeCategories, addFinanceCategory } = useData();
-    const categories: { id: string, nome: string, tipo: "Receita" | "Despesa" }[] =
-        financeCategories.map((c: any) => ({ id: c.id, nome: c.nome, tipo: c.tipo }));
+    const [editing, setEditing] = useState<{ id: string; nome: string; tipo: "Receita" | "Despesa"; subtipo: FinanceCategorySubtipo | null } | null>(null);
+    const { financeCategories, addFinanceCategory, updateFinanceCategory, deleteFinanceCategory, financeEntries } = useData();
+    const categories: { id: string, nome: string, tipo: "Receita" | "Despesa", subtipo: FinanceCategorySubtipo | null }[] =
+        financeCategories.map((c: any) => ({ id: c.id, nome: c.nome, tipo: c.tipo, subtipo: c.subtipo ?? null }));
 
-    const handleSave = (data: { nome: string, tipo: "Receita" | "Despesa" }) => {
-        addFinanceCategory(data);
-        toast.success("Nova categoria financeira cadastrada!");
+    // Categoria em uso não pode ser excluída — deixaria lançamentos órfãos e
+    // quebraria o DRE/relatórios históricos que dependem dela.
+    const emUso = useMemo(() => new Set((financeEntries as any[]).map(e => e.category_id).filter(Boolean)), [financeEntries]);
+
+    const handleSave = (data: { nome: string, tipo: "Receita" | "Despesa", subtipo: FinanceCategorySubtipo | null }) => {
+        if (editing) {
+            updateFinanceCategory(editing.id, data);
+            toast.success("Categoria atualizada!");
+        } else {
+            addFinanceCategory(data);
+            toast.success("Nova categoria financeira cadastrada!");
+        }
         setIsModalOpen(false);
+        setEditing(null);
     };
+
+    const handleEdit = (cat: typeof categories[number]) => {
+        setEditing(cat);
+        setIsModalOpen(true);
+    };
+
+    const handleDelete = async (cat: typeof categories[number]) => {
+        if (emUso.has(cat.id)) {
+            toast.error("Esta categoria tem lançamentos vinculados e não pode ser excluída.");
+            return;
+        }
+        if (!(await confirmDialog({ title: "Excluir categoria", description: `Excluir "${cat.nome}"? Essa ação não pode ser desfeita.` }))) return;
+        deleteFinanceCategory(cat.id);
+        toast.success("Categoria excluída.");
+    };
+
+    const renderRow = (cat: typeof categories[number]) => (
+        <div key={cat.id} className="p-3 bg-[var(--color-surface)] border border-white/5 rounded-lg flex justify-between items-center group">
+            <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-300">{cat.nome}</span>
+                {cat.subtipo && (
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
+                        {SUBTIPO_LABELS[cat.subtipo]}
+                    </span>
+                )}
+                {!emUso.has(cat.id) && <span className="text-[9px] text-slate-500 italic">Categoria ainda não utilizada</span>}
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button type="button" onClick={() => handleEdit(cat)} title="Editar" className="p-1.5 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
+                    <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button type="button" onClick={() => handleDelete(cat)} title="Excluir" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10">
+                    <Trash2 className="w-3.5 h-3.5" />
+                </button>
+            </div>
+        </div>
+    );
 
     return (
         <div className="max-w-4xl space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Planos de Contas (Categorias)</h1>
-                    <p className="text-sm text-slate-400">Categorias para classificar receitas e despesas.</p>
+                    <p className="text-sm text-slate-400">Categorias para classificar receitas e despesas — o par tipo/subtipo define em qual linha do DRE cada lançamento é somado.</p>
                 </div>
-                <Button onClick={() => setIsModalOpen(true)} className="bg-[#2563EB] hover:bg-blue-600 font-bold px-6 shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4 mr-2" /> Nova Categoria</Button>
+                <Button onClick={() => { setEditing(null); setIsModalOpen(true); }} className="bg-[#2563EB] hover:bg-blue-600 font-bold px-6 shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4 mr-2" /> Nova Categoria</Button>
             </div>
 
             <div className="space-y-6">
                 <Card className="p-6 bg-[var(--color-surface-elevated)]/80 backdrop-blur-xl border border-white/10">
                     <h3 className="font-bold text-lg mb-4 text-[#10B981] flex items-center gap-2"><DollarSign className="w-5 h-5" /> Receitas</h3>
                     <div className="space-y-2">
-                        {categories.filter(c => c.tipo === "Receita").map((cat, i) => (
-                            <div key={i} className="p-3 bg-[var(--color-surface)] border border-white/5 rounded-lg flex justify-between items-center">
-                                <span className="text-sm text-slate-300">{cat.nome}</span>
-                            </div>
-                        ))}
+                        {categories.filter(c => c.tipo === "Receita").map(renderRow)}
                     </div>
                 </Card>
 
                 <Card className="p-6 bg-[var(--color-surface-elevated)]/80 backdrop-blur-xl border border-white/10">
                     <h3 className="font-bold text-lg mb-4 text-red-400 flex items-center gap-2"><DollarSign className="w-5 h-5" /> Despesas</h3>
                     <div className="space-y-2">
-                        {categories.filter(c => c.tipo === "Despesa").map((cat, i) => (
-                            <div key={i} className="p-3 bg-[var(--color-surface)] border border-white/5 rounded-lg flex justify-between items-center">
-                                <span className="text-sm text-slate-300">{cat.nome}</span>
-                            </div>
-                        ))}
+                        {categories.filter(c => c.tipo === "Despesa").map(renderRow)}
                     </div>
                 </Card>
             </div>
 
             <NovoPlanoContasModal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
+                onClose={() => { setIsModalOpen(false); setEditing(null); }}
                 onSave={handleSave}
+                title={editing ? "Editar Categoria Financeira" : undefined}
+                submitText={editing ? "Salvar Alterações" : undefined}
+                initialValue={editing}
             />
         </div>
     );

@@ -11,6 +11,7 @@ import { Card } from "../../components/ui/card";
 import { Modal } from "../../components/ui/modal";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface TestDriveItem {
   id: string;
@@ -134,6 +135,11 @@ export default function TestDrives() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const testDrive = testDrives.find(t => t.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir test-drive",
+      description: `Excluir o test-drive de "${testDrive?.cliente || "este cliente"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("imobiliario_visitas").delete().eq("id", id);
     if (error) { toast.error(`Erro ao remover test-drive: ${error.message}`); return; }
     setTestDrives(prev => prev.filter(t => t.id !== id));

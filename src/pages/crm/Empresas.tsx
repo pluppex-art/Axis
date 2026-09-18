@@ -9,8 +9,10 @@ import { Card } from "../../components/ui/card";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { useAuth } from "../../contexts/AuthContext";
 
 export default function Empresas() {
+  const { activeTenantId } = useAuth();
   const [empresas, setEmpresas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -27,13 +29,16 @@ export default function Empresas() {
 
   const fetchEmpresas = async () => {
     setLoading(true);
-    if (!supabase) {
+    if (!supabase || !activeTenantId) {
       setLoading(false);
       return;
     }
+    // Sem o filtro de tenant, contas de parceiro (has_tenant_access verdadeiro
+    // pra vários tenants) recebiam via RLS linhas de todos os tenants acessíveis.
     const { data, error } = await supabase
       .from("clientes")
       .select("*")
+      .eq("tenant_id", activeTenantId)
       .order("name", { ascending: true });
 
     if (error) {
@@ -46,7 +51,7 @@ export default function Empresas() {
 
   useEffect(() => {
     fetchEmpresas();
-  }, []);
+  }, [activeTenantId]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -64,6 +69,7 @@ export default function Empresas() {
       return;
     }
     if (!supabase) return;
+    if (!activeTenantId) { toast.error("Tenant não identificado."); return; }
 
     const { data, error } = await supabase.from("clientes").insert({
       name: novaEmpresa.nome,
@@ -74,6 +80,7 @@ export default function Empresas() {
       phone: novaEmpresa.phone || "",
       documento: novaEmpresa.documento || null,
       status: "Ativo",
+      tenant_id: activeTenantId,
     }).select().maybeSingle();
 
     if (error) {
@@ -159,7 +166,7 @@ export default function Empresas() {
                 </div>
                 <button
                   onClick={() => handleDelete(emp.id, emp.name)}
-                  className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-rose-500/10 text-[var(--color-text-muted)] hover:text-rose-500 transition-all"
+                  className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] opacity-0 group-hover:opacity-100 hover:bg-rose-500/10 hover:border-rose-500/25 text-[var(--color-text-muted)] hover:text-rose-500 transition-all"
                   title="Excluir Empresa"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

@@ -3,6 +3,7 @@ import { Download, FileText, Image, FileSpreadsheet, Trash2, Loader2 } from "luc
 import { toast } from "sonner";
 import { supabase } from "../../../../lib/supabase";
 import { ProductAttachment } from "../../../../types";
+import { confirmDialog } from "../../../../components/ui/confirm-dialog";
 
 interface ProdutoTabArquivosProps {
   attachments: ProductAttachment[];
@@ -51,6 +52,10 @@ export function ProdutoTabArquivos({ attachments, setAttachments, productId, ten
 
   const removeAttachment = async (idx: number) => {
     const file = attachments[idx];
+    if (!(await confirmDialog({
+      title: "Remover anexo",
+      description: `Remover o arquivo "${file.name}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     setAttachments(prev => prev.filter((_, i) => i !== idx));
     if (supabase && file.path) {
       try {

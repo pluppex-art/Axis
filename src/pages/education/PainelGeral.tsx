@@ -15,25 +15,32 @@ import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { useNavigate } from "react-router-dom";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'];
 
 export default function PainelGeralEducation() {
+  const { formatCurrency } = useLocalization();
   const navigate = useNavigate();
   const { turmas, students, certificates } = useData();
+  const { activeTenantId } = useAuth();
   const [mensalidades, setMensalidades] = useState<any[]>([]);
   const [loadingMensalidades, setLoadingMensalidades] = useState(true);
 
   useEffect(() => {
-    if (!supabase) {
+    if (!supabase || !activeTenantId) {
       setLoadingMensalidades(false);
       return;
     }
+    // Sem o filtro de tenant, os KPIs de mensalidades (Recebido/A Receber/Em
+    // Atraso) somavam os valores de TODOS os tenants juntos.
     supabase
       .from("mensalidades")
       .select("*")
+      .eq("tenant_id", activeTenantId)
       .order("vencimento", { ascending: true })
       .then(({ data, error }) => {
         if (!error && data) {
@@ -41,7 +48,7 @@ export default function PainelGeralEducation() {
         }
         setLoadingMensalidades(false);
       });
-  }, []);
+  }, [activeTenantId]);
 
   // KPIs
   const totalAlunos = students.length;
@@ -87,8 +94,7 @@ export default function PainelGeralEducation() {
     ].filter(d => d.value > 0);
   }, [mensalidades]);
 
-  const fmt = (v: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
+  const fmt = (v: number) => formatCurrency(v);
 
   return (
     <PageContainer 

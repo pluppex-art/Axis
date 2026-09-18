@@ -3,9 +3,11 @@ import GenericFinanceiroList from "./GenericFinanceiroList";
 export default function FinanceiroDespesas() {
   return (
     <GenericFinanceiroList
-      title="Despesas Operacionais"
-      desc="Controle detalhado de custos fixos, variáveis e desembolsos operacionais da empresa."
+      title="Despesas"
+      desc="Despesas já realizadas (pagas) — para o que ainda está por vir, veja Contas a Pagar."
       type="Pagar"
+      statusFilter="Pago"
+      defaultStatus="Pago"
     />
   );
 }

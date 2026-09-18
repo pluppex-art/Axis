@@ -1,84 +1,68 @@
 import { Card } from "../../../../components/ui/card";
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Cell, PieChart, Pie } from "recharts";
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
-interface ChartEntry { name: string; receita: number; despesa: number; projection: number; }
+interface ChartEntry { name: string; receita: number; despesa: number; }
 
 interface FinanceiroCashflowChartProps {
   chartData: ChartEntry[];
-  stabilityScore: number;
+  liquidez: number | null;
+  burnRate: number;
 }
 
-export function FinanceiroCashflowChart({ chartData, stabilityScore }: FinanceiroCashflowChartProps) {
+export function FinanceiroCashflowChart({ chartData, liquidez, burnRate }: FinanceiroCashflowChartProps) {
+  const { formatCurrency } = useLocalization();
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
-      <Card className="lg:col-span-8 p-8 border-white/5 bg-[var(--color-surface-elevated)]/80 backdrop-blur-xl relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <Card className="lg:col-span-8 p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-2">
           <div>
-            <h3 className="font-black text-lg text-white uppercase italic tracking-tighter flex items-center gap-3">
-              <div className="w-2 h-8 bg-blue-500 rounded-full" /> Motor de Performance Financeira
-            </h3>
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Comparativo de fluxo de caixa vs projeção inteligente</p>
+            <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Receitas x Despesas</h3>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Realizado (pago) nos últimos 6 meses</p>
           </div>
-          <div className="flex flex-wrap gap-4 bg-white/5 p-2 rounded-2xl border border-white/5">
-            {[{ label: "Receita", color: "bg-[#2563EB]" }, { label: "Projeção", color: "bg-[#2563EB]/40" }, { label: "Despesa", color: "bg-rose-500" }].map(l => (
-              <div key={l.label} className="flex items-center gap-2 px-2">
-                <div className={`w-2 h-2 rounded-full ${l.color}`} />
-                <span className="text-[9px] text-slate-400 uppercase font-black tracking-widest">{l.label}</span>
-              </div>
-            ))}
+          <div className="flex gap-4">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-[var(--color-text-primary)]" />
+              <span className="text-[11px] text-[var(--color-text-muted)] font-medium">Receita</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-[var(--color-danger)]" />
+              <span className="text-[11px] text-[var(--color-text-muted)] font-medium">Despesa</span>
+            </div>
           </div>
         </div>
-        <div className="h-[400px] w-full">
+        <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorRec" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2563EB" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#475569", fontSize: 10, fontWeight: 900 }} dy={15} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: "#475569", fontSize: 10, fontWeight: 900 }} tickFormatter={(val) => `R$ ${val / 1000}k`} />
+            <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" vertical={false} />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 11 }} dy={10} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 11 }} tickFormatter={(val) => `${val / 1000}k`} width={40} />
               <Tooltip
-                contentStyle={{ backgroundColor: "var(--color-surface)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "24px", padding: "20px", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)" }}
-                itemStyle={{ fontSize: "11px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em" }}
-                labelStyle={{ fontSize: "12px", fontWeight: 900, marginBottom: "12px", color: "#60a5fa", textTransform: "uppercase" }}
+                formatter={(value: number) => formatCurrency(value)}
+                contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)", fontSize: 12 }}
               />
-              <Area type="monotone" dataKey="projection" stroke="#2563EB" strokeWidth={1} fill="transparent" strokeDasharray="10 5" opacity={0.3} />
-              <Area type="monotone" dataKey="receita" stroke="#2563EB" strokeWidth={4} fillOpacity={1} fill="url(#colorRec)" />
-              <Area type="monotone" dataKey="despesa" stroke="#f43f5e" strokeWidth={2} fill="transparent" strokeDasharray="4 4" />
-            </AreaChart>
+              <Line type="monotone" dataKey="receita" stroke="var(--color-text-primary)" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="despesa" stroke="var(--color-danger)" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
       </Card>
 
-      <Card className="lg:col-span-4 p-8 border-white/5 bg-[var(--color-surface-elevated)]/80 backdrop-blur-xl flex flex-col items-center justify-center text-center">
-        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-8">Score de Estabilidade</h4>
-        <div className="relative w-full aspect-square max-w-[240px] flex items-center justify-center">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={[{ name: "Stability", value: stabilityScore }, { name: "Remaining", value: 100 - stabilityScore }]}
-                cx="50%" cy="50%" innerRadius="80%" outerRadius="100%" startAngle={220} endAngle={-40} paddingAngle={0} dataKey="value" stroke="none">
-                <Cell fill="#2563EB" />
-                <Cell fill="rgba(255,255,255,0.05)" />
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-5xl font-black text-white italic tracking-tighter">{stabilityScore}</span>
-            <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mt-2">Saúde Global</span>
-          </div>
+      <Card className="lg:col-span-4 p-6 flex flex-col justify-center gap-6">
+        <div>
+          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">Liquidez do período</p>
+          <p className="text-xs text-[var(--color-text-faint)] mb-2">Quanto da despesa paga a receita paga cobre</p>
+          <p className="text-2xl font-semibold tabular-nums text-[var(--color-text-primary)]">
+            {liquidez !== null ? `${liquidez.toFixed(0)}%` : "—"}
+          </p>
         </div>
-        <div className="grid grid-cols-2 gap-4 w-full mt-10">
-          <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-            <p className="text-[9px] font-black text-slate-500 uppercase mb-1">Liquidez</p>
-            <span className="text-white font-black font-mono">--</span>
-          </div>
-          <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-            <p className="text-[9px] font-black text-slate-500 uppercase mb-1">Burn Rate</p>
-            <span className="text-rose-400 font-black font-mono">--</span>
-          </div>
+        <div className="pt-6 border-t border-[var(--color-border-subtle)]">
+          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">Queima de caixa (burn rate)</p>
+          <p className="text-xs text-[var(--color-text-faint)] mb-2">Despesa paga acima da receita paga no período</p>
+          <p className={`text-2xl font-semibold tabular-nums ${burnRate > 0 ? "text-[var(--color-danger)]" : "text-[var(--color-text-primary)]"}`}>
+            {formatCurrency(burnRate)}
+          </p>
         </div>
       </Card>
     </div>

@@ -15,7 +15,7 @@ export function PipelineKPIs({ total, hot, closed, winRate, formattedTotalValue 
     { label: "Alta Prior.", value: hot, icon: Flame, color: "text-warning" },
     { label: "Ganhos", value: closed, icon: CheckCircle2, color: "text-success" },
     { label: "Win Rate", value: `${winRate}%`, icon: Target, color: "text-info" },
-    { label: "Valor Total", value: formattedTotalValue, icon: BarChart3, color: "text-accent", wide: true },
+    { label: "Total de Ganhos", value: formattedTotalValue, icon: BarChart3, color: "text-accent", wide: true },
   ];
 
   return (

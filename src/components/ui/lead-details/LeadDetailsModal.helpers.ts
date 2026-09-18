@@ -1,10 +1,11 @@
 import { toast } from "sonner";
 
-export function formatLeadValueBRL(value: unknown) {
+export function formatLeadValueBRL(value: unknown, formatCurrency?: (v: number) => string) {
   const cleaned = String(value ?? "0").replace(/[^\d,.]/g, "");
   // pt-BR: dots = thousands separator, comma = decimal → remove dots first, then swap comma
   const normalized = cleaned.replace(/\./g, "").replace(",", ".");
   const num = parseFloat(normalized) || 0;
+  if (formatCurrency) return formatCurrency(num);
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num);
 }
 

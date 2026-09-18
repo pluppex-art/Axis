@@ -1,24 +1,53 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { Plus, MessageSquare, ExternalLink, Bell } from "lucide-react";
 import { NovoModeloModal } from "../../../components/ui/modals/marketing/NovoModeloModal";
 import { Reorder } from "motion/react";
 import { toast } from "sonner";
+import { useData } from "../../../contexts/DataContext";
+
+const ENGAJAMENTO_MODELOS_KEY = "engajamento_modelos_mensagem";
+const BUSINESS_DASHBOARD_KPIS_KEY = "business_dashboard_kpis";
+// Contadores de disparo abaixo ("1.240 disparos" etc.) são apenas exemplos
+// ilustrativos dos modelos padrão — ainda não existe rastreamento real de
+// envios por modelo; um modelo novo sempre nasce com "0 disparos".
+const DEFAULT_TEMPLATES = [
+  { id: '1', nome: 'Apresentação Comercial Inicial', tipo: 'WhatsApp', conteudo: '', uso: '1.240 disparos' },
+  { id: '2', nome: 'Recuperação de Lead Inativo (7 dias)', tipo: 'E-mail', conteudo: '', uso: '450 disparos' },
+  { id: '3', nome: 'Confirmação de Reunião com Closer', tipo: 'WhatsApp', conteudo: '', uso: '890 disparos' },
+  { id: '4', nome: 'Cobrança Prévia de Fatura', tipo: 'SMS', conteudo: '', uso: '120 disparos' },
+];
 
 export function ConfigEngajamentoModelos() {
+  const { appSettings, saveAppSetting } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [templates, setTemplates] = useState<any[]>([
-    { id: 1, nome: 'Apresentação Comercial Inicial', tipo: 'WhatsApp', uso: '1.240 disparos' },
-    { id: 2, nome: 'Recuperação de Lead Inativo (7 dias)', tipo: 'E-mail', uso: '450 disparos' },
-    { id: 3, nome: 'Confirmação de Reunião com Closer', tipo: 'WhatsApp', uso: '890 disparos' },
-    { id: 4, nome: 'Cobrança Prévia de Fatura', tipo: 'SMS', uso: '120 disparos' },
-  ]);
+  const [editingTemplate, setEditingTemplate] = useState<any | null>(null);
+  const [templates, setTemplates] = useState<any[]>(DEFAULT_TEMPLATES);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (hydrated) return;
+    const saved = appSettings?.[ENGAJAMENTO_MODELOS_KEY];
+    if (saved) { setTemplates(saved); setHydrated(true); }
+  }, [appSettings, hydrated]);
+
+  const persistTemplates = (next: any[]) => {
+    setTemplates(next);
+    setHydrated(true);
+    saveAppSetting(ENGAJAMENTO_MODELOS_KEY, next);
+  };
 
   const handleSave = (modelo: any) => {
-    setTemplates(prev => [...prev, { ...modelo, id: Date.now(), uso: '0 disparos' }]);
+    if (editingTemplate) {
+      persistTemplates(templates.map((t) => (t.id === editingTemplate.id ? { ...t, ...modelo } : t)));
+      toast.success("Modelo atualizado com sucesso!");
+    } else {
+      persistTemplates([...templates, { ...modelo, id: Date.now().toString(), uso: '0 disparos' }]);
+      toast.success("Modelo criado com sucesso!");
+    }
     setIsModalOpen(false);
-    toast.success("Modelo criado com sucesso!");
+    setEditingTemplate(null);
   };
 
   return (
@@ -28,14 +57,14 @@ export function ConfigEngajamentoModelos() {
           <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">Modelos de Mensagem</h1>
           <p className="text-sm text-[var(--color-text-muted)]">Gerencie os templates de comunicação automatizada da sua empresa.</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)} className="h-9 px-4 text-xs font-bold gap-1.5 shadow-xs">
+        <Button onClick={() => { setEditingTemplate(null); setIsModalOpen(true); }} className="h-9 px-4 text-xs font-bold gap-1.5 shadow-xs">
           <Plus className="w-4 h-4 mr-1" /> Novo Modelo
         </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        {templates.map((modelo: any, i) => (
-          <Card key={i} className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+        {templates.map((modelo: any) => (
+          <Card key={modelo.id} className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
             <div className="flex items-start gap-4">
               <div className="p-2 bg-[var(--color-surface-sunken)] rounded-lg text-[var(--color-primary-blue)] border border-[var(--color-border-subtle)]">
                 <MessageSquare className="w-5 h-5" />
@@ -49,7 +78,12 @@ export function ConfigEngajamentoModelos() {
                 </div>
               </div>
             </div>
-            <Button variant="outline" size="sm" className="shrink-0 text-xs font-bold border-[var(--color-border-default)] hover:bg-[var(--color-surface-sunken)]">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setEditingTemplate(modelo); setIsModalOpen(true); }}
+              className="shrink-0 text-xs font-bold border-[var(--color-border-default)] hover:bg-[var(--color-surface-sunken)]"
+            >
               Editar Modelo
             </Button>
           </Card>
@@ -58,7 +92,10 @@ export function ConfigEngajamentoModelos() {
 
       <NovoModeloModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); setEditingTemplate(null); }}
+        initialValue={editingTemplate}
+        title={editingTemplate ? "Editar Modelo" : "Novo Modelo"}
+        submitText={editingTemplate ? "Salvar Alterações" : "Salvar"}
         onSave={handleSave}
       />
     </div>
@@ -95,8 +132,22 @@ export function ConfigEngajamentoAutomacoes() {
 }
 
 export function ConfigBusinessDashboard() {
+  const { appSettings, saveAppSetting } = useData();
   const [selectedKPIs, setSelectedKPIs] = useState<{ name: string, alertEnabled: boolean, target: number }[]>([]);
   const [availableKPIs] = useState(['Receita (MRR)', 'Leads Totais', 'Conversão', 'Win Rate', 'Churn Rate', 'Score IA Médio']);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (hydrated) return;
+    const saved = appSettings?.[BUSINESS_DASHBOARD_KPIS_KEY];
+    if (saved) { setSelectedKPIs(saved); setHydrated(true); }
+  }, [appSettings, hydrated]);
+
+  const handleSaveDashboard = async () => {
+    setHydrated(true);
+    await saveAppSetting(BUSINESS_DASHBOARD_KPIS_KEY, selectedKPIs);
+    toast.success("Configuração de Dashboard salva com sucesso!");
+  };
 
   const toggleKPI = (kpiName: string) => {
     if (selectedKPIs.find(k => k.name === kpiName)) {
@@ -169,7 +220,7 @@ export function ConfigBusinessDashboard() {
             </div>
           ))}
         </Reorder.Group>
-        <Button onClick={() => toast.success("Configuração de Dashboard salva com sucesso!")} className="mt-6 h-9 px-6 text-xs font-bold shadow-xs">
+        <Button onClick={handleSaveDashboard} className="mt-6 h-9 px-6 text-xs font-bold shadow-xs">
           Salvar Dashboards
         </Button>
       </Card>

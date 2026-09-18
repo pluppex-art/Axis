@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface ConsignacaoItem {
   id: string;
@@ -152,6 +153,11 @@ export default function ConsignacoesVeiculos() {
   // deixa de ser tratado como consignado).
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const consignacao = consignacoes.find(c => c.id === id);
+    if (!(await confirmDialog({
+      title: "Remover consignação",
+      description: `Remover a consignação de "${consignacao?.veiculo || "este veículo"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase
       .from("imobiliario_veiculos")
       .update({ is_consignado: false, consignante_nome: null, consignante_telefone: null, comissao_percentual: null, repasse_realizado: false })

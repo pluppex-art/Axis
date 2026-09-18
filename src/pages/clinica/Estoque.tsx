@@ -11,8 +11,10 @@ import { PageContainer } from "../../components/PageContainer";
 import { Modal } from "../../components/ui/modal";
 import { useEstoque } from './hooks/useEstoque';
 import { toast } from 'sonner';
+import { useLocalization } from '../../contexts/LocalizationContext';
 
 export default function EstoqueClinico() {
+  const { formatCurrency } = useLocalization();
   const { items: stockItems, addItem } = useEstoque();
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -35,7 +37,7 @@ export default function EstoqueClinico() {
   };
 
   const stockValue = stockItems.reduce((sum, i) => sum + i.qty * parsePrice(i.price), 0);
-  const stockValueFmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(stockValue);
+  const stockValueFmt = formatCurrency(stockValue);
   const categoryCount = new Set(stockItems.map(i => i.category)).size;
 
   const mostCriticalItems = [...stockItems]

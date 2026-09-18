@@ -12,6 +12,7 @@ import { supabase } from "../../../lib/supabase";
 import { cn, parseCurrencyBR } from "../../../lib/utils";
 import { useData } from "../../../contexts/DataContext";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useLocalization } from "../../../contexts/LocalizationContext";
 import { CriarPropostaModal } from "../../../components/ui/modals/crm/CriarPropostaModal";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
@@ -91,12 +92,21 @@ function getSLA(diasEtapa: number) {
 function getInitials(nome: string) {
   return nome.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
 }
-function fmtBRL(v: number) {
-  if (v >= 1e6) return `R$ ${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `R$ ${(v / 1e3).toFixed(0)}k`;
-  return `R$ ${v.toLocaleString("pt-BR")}`;
+const CURRENCY_SYMBOL: Record<string, string> = { BRL: "R$", USD: "$", EUR: "€" };
+const CURRENCY_ABBR_LOCALE: Record<string, string> = { BRL: "pt-BR", USD: "en-US", EUR: "de-DE" };
+
+// Abreviação compacta (1.2M / 280k) — recebe o valor JÁ convertido para a
+// moeda de exibição do usuário (ver convertFromBRL no LocalizationContext),
+// só troca o símbolo/locale para bater com a moeda escolhida.
+function fmtBRL(v: number, currency: string = "BRL") {
+  const symbol = CURRENCY_SYMBOL[currency] || "R$";
+  const locale = CURRENCY_ABBR_LOCALE[currency] || "pt-BR";
+  if (v >= 1e6) return `${symbol} ${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `${symbol} ${(v / 1e3).toFixed(0)}k`;
+  return `${symbol} ${v.toLocaleString(locale)}`;
 }
-function fmtBRLFull(v: number) {
+function fmtBRLFull(v: number, formatCurrency?: (value: number) => string) {
+  if (formatCurrency) return formatCurrency(v);
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 }
 
@@ -272,6 +282,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit, onGanho, onPerdido, onDelete,
   const [novaTarefaTitulo, setNovaTarefaTitulo] = useState("");
   const { createProposalWithItems, tasks, addTask, updateTask, deleteTask } = useData();
   const { user } = useAuth();
+  const { formatCurrency } = useLocalization();
 
   // Tarefas do lead — usa o mesmo módulo genérico de Tarefas do CRM (tabela
   // `tasks`, já com persistência real). `tasks.lead_id` tem FK estrita pra
@@ -411,7 +422,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit, onGanho, onPerdido, onDelete,
                 </span>
               </div>
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                <span className="text-sm font-black text-emerald-400 font-mono">{fmtBRLFull(lead.orcamento)}</span>
+                <span className="text-sm font-black text-emerald-400 font-mono">{fmtBRLFull(lead.orcamento, formatCurrency)}</span>
                 <div className="w-px h-3 bg-white/10 shrink-0" />
                 <span className={cn(
                   "text-[10px] font-bold px-2 py-0.5 rounded-full border",
@@ -493,7 +504,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit, onGanho, onPerdido, onDelete,
                 </div>
                 <div>
                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">Orçamento</p>
-                  <p className="text-sm font-black text-emerald-400">{fmtBRLFull(lead.orcamento)}</p>
+                  <p className="text-sm font-black text-emerald-400">{fmtBRLFull(lead.orcamento, formatCurrency)}</p>
                 </div>
                 <div>
                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">Responsável</p>
@@ -695,7 +706,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit, onGanho, onPerdido, onDelete,
                         {done && <Check className="w-2.5 h-2.5 text-white" />}
                       </button>
                       <span className={cn("text-sm flex-1", done ? "line-through text-slate-600" : "text-slate-300")}>{task.title}</span>
-                      <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all cursor-pointer">
+                      <button onClick={() => deleteTask(task.id)} className="p-1 rounded-lg bg-white/5 border border-white/10 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/25 transition-all cursor-pointer">
                         <Trash className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -832,6 +843,7 @@ function LeadCard({ lead, onSelect, isDragging, onDragStart, onDragEnd }: {
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
+  const { currency, convertFromBRL } = useLocalization();
   const temp = getTemperatura(lead.diasEtapa);
   const tc = TEMP_CFG[temp];
   const TempIcon = tc.icon;
@@ -892,7 +904,7 @@ function LeadCard({ lead, onSelect, isDragging, onDragStart, onDragEnd }: {
 
       {/* Value + date */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-black text-white">{fmtBRL(lead.orcamento)}</span>
+        <span className="text-sm font-black text-white">{fmtBRL(convertFromBRL(lead.orcamento), currency)}</span>
         <span className="text-[9px] text-slate-600">{lead.criadoEm}</span>
       </div>
 
@@ -911,6 +923,7 @@ function LeadCard({ lead, onSelect, isDragging, onDragStart, onDragEnd }: {
 
 // ─── LIST ROW ─────────────────────────────────────────────────────────────────
 function LeadRow({ lead, onSelect }: { lead: Lead; onSelect: (l: Lead) => void }) {
+  const { currency, convertFromBRL } = useLocalization();
   const cfg = ETAPA_CFG[lead.etapa];
   const sla = getSLA(lead.diasEtapa);
   const temp = getTemperatura(lead.diasEtapa);
@@ -929,7 +942,7 @@ function LeadRow({ lead, onSelect }: { lead: Lead; onSelect: (l: Lead) => void }
         <p className="text-[10px] text-slate-500 truncate">{lead.interesse} · {lead.bairro}</p>
       </div>
       <span className={cn("text-[9px] font-black px-2 py-0.5 rounded-full border shrink-0", cfg.bg, cfg.color, cfg.border)}>{lead.etapa}</span>
-      <span className="text-sm font-black text-white shrink-0">{fmtBRL(lead.orcamento)}</span>
+      <span className="text-sm font-black text-white shrink-0">{fmtBRL(convertFromBRL(lead.orcamento), currency)}</span>
       <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0", sla.cls)}>{sla.label}</span>
       <span className="text-[10px] text-slate-600 shrink-0 w-16 text-right">{lead.corretor}</span>
     </div>
@@ -943,6 +956,7 @@ function LeadRow({ lead, onSelect }: { lead: Lead; onSelect: (l: Lead) => void }
  * vinculado: `veiculo_id` preenchido → funil de Veículos; caso contrário
  * (vinculado a imóvel ou ainda genérico) → funil de Imóveis. */
 export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
+  const { currency, convertFromBRL } = useLocalization();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [ativos, setAtivos] = useState<AtivoOption[]>([]);
   const [view, setView] = useState<"kanban" | "lista">("kanban");
@@ -1138,7 +1152,7 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
       {/* KPI Bar */}
       <div className="flex gap-3 mb-6 flex-wrap">
         {[
-          { label: "VGV Potencial",  value: fmtBRL(totalVGV),  color: "text-blue-400",    dot: "bg-blue-400" },
+          { label: "VGV Potencial",  value: fmtBRL(convertFromBRL(totalVGV), currency),  color: "text-blue-400",    dot: "bg-blue-400" },
           { label: "Ativos",         value: `${ativosCount}`,   color: "text-white",       dot: "bg-slate-400" },
           { label: "Fechados (Ganho)",value: `${ganhos}`,       color: "text-emerald-400", dot: "bg-emerald-400" },
           { label: "Perdidos",       value: `${perdidos}`,      color: "text-rose-400",    dot: "bg-rose-400" },
@@ -1185,7 +1199,7 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
                     <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-full border", cfg.bg, cfg.color, cfg.border)}>{col.length}</span>
                   </div>
                   {vgvCol > 0 && (
-                    <p className="text-[10px] text-slate-600 font-bold">{fmtBRL(vgvCol)}</p>
+                    <p className="text-[10px] text-slate-600 font-bold">{fmtBRL(convertFromBRL(vgvCol), currency)}</p>
                   )}
                 </div>
 

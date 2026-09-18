@@ -10,8 +10,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { ContractsKPIs } from "./components/Contracts/ContractsKPIs";
 import { ContractsTable } from "./components/Contracts/ContractsTable";
+import { handleDownloadPdf } from "./utils/proposalPdf";
+import { getMRR } from "../../lib/revenueMetrics";
+import type { Contract } from "../../types";
 
 const contractSchema = z.object({
   cliente: z.string().min(1, "O cliente é obrigatório"),
@@ -21,39 +25,84 @@ const contractSchema = z.object({
     return !isNaN(parseFloat(clean.replace(",", "."))) && clean.length > 0;
   }, "Formato de valor inválido. Use formato monetário, ex: 1500,00"),
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Insira uma data válida"),
+  dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Insira uma data válida").optional().or(z.literal("")),
+  descricao: z.string().optional(),
 });
 type ContractFormData = z.infer<typeof contractSchema>;
 
-const toNumberMRR = (mrr: string | number): number => {
-  if (typeof mrr === "number") return mrr;
-  const cleaned = mrr.replace("R$ ", "").replace(/\./g, "").replace(",", ".");
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
-};
-
 export default function Contracts() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [contractToDelete, setContractToDelete] = useState<string | null>(null);
-  const { contracts, addContract, deleteContract } = useData();
+  const { contracts, addContract, updateContract, deleteContract, appSettings, clienteBase } = useData();
+  const { activeTenantName } = useAuth();
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<ContractFormData>({
     resolver: zodResolver(contractSchema),
   });
 
+  const isEditing = !!editingContract;
+
   const onSubmit = (data: ContractFormData) => {
     const formattedData = data.data.split("-").reverse().join("/");
+    const formattedDataFim = data.dataFim ? data.dataFim.split("-").reverse().join("/") : null;
     const cleanValue = parseFloat(data.valor.replace(/[^0-9,.]/g, "").replace(",", "."));
     const formattedValue = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(cleanValue);
-    addContract({ client: data.cliente, plan: data.plano, mrr: formattedValue, status: "Ativo", date: formattedData, progress: 100 });
-    toast.success("Contrato criado com sucesso!");
+    if (isEditing && editingContract) {
+      updateContract(editingContract.id, { client: data.cliente, plan: data.plano, description: data.descricao || null, mrr: formattedValue, date: formattedData, endDate: formattedDataFim });
+      toast.success("Contrato atualizado com sucesso!");
+    } else {
+      addContract({ client: data.cliente, plan: data.plano, description: data.descricao || null, mrr: formattedValue, status: "Ativo", date: formattedData, endDate: formattedDataFim, progress: 100 });
+      toast.success("Contrato criado com sucesso!");
+    }
     reset();
     setIsModalOpen(false);
+    setEditingContract(null);
   };
 
-  const handleModalClose = () => { setIsModalOpen(false); reset(); };
+  const handleModalClose = () => { setIsModalOpen(false); setEditingContract(null); reset(); };
 
-  const totalMRR = contracts.reduce((acc, curr) => acc + toNumberMRR(curr.mrr), 0);
+  const handleEditContract = (contract: Contract) => {
+    setEditingContract(contract);
+    const [dd, mm, yyyy] = (contract.date || "").split("/");
+    const [ddFim, mmFim, yyyyFim] = (contract.endDate || "").split("/");
+    reset({
+      cliente: contract.client,
+      plano: contract.plan,
+      valor: String(typeof contract.mrr === "number" ? contract.mrr : contract.mrr).replace(/[^\d,.-]/g, ""),
+      data: dd && mm && yyyy ? `${yyyy}-${mm}-${dd}` : "",
+      dataFim: ddFim && mmFim && yyyyFim ? `${yyyyFim}-${mmFim}-${ddFim}` : "",
+      descricao: contract.description || "",
+    });
+    setIsModalOpen(true);
+  };
+
+  // Mesmo gerador/branding (logo do tenant) já usado no PDF de Propostas — o
+  // contrato é montado como uma "Proposta" equivalente pra reaproveitar o
+  // layout, em vez de duplicar a lógica de PDF com um visual diferente.
+  const handleContractPdf = (contract: Contract) => {
+    const empresaDados = appSettings?.empresa_dados || {};
+    const mrrNumber = typeof contract.mrr === "number"
+      ? contract.mrr
+      : parseFloat(String(contract.mrr).replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
+    handleDownloadPdf(
+      {
+        id: contract.id,
+        cliente: contract.client,
+        titulo: contract.plan,
+        valor: mrrNumber,
+        created_at: undefined,
+        validade: undefined,
+        status: contract.status === "Ativo" ? "Aceita" : "Enviada",
+        vendedor: activeTenantName || "S.P.Y.",
+      } as any,
+      [],
+      { logoUrl: empresaDados?.logoUrl, tenantName: activeTenantName }
+    );
+  };
+
+  const totalMRR = getMRR(contracts);
 
   return (
     <div className="space-y-6">
@@ -81,16 +130,18 @@ export default function Contracts() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onDelete={(id) => setContractToDelete(id)}
+        onEdit={handleEditContract}
+        onDownloadPdf={handleContractPdf}
       />
 
       <Modal
         isOpen={isModalOpen}
         onClose={handleModalClose}
-        title="Novo Contrato"
+        title={isEditing ? "Editar Contrato" : "Novo Contrato"}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={handleModalClose}>Cancelar</Button>
-            <Button onClick={handleSubmit(onSubmit)}>Salvar Contrato</Button>
+            <Button onClick={handleSubmit(onSubmit)}>{isEditing ? "Salvar Alterações" : "Salvar Contrato"}</Button>
           </div>
         }
       >
@@ -98,26 +149,42 @@ export default function Contracts() {
           <FormField label="Cliente" error={errors.cliente?.message}>
             <select {...register("cliente")} className="w-full h-10 rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-blue)]">
               <option value="">Selecione o Cliente</option>
-              <option value="TechCorp Brasil">TechCorp Brasil</option>
-              <option value="Construtora RS">Construtora RS</option>
-              <option value="Clínica Vida">Clínica Vida</option>
-              <option value="Mendes Consultoria">Mendes Consultoria</option>
+              {/* Contratos gerados a partir de proposta aceita podem trazer um nome de
+                  cliente que não existe (mais) em `clienteBase` — sem essa opção extra,
+                  o <select> não tinha nenhum <option> com esse value e caía pro placeholder
+                  em branco ao editar, escondendo o cliente real do contrato. */}
+              {editingContract?.client && !(clienteBase as any[]).some((c: any) => c.name === editingContract.client) && (
+                <option value={editingContract.client}>{editingContract.client} (fora da lista de clientes)</option>
+              )}
+              {(clienteBase as any[]).map((c: any) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
             </select>
           </FormField>
           <FormField label="Plano Acordado" error={errors.plano?.message}>
-            <select {...register("plano")} className="w-full h-10 rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-blue)]">
-              <option value="">Selecione o Plano</option>
-              <option value="Starter">Starter</option>
-              <option value="Pro">Pro</option>
-              <option value="Enterprise">Enterprise</option>
-              <option value="Consultoria Avulsa">Consultoria Avulsa</option>
-            </select>
+            {/* Texto livre, não mais um <select> fixo de 4 opções — a maioria dos
+                contratos hoje nasce da aceitação de uma proposta e carrega o título
+                real dela (ex: "Proposta Comercial — Cliente X"), que nunca batia com
+                Starter/Pro/Enterprise/Consultoria Avulsa e ficava invisível ao editar. */}
+            <Input type="text" list="planos-sugeridos" {...register("plano")} placeholder="Ex: Starter, Pro, ou o título da proposta" />
+            <datalist id="planos-sugeridos">
+              <option value="Starter" />
+              <option value="Pro" />
+              <option value="Enterprise" />
+              <option value="Consultoria Avulsa" />
+            </datalist>
+          </FormField>
+          <FormField label="Descrição (opcional)" error={errors.descricao?.message}>
+            <Input type="text" {...register("descricao")} placeholder="Ex: Proposta Comercial — Nome do Cliente" />
           </FormField>
           <FormField label="Valor (MRR)" error={errors.valor?.message}>
             <Input type="text" {...register("valor")} placeholder="Ex: 1500,00" />
           </FormField>
           <FormField label="Data de Assinatura" error={errors.data?.message}>
             <Input type="date" {...register("data")} />
+          </FormField>
+          <FormField label="Data de Término (opcional)" error={errors.dataFim?.message}>
+            <Input type="date" {...register("dataFim")} />
           </FormField>
         </form>
       </Modal>

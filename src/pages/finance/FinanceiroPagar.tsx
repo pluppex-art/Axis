@@ -4,7 +4,7 @@ export default function FinanceiroPagar() {
   return (
     <GenericFinanceiroList
       title="Contas a Pagar"
-      desc="Gerenciamento de despesas e obrigações empresariais do S.P.Y.."
+      desc="Todas as obrigações, pagas ou não — para só o que já foi pago, veja Despesas."
       type="Pagar"
     />
   );

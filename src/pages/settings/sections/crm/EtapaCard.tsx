@@ -35,10 +35,10 @@ export function EtapaCard({ stage, idx, corInfo, dragHandleProps, onRename, onDe
             <GripVertical className="w-4 h-4" />
           </span>
           <div className="flex items-center gap-1">
-            <button onClick={() => setEditing(true)} className="p-1 text-slate-500 hover:text-slate-300 transition-colors rounded">
+            <button onClick={() => setEditing(true)} className="p-1 bg-white/5 border border-white/10 text-slate-500 hover:text-slate-300 hover:bg-white/10 transition-colors rounded">
               <Pencil className="w-3 h-3" />
             </button>
-            <button onClick={onDelete} className="p-1 text-slate-500 hover:text-rose-400 transition-colors rounded">
+            <button onClick={onDelete} className="p-1 bg-white/5 border border-white/10 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/25 transition-colors rounded">
               <Trash2 className="w-3 h-3" />
             </button>
           </div>

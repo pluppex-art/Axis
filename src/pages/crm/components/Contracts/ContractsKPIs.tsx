@@ -1,4 +1,5 @@
 import { Card } from "../../../../components/ui/card";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 import { FileText, DollarSign, AlertCircle, TrendingUp } from "lucide-react";
 
 interface ContractsKPIsProps {
@@ -8,8 +9,9 @@ interface ContractsKPIsProps {
 }
 
 export function ContractsKPIs({ totalMRR, ativos, inadimplentes }: ContractsKPIsProps) {
+  const { formatCurrency } = useLocalization();
   const items = [
-    { label: "MRR Total", value: `R$ ${totalMRR.toLocaleString("pt-BR")}`, icon: DollarSign, color: "text-[var(--color-primary-blue)]" },
+    { label: "MRR Total", value: formatCurrency(totalMRR), icon: DollarSign, color: "text-[var(--color-primary-blue)]" },
     { label: "Contratos Ativos", value: ativos, icon: FileText, color: "text-info" },
     { label: "Inadimplência", value: inadimplentes, icon: AlertCircle, color: "text-danger" },
     { label: "Retenção Estimada", value: "96.8%", icon: TrendingUp, color: "text-success" },

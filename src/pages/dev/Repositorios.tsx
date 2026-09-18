@@ -218,12 +218,12 @@ export default function Repositorios() {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}
-                      className="text-slate-600 hover:text-blue-400 transition-colors"
+                      className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/25 transition-colors"
                     >
                       <ExternalLink className="w-4 h-4" />
                     </a>
                   ) : (
-                    <button className="text-slate-600 hover:text-blue-400 transition-colors">
+                    <button className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/25 transition-colors">
                       <ExternalLink className="w-4 h-4" />
                     </button>
                   )}

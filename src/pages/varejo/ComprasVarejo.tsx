@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 // Status exibido na UI. No banco (`compras.status`) só existem
 // 'Pendente' | 'Em Transporte' | 'Recebido no Estoque' | 'Cancelado' — os
@@ -135,6 +136,11 @@ export default function ComprasVarejo() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const compra = compras.find(c => c.id === id);
+    if (!(await confirmDialog({
+      title: "Cancelar ordem de compra",
+      description: `Cancelar a ordem de compra de "${compra?.fornecedor || "este fornecedor"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("compras").update({ status: "Cancelado" }).eq("id", id);
     if (error) { toast.error("Erro ao cancelar ordem."); return; }
     setCompras(prev => prev.map(c => c.id === id ? { ...c, status: "Cancelada" } : c));

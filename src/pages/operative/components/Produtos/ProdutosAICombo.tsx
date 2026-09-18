@@ -5,12 +5,14 @@ import { Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "../../../../contexts/DataContext";
 import { useAuth } from "../../../../contexts/AuthContext";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
 const COMBO_DISCOUNT = 0.1;
 
 export function ProdutosAICombo() {
   const { products, createProposalWithItems } = useData();
   const { user } = useAuth();
+  const { formatCurrency } = useLocalization();
   const [creating, setCreating] = useState(false);
 
   const combo = useMemo(() => {
@@ -76,7 +78,7 @@ export function ProdutosAICombo() {
         <Button
           onClick={handleAddCombo}
           disabled={!combo || creating}
-          className="text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 px-3 py-1.5 rounded-lg shrink-0 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="text-[10px] font-black uppercase tracking-wider bg-amber-600 hover:bg-amber-500 text-white border border-amber-600 px-3 py-1.5 rounded-lg shrink-0 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Adicionar Combo Sugerido"}
         </Button>
@@ -91,7 +93,7 @@ export function ProdutosAICombo() {
             </p>
           </div>
           <span className="text-xs font-bold text-emerald-400 font-mono mt-0.5">
-            {combo ? combo.comboPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "R$ 0,00"}
+            {combo ? formatCurrency(combo.comboPrice) : formatCurrency(0)}
           </span>
         </div>
 
@@ -103,7 +105,7 @@ export function ProdutosAICombo() {
             </p>
           </div>
           <span className="text-xs font-bold text-rose-400 mt-0.5 font-mono">
-            -{combo ? combo.discount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "R$ 0,00"}
+            -{combo ? formatCurrency(combo.discount) : formatCurrency(0)}
           </span>
         </div>
 

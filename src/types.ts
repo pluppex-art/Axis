@@ -180,6 +180,20 @@ export interface Contract {
   status: string;
   date: string;
   progress: number;
+  /** Vínculo estável com a proposta de origem — usado pra idempotência real
+   * na reconciliação de propostas aceitas (não depender de comparar nome). */
+  proposalId?: string | null;
+  cancelledAt?: string | null;
+  /** Valor total do contrato (recorrente + avulso/implantação). `mrr` é só a
+   * parcela recorrente — quando omitido, assume igual a `mrr` (contrato sem
+   * componente avulso). */
+  totalValue?: number;
+  /** Data de término/vigência do contrato (dd/mm/aaaa), opcional. */
+  endDate?: string | null;
+  /** Texto livre descrevendo o contrato/negociação (ex.: título original da
+   * proposta que gerou o contrato) — separado do `plan`, que é o produto do
+   * catálogo vendido. */
+  description?: string | null;
 }
 
 export interface LeadActivity {

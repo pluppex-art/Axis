@@ -3,8 +3,10 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { toast } from "sonner";
 import { formatCNPJ, validateCNPJ } from "../../lib/utils";
-import { CheckCircle2, AlertTriangle, Building2, Save, Globe, Mail, Phone, MapPin } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Building2, Save, Globe, Mail, Phone, MapPin, Upload, Loader2, ImageOff } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { supabase } from "../../lib/supabase";
 
 type CnpjStatus = "idle" | "checking" | "active" | "inactive" | "invalid";
 
@@ -17,6 +19,7 @@ interface EmpresaDados {
   emailContato: string;
   telefoneContato: string;
   website: string;
+  logoUrl?: string;
 }
 
 const SETTING_KEY = "empresa_dados";
@@ -30,12 +33,15 @@ const DEFAULT_EMPRESA: EmpresaDados = {
   emailContato: "",
   telefoneContato: "",
   website: "",
+  logoUrl: "",
 };
 
 export default function ConfigEmpresaDados() {
   const { appSettings, saveAppSetting } = useData();
+  const { activeTenantId } = useAuth();
   const [empresa, setEmpresa] = useState<EmpresaDados>(DEFAULT_EMPRESA);
   const [hydrated, setHydrated] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Hidrata uma única vez quando os dados reais do tenant chegam do Supabase
   // (appSettings começa vazio até o fetch inicial do DataContext resolver).
@@ -92,6 +98,39 @@ export default function ConfigEmpresaDados() {
     }
   };
 
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !supabase) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("A logo deve ter no máximo 2MB.");
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `${activeTenantId || "sem-tenant"}/logo-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const next = { ...empresa, logoUrl: data.publicUrl };
+      setEmpresa(next);
+      await saveAppSetting(SETTING_KEY, next);
+      toast.success("Logo da empresa atualizada — já aparece no cabeçalho dos contratos.");
+    } catch (err: any) {
+      toast.error(`Falha ao enviar a logo: ${err.message || err}`);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    const next = { ...empresa, logoUrl: "" };
+    setEmpresa(next);
+    await saveAppSetting(SETTING_KEY, next);
+    toast.info("Logo removida.");
+  };
+
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!empresa.nomeFantasia.trim()) {
@@ -125,6 +164,38 @@ export default function ConfigEmpresaDados() {
 
       <Card className="p-6 space-y-6 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm">
         <form onSubmit={handleSave} className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 pb-4 border-b border-[var(--color-border-subtle)]">
+            <div className="w-20 h-20 rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] flex items-center justify-center overflow-hidden shrink-0">
+              {empresa.logoUrl ? (
+                <img src={empresa.logoUrl} alt="Logo da empresa" className="w-full h-full object-contain p-1.5" />
+              ) : (
+                <ImageOff className="w-6 h-6 text-[var(--color-text-faint)]" />
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[var(--color-text-muted)] block">Logo da Empresa</label>
+              <p className="text-[11px] text-[var(--color-text-muted)] max-w-md">
+                Usada no cabeçalho de propostas e contratos gerados pelo sistema. PNG ou JPG, até 2MB.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-primary)] cursor-pointer transition-all">
+                  {uploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {uploadingLogo ? "Enviando..." : empresa.logoUrl ? "Trocar Logo" : "Enviar Logo"}
+                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={handleLogoChange} disabled={uploadingLogo} />
+                </label>
+                {empresa.logoUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-500 text-[var(--color-text-muted)] transition-all cursor-pointer"
+                  >
+                    Remover
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[var(--color-text-muted)]">Razão Social *</label>

@@ -3,6 +3,7 @@ import { ChevronRight, Plus } from "lucide-react";
 import { LeadCard } from "./LeadCard";
 import { Task } from "../../../../types";
 import { useData } from "../../../../contexts/DataContext";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
 import { parseCurrencyBR } from "../../../../lib/utils";
 import { calculateLeadScore, normalizeText } from "../../../../lib/leadScore";
@@ -57,19 +58,31 @@ export function PipelineKanbanBoard({
   triggerCelebration,
   onReuniaoStageDrop,
 }: PipelineKanbanBoardProps) {
-  const { products } = useData();
+  const { products, proposals } = useData();
+  const { formatCurrency } = useLocalization();
 
   // Mesma regra do LeadCard: quando o lead tem produtos vinculados, o valor
   // exibido vem da soma dos preços dos produtos, não do campo value/valor —
   // ignorar isso aqui fazia o total da coluna mostrar R$ 0 com leads que já
-  // exibiam valor (via produto) nos cards.
+  // exibiam valor (via produto) nos cards. Se não há productIds nem value mas
+  // existe proposta vinculada (proposals.lead_id), usa o valor dela — mesmo
+  // fallback do LeadCard, pro total da coluna bater com os cards.
+  // `l.value` é a fonte de verdade (soma corretamente múltiplas propostas já
+  // realizadas/aceitas pro mesmo lead) — só cai pra soma de preço de catálogo
+  // dos produtos vinculados quando o lead genuinamente não tem valor nenhum
+  // ainda (produto vinculado sem sincronização de valor completa).
   const getLeadValue = (l: any) => {
+    const raw = l.value ?? l.valor;
+    const parsed = parseCurrencyBR(raw);
+    if (parsed > 0) return parsed;
     const linkedProducts = (products as any[]).filter((p) => (l.productIds || []).includes(p.id));
     if (linkedProducts.length > 0) {
       return linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0);
     }
-    const raw = l.value ?? l.valor;
-    return parseCurrencyBR(raw);
+    const linkedProposal = (proposals as any[] || [])
+      .filter((p) => p.lead_id === l.id)
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+    return linkedProposal?.valor ? Number(linkedProposal.valor) || 0 : 0;
   };
 
   const handleDrop = (stage: any, e: React.DragEvent) => {
@@ -176,7 +189,7 @@ export function PipelineKanbanBoard({
                   </button>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-[10px] font-mono font-bold text-[var(--color-text-muted)]">
-                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(
+                      {formatCurrency(
                         stageLeads.reduce((sum: number, item: any) => sum + getLeadValue(item), 0)
                       )}
                     </span>

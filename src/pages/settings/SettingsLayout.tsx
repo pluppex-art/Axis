@@ -36,7 +36,7 @@ export default function SettingsLayout() {
       icon: Building,
       items: [
         { title: "Dados da empresa", path: "/app/configuracoes/empresa/dados" },
-        ...(user?.isMaster ? [{ title: "Módulos & Demos", path: "/app/configuracoes/empresa/modulos" }] : []),
+        ...(user?.isMaster ? [{ title: "Módulos & SaaS (Admin)", path: "/app/admin?tab=modules" }] : []),
         { title: "Filiais / Unidades", path: "/app/configuracoes/empresa/filiais" },
         { title: "Nichos", path: "/app/configuracoes/empresa/nichos" },
         { title: "Equipe & convites", path: "/app/configuracoes/empresa/equipe" },
@@ -72,6 +72,9 @@ export default function SettingsLayout() {
       items: [
         { title: "Categorias financeiras", path: "/app/configuracoes/financeiro/categorias" },
         { title: "Gestão financeira de times", path: "/app/configuracoes/financeiro/squads" },
+        { title: "Bloqueio de período", path: "/app/configuracoes/financeiro/bloqueio-periodo" },
+        { title: "Auditoria financeira", path: "/app/configuracoes/financeiro/auditoria" },
+        { title: "Integrações bancárias", path: "/app/configuracoes/financeiro/integracoes", soon: true },
       ],
     }] : []),
     ...(activeModules.marketing || activeModules.engajamento ? [{
@@ -98,7 +101,7 @@ export default function SettingsLayout() {
       title: "Sistema",
       icon: HardDrive,
       items: [
-        ...(user?.isMaster && isModuleEnabled("aurora") ? [{ title: "Uso de Tokens (Aurora)", path: "/app/configuracoes/sistema/aurora" }] : []),
+        ...(isModuleEnabled("aurora") ? [{ title: "Aurora (Consumo & Agentes)", path: "/app/configuracoes/sistema/aurora" }] : []),
         { title: "Backups automáticos", path: "/app/configuracoes/sistema/backups" },
       ],
     },

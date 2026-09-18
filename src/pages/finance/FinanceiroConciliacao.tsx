@@ -24,9 +24,47 @@ type ExtratoItem = {
   matchSugerido?: string;
 };
 
+// Parser de OFX (SGML tag-based, o formato que praticamente todo banco
+// brasileiro exporta) — extrai cada bloco <STMTTRN>...</STMTTRN> e lê
+// TRNTYPE/DTPOSTED/TRNAMT/NAME/MEMO por regex. Não é um parser SGML completo
+// (não resolve entidades nem valida DTD), mas cobre o que os extratos reais
+// exportam: tags de um nível, sem aninhamento dentro de STMTTRN.
+function parseOfx(text: string, bancoLabel: string): ExtratoItem[] {
+  const items: ExtratoItem[] = [];
+  const blocks = text.match(/<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi) || [];
+  const tagValue = (block: string, tag: string): string | null => {
+    const m = new RegExp(`<${tag}>([^<\\r\\n]*)`, "i").exec(block);
+    return m ? m[1].trim() : null;
+  };
+  for (const block of blocks) {
+    const trnamt = tagValue(block, "TRNAMT");
+    const dtposted = tagValue(block, "DTPOSTED");
+    const name = tagValue(block, "NAME") || tagValue(block, "MEMO") || "Movimentação importada";
+    const trntype = tagValue(block, "TRNTYPE");
+    if (!trnamt || !dtposted) continue;
+    const valorNum = parseFloat(trnamt);
+    if (isNaN(valorNum)) continue;
+    // DTPOSTED vem como AAAAMMDD[HHMMSS][[-3:BRT]] — só os 8 primeiros dígitos importam.
+    const y = dtposted.slice(0, 4), m = dtposted.slice(4, 6), d = dtposted.slice(6, 8);
+    const dataFormatada = y && m && d ? `${d}/${m}/${y}` : new Date().toLocaleDateString("pt-BR");
+    const tipo: "credito" | "debito" = trntype?.toUpperCase() === "DEBIT" ? "debito" : trntype?.toUpperCase() === "CREDIT" ? "credito" : valorNum < 0 ? "debito" : "credito";
+    items.push({
+      id: `ofx_${Date.now()}_${items.length}`,
+      data: dataFormatada,
+      descricao: name,
+      documento: tagValue(block, "FITID") || "-",
+      valor: Math.abs(valorNum),
+      tipo,
+      banco: bancoLabel,
+      conciliado: false,
+    });
+  }
+  return items;
+}
+
 // Parser simples de CSV de extrato: espera colunas
 // data,descricao,valor[,tipo] (tipo opcional — inferido pelo sinal do valor
-// quando ausente). Não cobre o formato OFX (SGML) — só CSV/TXT delimitado.
+// quando ausente).
 function parseExtratoCsv(text: string, bancoLabel: string): ExtratoItem[] {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const items: ExtratoItem[] = [];
@@ -159,19 +197,20 @@ export default function FinanceiroConciliacao() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.name.toLowerCase().endsWith(".ofx")) {
-      toast.error("Importação de OFX ainda não é suportada — exporte o extrato como CSV (data, descrição, valor).");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
+    const isOfx = file.name.toLowerCase().endsWith(".ofx") || file.name.toLowerCase().endsWith(".qfx");
 
     toast.loading(`Processando arquivo "${file.name}"...`, { id: "ofx-import" });
     const reader = new FileReader();
     reader.onload = async () => {
       const text = String(reader.result || "");
-      const newItems = parseExtratoCsv(text, "Conta Importada");
+      const newItems = isOfx ? parseOfx(text, "Conta Importada") : parseExtratoCsv(text, "Conta Importada");
       if (newItems.length === 0) {
-        toast.error(`Não foi possível reconhecer lançamentos em "${file.name}". Confira o formato (data,descrição,valor).`, { id: "ofx-import" });
+        toast.error(
+          isOfx
+            ? `Não foi possível reconhecer transações OFX em "${file.name}" — confira se é um arquivo OFX válido (com blocos <STMTTRN>).`
+            : `Não foi possível reconhecer lançamentos em "${file.name}". Confira o formato (data,descrição,valor).`,
+          { id: "ofx-import" }
+        );
       } else if (!supabase || !activeTenantId) {
         toast.error("Não foi possível salvar o extrato: conexão com o banco de dados indisponível.", { id: "ofx-import" });
       } else {

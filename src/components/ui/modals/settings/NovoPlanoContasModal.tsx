@@ -3,9 +3,12 @@ import { DollarSign, ShieldCheck } from "lucide-react";
 import { Modal } from "../../modal";
 import { Button } from "../../button";
 
+export type FinanceCategorySubtipo = "DESPESA_FIXA" | "DESPESA_VARIAVEL" | "PESSOAS" | "IMPOSTOS";
+
 type NovoPlanoContasPayload = {
     nome: string;
     tipo: "Receita" | "Despesa";
+    subtipo: FinanceCategorySubtipo | null;
 };
 
 type NovoPlanoContasModalProps = {
@@ -15,6 +18,13 @@ type NovoPlanoContasModalProps = {
     title?: string;
     submitText?: string;
     initialValue?: Partial<NovoPlanoContasPayload> | null;
+};
+
+const SUBTIPO_LABELS: Record<FinanceCategorySubtipo, string> = {
+    DESPESA_FIXA: "Despesa Fixa",
+    DESPESA_VARIAVEL: "Despesa Variável",
+    PESSOAS: "Pessoas",
+    IMPOSTOS: "Impostos",
 };
 
 const labelClass = "text-[10px] font-bold text-slate-400 uppercase tracking-wider";
@@ -31,12 +41,14 @@ export function NovoPlanoContasModal({
 }: NovoPlanoContasModalProps) {
     const [nome, setNome] = useState(initialValue?.nome || "");
     const [tipo, setTipo] = useState<"Receita" | "Despesa">(initialValue?.tipo || "Receita");
+    const [subtipo, setSubtipo] = useState<FinanceCategorySubtipo>(initialValue?.subtipo || "DESPESA_VARIAVEL");
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         if (!isOpen) return;
         setNome(initialValue?.nome || "");
         setTipo(initialValue?.tipo || "Receita");
+        setSubtipo(initialValue?.subtipo || "DESPESA_VARIAVEL");
         setLoading(false);
     }, [isOpen, initialValue]);
 
@@ -51,7 +63,7 @@ export function NovoPlanoContasModal({
 
         setLoading(true);
         try {
-            onSave({ nome: nome.trim(), tipo });
+            onSave({ nome: nome.trim(), tipo, subtipo: tipo === "Despesa" ? subtipo : null });
             onClose();
         } finally {
             setLoading(false);
@@ -115,6 +127,17 @@ export function NovoPlanoContasModal({
                             <option value="Despesa">Despesa</option>
                         </select>
                     </div>
+
+                    {tipo === "Despesa" && (
+                        <div className="space-y-2">
+                            <label htmlFor="plano-subtipo" className={labelClass}>Linha do DRE</label>
+                            <select id="plano-subtipo" value={subtipo} onChange={(e) => setSubtipo(e.target.value as FinanceCategorySubtipo)} className={inputBaseClass}>
+                                {(Object.keys(SUBTIPO_LABELS) as FinanceCategorySubtipo[]).map((s) => (
+                                    <option key={s} value={s}>{SUBTIPO_LABELS[s]}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </form>
             </div>
         </Modal>

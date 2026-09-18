@@ -7,10 +7,12 @@ import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { PageContainer } from "../../components/PageContainer";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
 import { ClientesKPIs } from "./components/Clientes/ClientesKPIs";
 import { ClientesList } from "./components/Clientes/ClientesList";
 
 export default function Clientes() {
+  const { activeTenantId } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [contatosClienteId, setContatosClienteId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("Todos as situações");
@@ -21,12 +23,15 @@ export default function Clientes() {
   const [clientes, setClientes] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!supabase) return;
-    supabase.from("clientes").select("*").order("created_at", { ascending: false }).then(({ data, error }) => {
+    if (!supabase || !activeTenantId) return;
+    // Sem o filtro de tenant, contas de parceiro (has_tenant_access verdadeiro
+    // pra vários tenants) recebiam via RLS linhas de todos os tenants acessíveis
+    // misturadas numa única lista.
+    supabase.from("clientes").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
       if (error) toast.error(`Erro ao carregar clientes: ${error.message}`);
       else if (data) setClientes(data);
     });
-  }, []);
+  }, [activeTenantId]);
 
   const kpis = useMemo(() => ({
     total:       clientes.length,
@@ -38,6 +43,7 @@ export default function Clientes() {
   const handleCreateCliente = async (data: any) => {
     if (!data.nome) { toast.error("Nome da empresa é obrigatório."); return; }
     if (!supabase) { toast.error("Supabase não configurado."); return; }
+    if (!activeTenantId) { toast.error("Tenant não identificado."); return; }
     const newClient = {
       name: data.nome,
       industry: data.industry || "Tecnologia",
@@ -47,6 +53,7 @@ export default function Clientes() {
       email: data.email || "contato@empresa.com",
       documento: data.documento || null,
       status: "Ativo",
+      tenant_id: activeTenantId,
     };
 
     const { data: inserted, error } = await supabase.from("clientes").insert(newClient).select().maybeSingle();

@@ -4,9 +4,13 @@ import { Target, Activity, Zap, Users } from "lucide-react";
 import { useData } from "../../../contexts/DataContext";
 import { confirmDialog } from "../../../components/ui/confirm-dialog";
 import { exportToCSV } from "../../../lib/exportCsv";
+import { useLocalization } from "../../../contexts/LocalizationContext";
+import { parseCurrencyBR } from "../../../lib/utils";
+import { getMRR } from "../../../lib/revenueMetrics";
 
 export function useIndicadores() {
   const { leads, financeEntries, contracts, financialGoals, scheduledExports, addScheduledExport, updateScheduledExport, deleteScheduledExport } = useData();
+  const { formatCurrency } = useLocalization();
 
   const schedules = scheduledExports as { id: string; email: string; weekday: string; time: string; active: boolean }[];
 
@@ -59,20 +63,11 @@ export function useIndicadores() {
   // KPIs dinâmicos
   const kpiCards = useMemo(() => {
     const closedLeads = leads.filter(l => l.status === 'Fechado');
-    const totalClosedValue = closedLeads.reduce((s, l) => s + (l.value || 0), 0);
+    const totalClosedValue = closedLeads.reduce((s, l) => s + parseCurrencyBR(l.value), 0);
     const ticketMedio = closedLeads.length > 0 ? totalClosedValue / closedLeads.length : 0;
 
-    const toNumberMRR = (mrr: string | number): number => {
-      if (typeof mrr === 'number') return mrr;
-      const cleaned = String(mrr).replace('R$ ', '').replace(/\./g, '').replace(',', '.');
-      const num = parseFloat(cleaned);
-      return isNaN(num) ? 0 : num;
-    };
-
-    // mrr_value é a coluna real no Supabase; `mrr` é mantido no type por compatibilidade com telas antigas.
-    const mrr = contracts.reduce((acc, c: any) => acc + toNumberMRR(c.mrr_value ?? c.mrr ?? 0), 0) || (ticketMedio / 12);
+    const mrr = getMRR(contracts) || (ticketMedio / 12);
     const ltv = mrr * 12; // LTV simples de 1 ano
-    const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
 
     // Ticket médio por mês (com base em l.date), pra calcular uma tendência real
     // mês a mês em vez de um número de exemplo.
@@ -82,7 +77,7 @@ export function useIndicadores() {
       if (isNaN(d.getTime())) return;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!porMes[key]) porMes[key] = { soma: 0, qtd: 0 };
-      porMes[key].soma += l.value || 0;
+      porMes[key].soma += parseCurrencyBR(l.value);
       porMes[key].qtd += 1;
     });
     const mesesOrdenados = Object.keys(porMes).sort();
@@ -99,15 +94,15 @@ export function useIndicadores() {
     }
 
     return [
-       { label: "Ticket Médio", value: closedLeads.length > 0 ? fmt(ticketMedio) : "—", trend: ticketTrend, icon: Target, color: "text-[#06B6D4]" },
+       { label: "Ticket Médio", value: closedLeads.length > 0 ? formatCurrency(ticketMedio) : "—", trend: ticketTrend, icon: Target, color: "text-[#06B6D4]" },
        // Ciclo de Vendas, LTV Projetado (sem série histórica de MRR pra comparar) e Retention Rate
        // ainda não têm tendência real medida em nenhum lugar do S.P.Y. — mostrar "—" em vez de um
        // número de exemplo até existir uma fonte real (ex.: datas de estágio do funil, snapshots de MRR).
        { label: "Ciclo de Vendas", value: "—", trend: "—", icon: Activity, color: "text-[#06B6D4]" },
-       { label: "LTV Projetado", value: ltv > 0 ? fmt(ltv) : "—", trend: "—", icon: Zap, color: "text-[#06B6D4]" },
+       { label: "LTV Projetado", value: ltv > 0 ? formatCurrency(ltv) : "—", trend: "—", icon: Zap, color: "text-[#06B6D4]" },
        { label: "Retention Rate", value: "—", trend: "—", icon: Users, color: "text-[#06B6D4]" },
     ];
-  }, [leads, contracts]);
+  }, [leads, contracts, formatCurrency]);
 
   // Evolução MRR vs Meta — receita real (finance_entries pagos) contra a meta real
   // cadastrada em financial_goals para o mês (soma de monthly_goal entre squads); 0 quando

@@ -317,8 +317,8 @@ export default function Pacientes() {
                         </div>
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => setEditPaciente(patient)} className="p-1.5 rounded-lg hover:bg-[var(--color-surface-sunken)] text-[var(--color-text-faint)]"><Edit2 className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleDelete(patient)} className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => setEditPaciente(patient)} className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border-default)] text-[var(--color-text-faint)] hover:text-[var(--color-text-primary)] transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleDelete(patient)} className="p-1.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] hover:bg-rose-500/10 hover:border-rose-500/25 text-rose-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
 

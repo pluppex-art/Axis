@@ -4,16 +4,19 @@ import { BarChart2, TrendingUp, Users, Target, Activity, DollarSign, Inbox } fro
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { useData } from "../../contexts/DataContext";
 import { useMemo } from "react";
+import { useLocalization } from "../../contexts/LocalizationContext";
+import { parseCurrencyBR } from "../../lib/utils";
 
 const COLORS = ['#3b82f6', '#f43f5e', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4'];
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 export default function MarketingAnalytics() {
   const { leads, financeEntries } = useData();
+  const { formatCurrency } = useLocalization();
 
   // Receita vinda de Marketing (simplificado como Total Recebido ou leads com status Fechado * valor)
   // Como as despesas de marketing também não têm flag clara, pegamos tudo do tipo Pagar/Receber ou usamos apenas baseados em leads
-  const totalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + (l.value || 0), 0);
+  const totalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + parseCurrencyBR(l.value), 0);
   const totalSpent = financeEntries.filter(f => f.type === 'Pagar' && (f.category?.toLowerCase().includes('marketing') || f.category?.toLowerCase().includes('anúncio')) && f.status === 'Pago').reduce((s, f) => s + f.value, 0);
   
   const totalLeads = leads.length;
@@ -39,7 +42,7 @@ export default function MarketingAnalytics() {
         months[month].leads++;
         if (l.status === 'Fechado') {
           months[month].closed++;
-          months[month].revenue += (l.value || 0);
+          months[month].revenue += parseCurrencyBR(l.value);
         }
       } catch {}
     });
@@ -69,7 +72,7 @@ export default function MarketingAnalytics() {
     leads.forEach(l => {
       if (l.status === 'Fechado') {
         const src = l.source || 'Orgânico';
-        srcMap[src] = (srcMap[src] || 0) + (l.value || 0);
+        srcMap[src] = (srcMap[src] || 0) + parseCurrencyBR(l.value);
       }
     });
     
@@ -83,8 +86,6 @@ export default function MarketingAnalytics() {
       .sort((a, b) => b.revenue - a.revenue);
   }, [leads]);
 
-  const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
-
   return (
     <PageContainer
       title="Métricas de Marketing Avançadas"
@@ -93,19 +94,19 @@ export default function MarketingAnalytics() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card className="p-6 bg-[var(--color-surface-elevated)]/50 border hover:border-white/10 border-white/5 backdrop-blur-md transition-all">
           <DollarSign className="w-5 h-5 text-emerald-500 mb-4" />
-          <div className="text-2xl font-display font-black text-white mb-1 italic">{fmt(totalRevenue)}</div>
+          <div className="text-2xl font-display font-black text-white mb-1 italic">{formatCurrency(totalRevenue)}</div>
           <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Total Receita Mkt</div>
         </Card>
 
         <Card className="p-6 bg-[var(--color-surface-elevated)]/50 border hover:border-white/10 border-white/5 backdrop-blur-md transition-all">
           <TrendingUp className="w-5 h-5 text-rose-500 mb-4" />
-          <div className="text-2xl font-display font-black text-white mb-1 italic">{fmt(cac)}</div>
+          <div className="text-2xl font-display font-black text-white mb-1 italic">{formatCurrency(cac)}</div>
           <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Custo Aquisição (CAC)</div>
         </Card>
 
         <Card className="p-6 bg-[var(--color-surface-elevated)]/50 border hover:border-white/10 border-white/5 backdrop-blur-md transition-all">
           <Target className="w-5 h-5 text-indigo-500 mb-4" />
-          <div className="text-2xl font-display font-black text-white mb-1 italic">{fmt(avgDeal)}</div>
+          <div className="text-2xl font-display font-black text-white mb-1 italic">{formatCurrency(avgDeal)}</div>
           <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Valor Médio Deal</div>
         </Card>
 
@@ -147,7 +148,7 @@ export default function MarketingAnalytics() {
                   <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
                   <Tooltip 
                     contentStyle={{ backgroundColor: 'var(--color-surface-elevated)', border: 'none', borderRadius: '12px', fontSize: '12px', color: '#fff', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
-                    formatter={(value: any) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)}
+                    formatter={(value: any) => formatCurrency(value)}
                   />
                   <Area type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" name="Receita" />
                   <Area type="monotone" dataKey="cac" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorCac)" name="CAC" />
@@ -188,7 +189,7 @@ export default function MarketingAnalytics() {
                   </Pie>
                   <Tooltip 
                     contentStyle={{ backgroundColor: 'var(--color-surface-elevated)', border: 'none', borderRadius: '12px', fontSize: '12px', color: '#fff' }}
-                    formatter={(value: any) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)}
+                    formatter={(value: any) => formatCurrency(value)}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -200,7 +201,7 @@ export default function MarketingAnalytics() {
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter truncate">{source.name}</span>
                     </div>
                     <span className="text-xs font-black text-white ml-4">
-                      {fmt(source.revenue)}
+                      {formatCurrency(source.revenue)}
                     </span>
                   </div>
                 ))}

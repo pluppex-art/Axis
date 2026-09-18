@@ -9,7 +9,9 @@ import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
+import { getMRR } from "../../lib/revenueMetrics";
 import { toast } from "sonner";
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -20,6 +22,7 @@ type Periodo = "30dias" | "mes" | "trimestre" | "ano" | "todos";
 
 export default function RelatoriosExecutivos() {
   const { leads, financeEntries, contracts, tasks, colaboradores } = useData();
+  const { formatCurrency } = useLocalization();
   const [periodo, setPeriodo] = useState<Periodo>("mes");
   const [moduloFiltro, setModuloFiltro] = useState<"todos" | "comercial" | "financeiro" | "operacoes">("todos");
 
@@ -108,8 +111,7 @@ export default function RelatoriosExecutivos() {
     })).sort((a, b) => b.revenue - a.revenue);
   }, [filteredData.leads]);
 
-  const fmt = (v: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
+  const fmt = (v: number) => formatCurrency(v);
 
   const handleExportCSV = () => {
     const rows = [
@@ -304,11 +306,7 @@ export default function RelatoriosExecutivos() {
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-400">MRR Contratado</span>
                 <span className="font-bold text-emerald-400">
-                  {fmt(contracts.filter(c => c.status === "Ativo").reduce((s, c) => {
-                    const raw = c.mrr;
-                    const val = typeof raw === "number" ? raw : parseFloat(String(raw || "0").replace(/[^0-9.,]/g, "").replace(",", "."));
-                    return s + (isNaN(val) ? 0 : val);
-                  }, 0))}
+                  {fmt(getMRR(contracts))}
                 </span>
               </div>
             </div>

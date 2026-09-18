@@ -18,15 +18,18 @@ import {
   defaultLeadScoreTriggers,
   defaultProducts
 } from './dataMocks';
-import { DataContext, DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao, Indicacao, useData } from './DataContextTypes';
+import { DataContext, DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao, Indicacao, AuroraAgent, useData } from './DataContextTypes';
 import { apiFetch } from "../lib/apiClient";
+import { isDateLocked } from "../pages/finance/lib/financeEngine";
 import { parseCurrencyBR } from "../lib/utils";
+import { useLocalization } from "./LocalizationContext";
 
 export { useData };
 export type { DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao };
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const { user, authLoading, updatePreferences, activeTenantId, activeFilialId } = useAuth();
+  const { formatCurrency } = useLocalization();
   const tenantId = activeTenantId;
 
   // Tabelas com segregação por filial: quando uma filial está ativa (activeFilialId),
@@ -215,7 +218,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [squads, setSquads] = useState<Squad[]>(defaultSquads);
 
   const addSquad = async (squad: Omit<Squad, 'id'>) => {
-    const newSquad = { ...squad, id: `sq${Math.random().toString(36).substring(2, 9)}` };
+    const newSquad = { ...squad, id: crypto.randomUUID() };
     setSquads(prev => [...prev, newSquad]);
     if (!supabase) {
       toast.success('Squad criado com sucesso!');
@@ -324,6 +327,125 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (data) setFunis(data.map(rowToFunil));
   };
 
+  // A tabela real `contracts` não tem client/plan/date — desfaz o mapeamento
+  // inverso gravado por addContract/updateContract (notes/title/signed_date).
+  // Precisa ser usado tanto na carga inicial quanto no listener realtime
+  // abaixo; sem isso em algum dos dois, o estado local vira linhas cruas do
+  // Postgres (client/plan/date undefined) e qualquer comparação por esses
+  // campos (ex.: reconciliação de propostas aceitas) nunca bate.
+  const rowToContract = (r: any): Contract => {
+    const notesMatch = /^Cliente:\s*(.*?)\s*\|\s*Plano:\s*(.*)$/.exec(r.notes || "");
+    const titleParts = typeof r.title === "string" ? r.title.split(" - ") : [];
+    const client = notesMatch?.[1] || (titleParts.length > 1 ? titleParts.slice(1).join(" - ") : "Cliente");
+    const plan = notesMatch?.[2] || titleParts[0] || "Contrato";
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(r.signed_date || "");
+    const date = dateMatch ? `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}` : "";
+    const endDateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(r.end_date || "");
+    const endDate = endDateMatch ? `${endDateMatch[3]}/${endDateMatch[2]}/${endDateMatch[1]}` : null;
+    return {
+      id: r.id,
+      client,
+      plan,
+      mrr: r.mrr_value ?? r.value ?? 0,
+      status: r.status,
+      date,
+      endDate,
+      description: r.description ?? null,
+      progress: 100,
+      proposalId: r.proposal_id ?? null,
+      cancelledAt: r.cancelled_at ?? null,
+    };
+  };
+
+  const fetchContracts = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('contracts').select('*').eq('tenant_id', tenantId);
+    if (data) setContracts(data.map(rowToContract));
+  };
+
+  // Mesmo problema do rowToContract acima, mas pro caso onde a carga inicial
+  // já tinha o mapeamento certo (snake_case → camelCase) e só o listener
+  // realtime usava fetchTableData genérico — qualquer INSERT/UPDATE/DELETE
+  // ao vivo nessas tabelas substituía o estado por linhas cruas do Postgres,
+  // apagando os campos mapeados (nome do médico, produtos vinculados, etc.)
+  // até o próximo reload da página.
+  const mapLeadRow = (r: any) => ({
+    ...r,
+    // updateLead gravava productIds só em customFields.productIds (bug corrigido
+    // acima) — leads editados antes do fix ficaram com a coluna real desatualizada
+    // e o vínculo verdadeiro preso em customFields. Prioriza customFields quando
+    // não vazio pra esses registros já mostrarem o valor certo sem precisar de
+    // migração manual; uma vez editados de novo, a coluna real é reescrita e os
+    // dois convergem.
+    productIds: (r.customFields?.productIds?.length ? r.customFields.productIds : r.productIds) || [],
+    scoreIA: r.scoreIA ?? r.score_ia ?? 50,
+    tags: Array.isArray(r.tags) ? r.tags : (r.customFields?.tags || []),
+  });
+
+  const mapAppointmentRow = (r: any): Appointment => ({
+    id: r.id, time: r.time, patient: r.patient, patientId: r.patient_id ?? null,
+    drId: r.dr_id, drName: r.dr_name, status: r.status, type: r.type,
+    room: r.room, specialty: r.specialty, phone: r.phone, date: r.date, notes: r.notes,
+  });
+
+  const mapSquadRow = (r: any): Squad => ({
+    id: r.id, nome: r.nome,
+    departamento: r.departamento || 'Geral',
+    focoComercial: r.foco_comercial || '',
+    membros: r.membros || [],
+    leader: r.leader || '',
+    cor: r.cor || '#6366f1',
+    logo: r.logo || '',
+    membrosFuncoes: r.membros_funcoes || {},
+    clientes: r.clientes || [],
+  });
+
+  const mapProductRow = (p: any) => {
+    // `recurrence`/`billingCycle`/`contractMonths`/`hasImplementation` não são
+    // colunas reais (só `is_recurring`/`recurring_period`/`implementation_fee`
+    // existem na tabela) — o formulário de produto grava esses campos dentro
+    // de type_attributes. Sem "desachatar" de volta aqui, eles só existem no
+    // objeto local otimista antes do primeiro reload; depois de recarregar do
+    // Supabase, `product.contractMonths` sumia (existia só como
+    // `product.typeAttributes.contractMonths`), quebrando qualquer leitura que
+    // dependesse do campo direto (ex.: cálculo de data de término do contrato).
+    const ta = p.typeAttributes || p.type_attributes || {};
+    return {
+      ...p,
+      typeAttributes: ta,
+      recurrence: p.recurrence ?? p.is_recurring ?? ta.isRecurring,
+      billingCycle: p.billingCycle ?? ta.billingCycle,
+      contractMonths: p.contractMonths ?? ta.contractMonths,
+      hasImplementation: p.hasImplementation ?? ta.hasImplementation,
+      implementationFee: p.implementationFee ?? p.implementation_fee ?? ta.implementationFee,
+      attachments: Array.isArray(p.attachments) ? p.attachments : [],
+    };
+  };
+
+  const fetchLeads = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('leads').select('*').eq('tenant_id', tenantId);
+    if (data) setLeads(data.map(mapLeadRow));
+  };
+
+  const fetchAppointments = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId);
+    if (data) setAppointments(data.map(mapAppointmentRow));
+  };
+
+  const fetchSquads = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('squads').select('*').eq('tenant_id', tenantId);
+    if (data) setSquads(data.map(mapSquadRow));
+  };
+
+  const fetchProducts = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await supabase.from('products').select('*').eq('tenant_id', tenantId);
+    if (data) setProducts(data.map(mapProductRow));
+  };
+
   // Inclui nichos globais (tenant_id null) + os do tenant ativo — não dá pra usar
   // fetchTableData genérico aqui porque ele só filtra por .eq('tenant_id', tenantId).
   const fetchNichos = async () => {
@@ -333,7 +455,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addFunil = async (f: any) => {
-    const newFunil = { ...f, id: f.id || Math.random().toString(36).slice(2) };
+    const newFunil = { ...f, id: f.id || crypto.randomUUID() };
     setFunis(prev => [...prev, newFunil]);
     if (supabase) {
       const { error } = await supabase.from('crm_funis').insert(funilToRow(newFunil));
@@ -379,18 +501,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [empresaFiliais, setEmpresaFiliais] = useState<any[]>([]);
   const [nichos, setNichos] = useState<any[]>([]);
   const [financeCategories, setFinanceCategories] = useState<any[]>([]);
+  const [financeBankAccounts, setFinanceBankAccounts] = useState<any[]>([]);
+  const [financeTransfers, setFinanceTransfers] = useState<any[]>([]);
+  const [financeCentrosCusto, setFinanceCentrosCusto] = useState<any[]>([]);
+  const [financeAttachments, setFinanceAttachments] = useState<any[]>([]);
+  const [financePeriodLocks, setFinancePeriodLocks] = useState<any[]>([]);
+  const [financeAuditLog, setFinanceAuditLog] = useState<any[]>([]);
   const [financeCommissionEntries, setFinanceCommissionEntries] = useState<any[]>([]);
   const [scheduledExports, setScheduledExports] = useState<any[]>([]);
   const [educationContent, setEducationContent] = useState<any[]>([]);
   const [clienteBase, setClienteBase] = useState<any[]>([]);
   const [indicacoes, setIndicacoes] = useState<Indicacao[]>([]);
+  const [auroraAgents, setAuroraAgents] = useState<AuroraAgent[]>([]);
 
   const products = useMemo(() => filterByFilial(productsRaw), [productsRaw, activeFilialId]);
   const proposals = useMemo(() => filterByFilial(proposalsRaw), [proposalsRaw, activeFilialId]);
   const colaboradores = useMemo(() => filterByFilial(colaboradoresRaw), [colaboradoresRaw, activeFilialId]);
 
   const addStudent = async (student: any) => {
-    const newStudent = { ...student, id: `st${Math.random().toString(36).substring(2, 9)}`, ...(tenantId ? { tenant_id: tenantId } : {}) };
+    const newStudent = { ...student, id: crypto.randomUUID(), ...(tenantId ? { tenant_id: tenantId } : {}) };
     setStudents(prev => [...prev, newStudent]);
     if (supabase) {
       const { error } = await supabase.from('students').insert(newStudent);
@@ -448,19 +577,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             // lista se for do tenant ativo. payload.new é a linha crua do
             // Postgres (snake_case), daí o acesso via `any`.
             if (payload.new && (payload.new as any).tenant_id === tenantId) {
-              setLeads(prev => [payload.new as Lead, ...prev]);
+              setLeads(prev => [mapLeadRow(payload.new) as Lead, ...prev]);
               toast.info(`Novo lead: ${payload.new.name}`, { description: 'Recebido via Realtime' });
             }
           } else {
-            fetchTableData('leads', setLeads);
+            fetchLeads();
           }
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => fetchTableData('tasks', setTasks))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => fetchTableData('contracts', setContracts))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => fetchContracts())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_entries' }, () => fetchTableData('finance_entries', setFinanceEntries))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'squads' }, () => fetchTableData('squads', setSquads))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => fetchTableData('appointments', setAppointments))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchTableData('products', setProducts))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'squads' }, () => fetchSquads())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => fetchAppointments())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchProducts())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, () => fetchTableData('proposals', setProposals))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'proposal_items' }, () => fetchTableData('proposal_items', setProposalItems))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'turmas' }, () => fetchTableData('turmas', setTurmas))
@@ -475,10 +604,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'empresa_filiais' }, () => fetchTableData('empresa_filiais', setEmpresaFiliais))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'nichos' }, () => fetchNichos())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_categories' }, () => fetchTableData('finance_categories', setFinanceCategories))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_bank_accounts' }, () => fetchTableData('finance_bank_accounts', setFinanceBankAccounts))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transfers' }, () => fetchTableData('finance_transfers', setFinanceTransfers))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_centros_custo' }, () => fetchTableData('finance_centros_custo', setFinanceCentrosCusto))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_attachments' }, () => fetchTableData('finance_attachments', setFinanceAttachments))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_period_locks' }, () => fetchTableData('finance_period_locks', setFinancePeriodLocks))
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'finance_audit_log' }, () => fetchTableData('finance_audit_log', setFinanceAuditLog))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_commission_entries' }, () => fetchTableData('finance_commission_entries', setFinanceCommissionEntries))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_exports' }, () => fetchTableData('scheduled_exports', setScheduledExports))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'education_content' }, () => fetchTableData('education_content', setEducationContent))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'indicacoes' }, () => fetchTableData('indicacoes', setIndicacoes as any))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'aurora_agents' }, () => fetchTableData('aurora_agents', setAuroraAgents as any))
         .subscribe();
     }
 
@@ -504,7 +640,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               productsRes, proposalsRes, proposalItemsRes, turmasRes, studentsRes, colabRes, squadMetasRes, certRes, cargosRes,
               clienteBaseRes, reunioesRes, financialGoalsRes, funisRes, filiaisRes,
               financeCategoriesRes, scheduledExportsRes, educationContentRes,
-              marketingFormsRes, nichosRes, financeCommissionEntriesRes, indicacoesRes, mktAutoRes
+              marketingFormsRes, nichosRes, financeCommissionEntriesRes, indicacoesRes, mktAutoRes, auroraAgentsRes,
+              financeBankAccountsRes, financeTransfersRes, financePeriodLocksRes, financeAuditLogRes, financeCentrosCustoRes, financeAttachmentsRes
             ] = await Promise.all([
               supabase.from('leads').select('*').eq('tenant_id', tenantId),
               supabase.from('tasks').select('*').eq('tenant_id', tenantId),
@@ -545,46 +682,35 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               supabase.from('finance_commission_entries').select('*').eq('tenant_id', tenantId),
               supabase.from('indicacoes').select('*').eq('tenant_id', tenantId),
               supabase.from('marketing_automations').select('*').eq('tenant_id', tenantId),
+              supabase.from('aurora_agents').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_bank_accounts').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_transfers').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_period_locks').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500),
+              supabase.from('finance_centros_custo').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_attachments').select('*').eq('tenant_id', tenantId),
             ]);
 
             if (!leadsRes.error && leadsRes.data && leadsRes.data.length > 0) {
-              setLeads((leadsRes.data as any[]).map(r => ({
-                ...r,
-                productIds: r.productIds || r.customFields?.productIds || [],
-                scoreIA: r.scoreIA ?? r.score_ia ?? 50,
-                tags: Array.isArray(r.tags) ? r.tags : (r.customFields?.tags || []),
-              })) as Lead[]);
+              setLeads((leadsRes.data as any[]).map(mapLeadRow) as Lead[]);
             }
             if (!tasksRes.error && tasksRes.data && tasksRes.data.length > 0) setTasks(tasksRes.data as Task[]);
+            // Faltava esse hidrate — `contracts` nunca era populado a partir do
+            // Supabase na carga inicial (só via evento realtime de escrita na
+            // tabela), então a cada refresh da página o estado local começava
+            // vazio. Isso fazia a reconciliação de propostas aceitas (Propostas.tsx)
+            // achar "nenhum contrato existente" toda vez e recriar um duplicado
+            // + disparar notificação de novo contrato a cada entrada na tela.
+            if (!contractsRes.error && contractsRes.data) setContracts(contractsRes.data.map(rowToContract));
             if (!actsRes.error && actsRes.data && actsRes.data.length > 0) setLeadActivities(actsRes.data as LeadActivity[]);
             if (!financeRes.error && financeRes.data && financeRes.data.length > 0) setFinanceEntries(financeRes.data as FinanceEntry[]);
-            if (!apptRes.error && apptRes.data && apptRes.data.length > 0) setAppointments(apptRes.data.map((r: any): Appointment => ({
-              id: r.id, time: r.time, patient: r.patient, patientId: r.patient_id ?? null,
-              drId: r.dr_id, drName: r.dr_name, status: r.status, type: r.type,
-              room: r.room, specialty: r.specialty, phone: r.phone, date: r.date, notes: r.notes,
-            })));
-            if (!squadsRes.error && squadsRes.data && squadsRes.data.length > 0) setSquads(squadsRes.data.map((r: any): Squad => ({
-              id: r.id, nome: r.nome,
-              departamento: r.departamento || 'Geral',
-              focoComercial: r.foco_comercial || '',
-              membros: r.membros || [],
-              leader: r.leader || '',
-              cor: r.cor || '#6366f1',
-              logo: r.logo || '',
-              membrosFuncoes: r.membros_funcoes || {},
-              clientes: r.clientes || [],
-            })));
+            if (!apptRes.error && apptRes.data && apptRes.data.length > 0) setAppointments(apptRes.data.map(mapAppointmentRow));
+            if (!squadsRes.error && squadsRes.data && squadsRes.data.length > 0) setSquads(squadsRes.data.map(mapSquadRow));
             if (!notifRes.error && notifRes.data && notifRes.data.length > 0) setNotifications(notifRes.data as Notification[]);
             if (!mktCampRes.error && mktCampRes.data) setMarketingCampaigns(mktCampRes.data);
             if (!mktContRes.error && mktContRes.data) setMarketingContent(mktContRes.data);
             if (!mktLpRes.error && mktLpRes.data) setMarketingLandingPages(mktLpRes.data);
-            if (!productsRes.error && productsRes.data) {
-              setProducts(productsRes.data.map((p: any) => ({
-                ...p,
-                typeAttributes: p.typeAttributes || p.type_attributes || {},
-                attachments: Array.isArray(p.attachments) ? p.attachments : [],
-              })));
-            }
+            if (!productsRes.error && productsRes.data) setProducts(productsRes.data.map(mapProductRow));
             if (!proposalsRes.error && proposalsRes.data) setProposals(proposalsRes.data);
             if (!proposalItemsRes.error && proposalItemsRes.data) setProposalItems(proposalItemsRes.data);
             if (!turmasRes.error && turmasRes.data) setTurmas(turmasRes.data);
@@ -601,9 +727,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             if (!filiaisRes.error && filiaisRes.data) setEmpresaFiliais(filiaisRes.data);
             if (!nichosRes.error && nichosRes.data) setNichos(nichosRes.data);
             if (!financeCategoriesRes.error && financeCategoriesRes.data) setFinanceCategories(financeCategoriesRes.data);
+            if (!financeBankAccountsRes.error && financeBankAccountsRes.data) setFinanceBankAccounts(financeBankAccountsRes.data);
+            if (!financeTransfersRes.error && financeTransfersRes.data) setFinanceTransfers(financeTransfersRes.data);
+            if (!financePeriodLocksRes.error && financePeriodLocksRes.data) setFinancePeriodLocks(financePeriodLocksRes.data);
+            if (!financeAuditLogRes.error && financeAuditLogRes.data) setFinanceAuditLog(financeAuditLogRes.data);
+            if (!financeCentrosCustoRes.error && financeCentrosCustoRes.data) setFinanceCentrosCusto(financeCentrosCustoRes.data);
+            if (!financeAttachmentsRes.error && financeAttachmentsRes.data) setFinanceAttachments(financeAttachmentsRes.data);
             if (!financeCommissionEntriesRes.error && financeCommissionEntriesRes.data) setFinanceCommissionEntries(financeCommissionEntriesRes.data);
             if (!indicacoesRes.error && indicacoesRes.data) setIndicacoes(indicacoesRes.data as Indicacao[]);
             if (!mktAutoRes.error && mktAutoRes.data) setMarketingAutomations(mktAutoRes.data);
+            if (!auroraAgentsRes.error && auroraAgentsRes.data) setAuroraAgents(auroraAgentsRes.data as AuroraAgent[]);
             if (!scheduledExportsRes.error && scheduledExportsRes.data) setScheduledExports(scheduledExportsRes.data);
             if (!educationContentRes.error && educationContentRes.data) setEducationContent(educationContentRes.data);
             if (!marketingFormsRes.error && marketingFormsRes.data) setMarketingForms(marketingFormsRes.data);
@@ -781,7 +914,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (percentage >= 90 && !notifiedSquadsRef.current[sq.id]) {
         addNotification({
           title: "Meta Próxima (90%+)",
-          desc: `O ${sq.nome} atingiu 90% da meta mensal! Faturamento atual: R$ ${sq.faturamentoAlcancado.toLocaleString()}`,
+          desc: `O ${sq.nome} atingiu 90% da meta mensal! Faturamento atual: ${formatCurrency(sq.faturamentoAlcancado)}`,
           type: "success",
           category: "Performance"
         }, true);
@@ -922,8 +1055,65 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => { triggerScoreRecalculation(newLead.id, [newLead]); }, 400);
   };
 
+  // Ao ganhar um lead (status -> "Fechado"), cria (ou vincula, se já existir por
+  // e-mail/CNPJ) o registro correspondente na Base de Clientes, evitando duplicar
+  // clientes quando mais de um lead da mesma empresa fecha negócio.
+  const createClientFromWonLead = async (lead: Lead) => {
+    if (!supabase || !tenantId || lead.clientId) return;
+    try {
+      const documento = lead.cnpj || null;
+      let existing: any = null;
+      if (documento) {
+        const { data } = await supabase.from('clientes').select('id, name').eq('tenant_id', tenantId).eq('documento', documento).maybeSingle();
+        existing = data;
+      } else if (lead.email) {
+        const { data } = await supabase.from('clientes').select('id, name').eq('tenant_id', tenantId).eq('email', lead.email).maybeSingle();
+        existing = data;
+      }
+
+      let clientId = existing?.id;
+      let clientName = existing?.name;
+
+      if (!existing) {
+        const newClient = {
+          name: lead.company || lead.name,
+          industry: "Tecnologia",
+          city: "São Paulo",
+          state: "SP",
+          phone: lead.phone || "(11) 99999-9999",
+          email: lead.email || "contato@empresa.com",
+          documento,
+          status: "Ativo",
+          tenant_id: tenantId,
+        };
+        const { data: inserted, error } = await supabase.from('clientes').insert(newClient).select().maybeSingle();
+        if (error) { console.error("Erro ao criar cliente a partir do lead ganho:", error.message); return; }
+        if (inserted) {
+          clientId = inserted.id;
+          clientName = inserted.name;
+          setClienteBase(prev => [inserted, ...prev]);
+        }
+      }
+
+      if (clientId) {
+        updateLead(lead.id, { clientId, clientName });
+        addNotification({
+          title: "Novo Cliente na Base",
+          desc: `${clientName} foi adicionado à Base de Clientes a partir do lead ganho "${lead.name}".`,
+          link: "/app/crm/clientes",
+          type: "success",
+          category: "CRM & Vendas",
+        });
+        toast.success(existing ? "Lead vinculado a um cliente já existente na base." : "Cliente adicionado à Base de Clientes!");
+      }
+    } catch (err) {
+      console.error("Falha ao converter lead ganho em cliente:", err);
+    }
+  };
+
   const updateLead = async (id: string, updates: Partial<Lead>) => {
     let hasStatusOrStageChange = false;
+    let becameWon = false;
     // Capturado dentro do updater para repassar pro recálculo de score abaixo —
     // sem isso, o setTimeout usava a variável `leads` do closure desta render
     // (o estado ANTES deste update), e reescrevia o stageId antigo no Supabase
@@ -957,6 +1147,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             });
           }
           if (updates.status === 'Fechado' && l.status !== 'Fechado') {
+            becameWon = true;
             addNotification({
               title: "Automação: E-mail de Boas Vindas",
               desc: `Boas vindas enviadas para ${updatedLead.name} por ter se tornado cliente!`,
@@ -974,16 +1165,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (supabase) {
       try {
         // Strip unknown / non-DB fields and fix value type
-        const { customTags, productIds, probability, ...safeUpdates } = updates as any;
+        const { customTags, probability, ...safeUpdates } = updates as any;
         if (safeUpdates.value !== undefined) {
           safeUpdates.value = parseCurrencyBR(safeUpdates.value);
         }
-        if (productIds !== undefined) {
-          safeUpdates.customFields = {
-            ...(safeUpdates.customFields || {}),
-            productIds,
-          };
-        }
+        // `productIds` é coluna real em `leads` (mesma usada por addLead) — gravar
+        // dentro de customFields.productIds (como antes) nunca chegava na coluna
+        // de fato lida por mapLeadRow/addLead, deixando o vínculo de produto do
+        // lead sempre desatualizado após a primeira edição via updateLead.
         if (safeUpdates.scoreIA !== undefined && safeUpdates.score_ia === undefined) {
           safeUpdates.score_ia = safeUpdates.scoreIA;
         }
@@ -999,6 +1188,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
     if (hasStatusOrStageChange) {
       setTimeout(() => { triggerScoreRecalculation(id, mergedLead ? [mergedLead] : undefined); }, 400);
+    }
+    if (becameWon && mergedLead) {
+      createClientFromWonLead(mergedLead);
     }
   };
 
@@ -1112,17 +1304,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const addContract = async (contract: Omit<Contract, 'id'>) => {
-    const newContract: any = { ...contract, id: Math.random().toString(36).substr(2, 9) };
+  const addContract = async (contract: Omit<Contract, 'id'>, options: { silent?: boolean } = {}) => {
+    const newContract: any = { ...contract, id: crypto.randomUUID() };
     if (tenantId) newContract.tenant_id = tenantId;
     newContract.filial_id = activeFilialId;
     setContracts(prev => [...prev, newContract]);
-    toast.success('Contrato registrado!');
-    addNotification({
-      title: "Novo Contrato",
-      desc: `Cliente: ${contract.client}`,
-      type: "success"
-    });
+    // `silent` existe pra reconciliação em background (Propostas.tsx sincronizando
+    // propostas antigas já aceitas) — sem isso, um contrato criado por reconciliação
+    // disparava toast + notificação de "Novo Contrato" toda vez que a tela recarregava.
+    if (!options.silent) {
+      toast.success('Contrato registrado!');
+      addNotification({
+        title: "Novo Contrato",
+        desc: `Cliente: ${contract.client}`,
+        type: "success"
+      });
+    }
 
     if (supabase) {
       // `contracts` real não tem client/plan/mrr/date/progress — mapeia pros campos
@@ -1130,22 +1327,75 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // já que não existem colunas próprias pra eles. Sem esse remapeamento o insert
       // falhava em 100% dos casos (0 linhas na tabela em produção).
       const mrrNumber = parseCurrencyBR(contract.mrr);
+      // `value` guarda o total do contrato (recorrente + avulso/implantação);
+      // `mrr_value` é só a parcela recorrente — são a mesma coisa apenas
+      // quando o contrato não tem componente avulso (totalValue omitido).
+      const totalValue = contract.totalValue !== undefined ? parseCurrencyBR(contract.totalValue) : mrrNumber;
       const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(contract.date);
       const signedDate = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : (/^\d{4}-\d{2}-\d{2}$/.test(contract.date) ? contract.date : null);
+      const endDateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(contract.endDate || "");
+      const endDate = endDateMatch ? `${endDateMatch[3]}-${endDateMatch[2]}-${endDateMatch[1]}` : (/^\d{4}-\d{2}-\d{2}$/.test(contract.endDate || "") ? contract.endDate : null);
       const { error } = await supabase.from('contracts').insert({
         id: newContract.id,
         ...(tenantId ? { tenant_id: tenantId } : {}),
         filial_id: newContract.filial_id,
         title: `${contract.plan} - ${contract.client}`,
-        value: mrrNumber,
+        value: totalValue,
         mrr_value: mrrNumber,
         status: contract.status,
+        proposal_id: contract.proposalId ?? null,
         ...(signedDate ? { signed_date: signedDate } : {}),
+        end_date: endDate,
+        description: contract.description ?? null,
         notes: `Cliente: ${contract.client} | Plano: ${contract.plan}`,
       });
       if (error) {
         console.error("Supabase add contract failed:", error.message);
         toast.error(`Erro ao registrar contrato: ${error.message}`);
+      }
+    }
+  };
+
+  const updateContract = async (id: string, updates: Partial<Contract>, options: { silent?: boolean } = {}) => {
+    // Cancelamento carimba `cancelled_at` automaticamente (uma vez só) — é o
+    // dado que a projeção de receita (getRevenueProjection) usa pra medir
+    // churn real ao longo do tempo; sem isso não dá pra saber quando um
+    // contrato realmente parou de contar como recorrente.
+    const current = contracts.find(c => c.id === id);
+    const willCancelNow = updates.status === 'Cancelado' && current?.status !== 'Cancelado' && !current?.cancelledAt;
+    if (willCancelNow) updates = { ...updates, cancelledAt: new Date().toISOString() };
+
+    setContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    if (!current) return;
+    const merged = { ...current, ...updates };
+    if (!options.silent) toast.success('Contrato atualizado!');
+    if (supabase) {
+      // Mesmo remapeamento do addContract — a tabela real não tem client/plan/mrr/date.
+      const mrrNumber = parseCurrencyBR(merged.mrr);
+      const totalValue = merged.totalValue !== undefined ? parseCurrencyBR(merged.totalValue) : mrrNumber;
+      const dateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(merged.date || "");
+      const signedDate = dateMatch
+        ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`
+        : (/^\d{4}-\d{2}-\d{2}$/.test(merged.date || "") ? merged.date : null);
+      const endDateMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(merged.endDate || "");
+      const endDate = endDateMatch
+        ? `${endDateMatch[3]}-${endDateMatch[2]}-${endDateMatch[1]}`
+        : (/^\d{4}-\d{2}-\d{2}$/.test(merged.endDate || "") ? merged.endDate : null);
+      const { error } = await supabase.from('contracts').update({
+        title: `${merged.plan} - ${merged.client}`,
+        value: totalValue,
+        mrr_value: mrrNumber,
+        status: merged.status,
+        proposal_id: merged.proposalId ?? null,
+        ...(willCancelNow ? { cancelled_at: updates.cancelledAt } : {}),
+        ...(signedDate ? { signed_date: signedDate } : {}),
+        end_date: endDate,
+        description: merged.description ?? null,
+        notes: `Cliente: ${merged.client} | Plano: ${merged.plan}`,
+      }).eq('id', id);
+      if (error) {
+        console.error("Supabase update contract failed:", error.message);
+        toast.error(`Erro ao atualizar contrato: ${error.message}`);
       }
     }
   };
@@ -1186,7 +1436,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const addLeadActivity = async (leadId: string, type: 'Ligação' | 'E-mail' | 'Reunião' | 'Outro', title: string, description: string, seller: string, customDate?: string, files?: { name: string; size: string; }[]) => {
     const newActivity: LeadActivity = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       leadId,
       type,
       title,
@@ -1234,6 +1484,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // `billingCycle` do formulário de produto é em português pra exibição
+  // (Mensal/Trimestral/Semestral/Anual) — a coluna real `recurring_period`
+  // precisa de um valor estável independente de idioma.
+  const billingCycleToRecurringPeriod = (cycle: any): string => {
+    switch (String(cycle || "").toLowerCase()) {
+      case "trimestral": return "quarterly";
+      case "semestral": return "semiannual";
+      case "anual": return "yearly";
+      default: return "monthly";
+    }
+  };
+
   const createCrudHelper = (tableName: string, stateSetter: React.Dispatch<React.SetStateAction<any[]>>, filialAware = false) => {
     return {
       add: async (item: any) => {
@@ -1255,10 +1517,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               'id', 'sku', 'name', 'category', 'type', 'price', 'cost', 'margin', 'commission',
               'active', 'stockMin', 'stockMax', 'currentStock', 'dimensions', 'weight', 'material',
               'description', 'provider', 'isBestSeller', 'tags', 'tenant_id', 'currency',
-              'type_attributes', 'attachments'
+              'type_attributes', 'attachments', 'is_recurring', 'recurring_period', 'implementation_fee'
             ];
             const pCopy: any = { ...stamped };
             if (pCopy.typeAttributes && !pCopy.type_attributes) pCopy.type_attributes = pCopy.typeAttributes;
+            // `is_recurring`/`recurring_period`/`implementation_fee` são colunas reais
+            // (não só jsonb) — sem gravar aqui também, o MRR (que lê a coluna, não o
+            // type_attributes) nunca sabe se o produto é recorrente ou avulso.
+            const ta = pCopy.type_attributes || {};
+            if (ta.isRecurring !== undefined || pCopy.is_recurring !== undefined) {
+              pCopy.is_recurring = pCopy.is_recurring ?? !!ta.isRecurring;
+              pCopy.recurring_period = pCopy.is_recurring ? (pCopy.recurring_period ?? billingCycleToRecurringPeriod(ta.billingCycle)) : null;
+            }
+            if (ta.implementationFee !== undefined || pCopy.implementation_fee !== undefined) {
+              pCopy.implementation_fee = Number(pCopy.implementation_fee ?? ta.implementationFee) || 0;
+            }
             payloadToDb = Object.fromEntries(Object.entries(pCopy).filter(([k]) => allowed.includes(k)));
             if (payloadToDb.price !== undefined) payloadToDb.price = Number(payloadToDb.price) || 0;
             if (payloadToDb.cost !== undefined) payloadToDb.cost = Number(payloadToDb.cost) || 0;
@@ -1284,10 +1557,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               'id', 'sku', 'name', 'category', 'type', 'price', 'cost', 'margin', 'commission',
               'active', 'stockMin', 'stockMax', 'currentStock', 'dimensions', 'weight', 'material',
               'description', 'provider', 'isBestSeller', 'tags', 'tenant_id', 'currency',
-              'type_attributes', 'attachments'
+              'type_attributes', 'attachments', 'is_recurring', 'recurring_period', 'implementation_fee'
             ];
             if (safeUpdates.typeAttributes && !safeUpdates.type_attributes) {
               safeUpdates.type_attributes = safeUpdates.typeAttributes;
+            }
+            const ta = safeUpdates.type_attributes || {};
+            if (ta.isRecurring !== undefined || safeUpdates.is_recurring !== undefined) {
+              safeUpdates.is_recurring = safeUpdates.is_recurring ?? !!ta.isRecurring;
+              safeUpdates.recurring_period = safeUpdates.is_recurring ? (safeUpdates.recurring_period ?? billingCycleToRecurringPeriod(ta.billingCycle)) : null;
+            }
+            if (ta.implementationFee !== undefined || safeUpdates.implementation_fee !== undefined) {
+              safeUpdates.implementation_fee = Number(safeUpdates.implementation_fee ?? ta.implementationFee) || 0;
             }
             safeUpdates = Object.fromEntries(Object.entries(safeUpdates).filter(([k]) => allowed.includes(k)));
             if (safeUpdates.price !== undefined) safeUpdates.price = Number(safeUpdates.price) || 0;
@@ -1350,9 +1631,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     tipo?: 'itens' | 'texto' | 'arquivo';
     conteudoTexto?: string | null;
     linkPdf?: string | null;
-    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number }>;
+    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null }>;
   }) => {
-    const proposalId = Math.random().toString(36).substring(2, 9);
+    const proposalId = crypto.randomUUID();
     await proposalCrud.add({
       id: proposalId,
       titulo: payload.titulo,
@@ -1368,12 +1649,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
     for (const item of payload.itens || []) {
       await proposalItemCrud.add({
-        id: `${proposalId}-${Math.random().toString(36).substring(2, 7)}`,
+        id: crypto.randomUUID(),
         proposal_id: proposalId,
         product_id: item.productId || null,
         product_name: item.descricao,
         quantidade: item.quantidade,
         preco_unitario: item.precoUnitario,
+        // Sem isso, todo item cai no default 'recurring' da coluna e uma taxa
+        // de implantação/setup entra somando no MRR igual a uma mensalidade.
+        billing_type: item.billingType || 'recurring',
+        // Prazo REAL fechado nesta venda (pode ser diferente da duração padrão
+        // do catálogo do produto) — usado depois pra calcular a data de
+        // término do contrato com o prazo que foi de fato negociado.
+        contract_months: item.contractMonths ?? null,
+      });
+    }
+    // Sincroniza valor/produtos de volta no lead vinculado — sem isso, o card
+    // do Kanban e o cabeçalho do lead ficam com valor zerado mesmo com uma
+    // proposta real (e aceita) vinculada, porque eles leem `leads.value` /
+    // `leads.productIds` diretamente, não a tabela `proposals`.
+    if (payload.leadId) {
+      const productIds = (payload.itens || [])
+        .map(item => item.productId)
+        .filter((id): id is string => !!id);
+      await updateLead(payload.leadId, {
+        value: payload.valor,
+        ...(productIds.length > 0 ? { productIds } : {}),
       });
     }
     return proposalId;
@@ -1389,17 +1690,82 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const mktAutoCrud = createCrudHelper('marketing_automations', setMarketingAutomations);
   const squadMetaCrud = createCrudHelper('squad_metas', setSquadMetas);
   const cargoCrud = createCrudHelper('cargos', setCargos);
+  const auroraAgentCrud = createCrudHelper('aurora_agents', setAuroraAgents);
+  const toggleAuroraAgent = (id: string) => {
+    const current = auroraAgents.find(a => a.id === id);
+    if (!current) return;
+    auroraAgentCrud.update(id, {
+      active: !current.active,
+      ...(current.active ? { deactivated_at: new Date().toISOString() } : { deactivated_at: null }),
+    });
+  };
   const empresaFilialCrud = createCrudHelper('empresa_filiais', setEmpresaFiliais);
   const nichoCrud = createCrudHelper('nichos', setNichos);
   const financeCategoryCrud = createCrudHelper('finance_categories', setFinanceCategories);
+  const financeBankAccountCrud = createCrudHelper('finance_bank_accounts', setFinanceBankAccounts);
+  const financeTransferCrud = createCrudHelper('finance_transfers', setFinanceTransfers);
+  const financePeriodLockCrud = createCrudHelper('finance_period_locks', setFinancePeriodLocks);
+  const financeCentroCustoCrud = createCrudHelper('finance_centros_custo', setFinanceCentrosCusto);
+  const financeAttachmentCrud = createCrudHelper('finance_attachments', setFinanceAttachments);
+  const clienteBaseCrud = createCrudHelper('clientes', setClienteBase);
+
+  // Diff campo a campo pro log de auditoria — só entram os campos que de
+  // fato mudaram, e nunca os de controle interno (id/tenant/filial/created_at).
+  const buildFinanceAuditDiff = (before: any, after: any): Record<string, { old: any; new: any }> => {
+    const diff: Record<string, { old: any; new: any }> = {};
+    const ignorar = new Set(['id', 'tenant_id', 'filial_id', 'created_at']);
+    const chaves = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+    for (const k of chaves) {
+      if (ignorar.has(k)) continue;
+      const a = before?.[k] ?? null, b = after?.[k] ?? null;
+      if (JSON.stringify(a) !== JSON.stringify(b)) diff[k] = { old: a, new: b };
+    }
+    return diff;
+  };
+
+  const writeFinanceAuditLog = async (params: { tipo_acao: 'CRIACAO' | 'ATUALIZACAO' | 'EXCLUSAO'; descricao_alvo: string; diff: Record<string, { old: any; new: any }> }) => {
+    if (!supabase || !tenantId || Object.keys(params.diff).length === 0 && params.tipo_acao === 'ATUALIZACAO') return;
+    const row = {
+      tenant_id: tenantId,
+      usuario_id: user?.id || null,
+      usuario_nome: (user as any)?.name || null,
+      tipo_item: 'TRANSACAO' as const,
+      tipo_acao: params.tipo_acao,
+      descricao_alvo: params.descricao_alvo,
+      diff: params.diff,
+    };
+    const { data, error } = await supabase.from('finance_audit_log').insert(row).select().single();
+    if (error) { console.error('[Supabase] finance_audit_log insert error:', error.message); return; }
+    if (data) setFinanceAuditLog(prev => [data, ...prev]);
+  };
+
+  // Transação paga dentro de um período bloqueado é imutável — pendente no
+  // mesmo intervalo continua livre (spec §9.1).
+  const checkFinanceEntryLock = (entry: { status?: string; date?: string } | undefined): boolean => {
+    if (!entry || entry.status !== 'Pago') return false;
+    return isDateLocked(entry.date, financePeriodLocks as any[]);
+  };
+
+  // "Definir como principal" precisa desmarcar a conta principal anterior
+  // primeiro — o índice único parcial no banco (uma só is_principal=true por
+  // tenant) rejeita duas contas principais ao mesmo tempo.
+  const setContaPrincipal = async (id: string) => {
+    const atual = financeBankAccounts.find((a: any) => a.is_principal);
+    if (atual && atual.id !== id) await financeBankAccountCrud.update(atual.id, { is_principal: false });
+    await financeBankAccountCrud.update(id, { is_principal: true });
+  };
   const financeCommissionEntryCrud = createCrudHelper('finance_commission_entries', setFinanceCommissionEntries);
   const scheduledExportCrud = createCrudHelper('scheduled_exports', setScheduledExports);
   const educationContentCrud = createCrudHelper('education_content', setEducationContent);
   const certCrud = createCrudHelper('certificates', setCertificates);
   const indicacaoCrud = createCrudHelper('indicacoes', setIndicacoes as any);
 
-  const addFinanceEntry = async (entry: Omit<FinanceEntry, 'id'>) => {
-    const newEntry: any = { ...entry, id: `f${Math.random().toString(36).substring(2, 9)}` };
+  const addFinanceEntry = async (entry: Omit<FinanceEntry, 'id'>, options: { silent?: boolean } = {}) => {
+    if (checkFinanceEntryLock(entry)) {
+      toast.error("Este período está bloqueado para fechamento — não é possível lançar transações pagas nessa data.");
+      return;
+    }
+    const newEntry: any = { ...entry, id: crypto.randomUUID() };
     if (tenantId) newEntry.tenant_id = tenantId;
     newEntry.filial_id = activeFilialId;
     setFinanceEntries(prev => [newEntry, ...prev]);
@@ -1411,10 +1777,173 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     }
-    toast.success(`${entry.type === 'Pagar' ? 'Despesa' : 'Receita'} registrada!`);
+    writeFinanceAuditLog({ tipo_acao: 'CRIACAO', descricao_alvo: newEntry.description || 'Lançamento financeiro', diff: buildFinanceAuditDiff(null, newEntry) });
+    if (!options.silent) toast.success(`${entry.type === 'Pagar' ? 'Despesa' : 'Receita'} registrada!`);
   };
 
+  // Sincroniza o valor de volta no lead vinculado e garante contrato + fatura
+  // a receber para uma proposta aceita, além de recalcular plano real
+  // (produtos do catálogo) e data de término do contrato. Vivia dentro da
+  // página Propostas.tsx — só rodava (reconciliação incluída) enquanto essa
+  // página estivesse montada, então abrir direto /financeiro/faturas (que
+  // renderiza a mesma lista de contratos por outra rota) nunca corrigia
+  // contratos antigos. Centralizado aqui pra rodar uma vez só, globalmente,
+  // pra qualquer tela que use `contracts`/`proposals` — a mesma fonte de
+  // verdade em vez de cada página reimplementar (ou esquecer) essa sincronização.
+  const syncAcceptedProposal = (prop: any, { silent = false }: { silent?: boolean } = {}) => {
+    const linkedItems = (proposalItems || []).filter((pi: any) => pi.proposal_id === prop.id);
+
+    // Idempotência real: vínculo estável por proposal_id (trava também no
+    // banco via índice único) em vez de comparar client/plan por texto — uma
+    // proposta ou contrato renomeado depois não quebra mais a checagem e
+    // recria um duplicado. Contratos antigos sem proposal_id (criados antes
+    // dessa coluna existir) ainda caem no fallback por nome, uma única vez.
+    const norm = (s: any) => String(s || "").trim().toLowerCase();
+    const existingContract = (contracts || []).find((c: any) =>
+      c.proposalId === prop.id ||
+      (!c.proposalId && norm(c.client) === norm(prop.cliente) && norm(c.plan) === norm(prop.titulo))
+    );
+    const jaExiste = !!existingContract;
+
+    // Soma com o valor já existente no lead (de uma proposta anterior já
+    // realizada/aceita) em vez de sobrescrever — mas só na primeira vez que
+    // esta proposta específica é processada (`!jaExiste`), senão a
+    // reconciliação (que roda de novo a cada mudança de propostas/contracts)
+    // somaria o mesmo valor repetidas vezes.
+    if (!jaExiste && prop.lead_id) {
+      const productIds = linkedItems.map((pi: any) => pi.product_id).filter(Boolean);
+      const lead = (leads || []).find((l: any) => l.id === prop.lead_id);
+      const newValue = (lead ? Number(lead.value) || 0 : 0) + (prop.valor || 0);
+      const newProductIds = [...new Set([...(lead?.productIds || []), ...productIds])];
+      updateLead(prop.lead_id, {
+        value: newValue,
+        ...(newProductIds.length > 0 ? { productIds: newProductIds } : {}),
+      });
+    }
+
+    // MRR real = só os itens recorrentes da proposta; implantação/setup entra
+    // à parte, não conta como receita recorrente mensal (Fase 2). Sem itens
+    // detalhados (proposta sem produtos, ex.: texto/arquivo), cai tudo como
+    // recorrente — mesmo comportamento de antes.
+    const recurringTotal = linkedItems.length > 0
+      ? linkedItems.filter((pi: any) => pi.billing_type !== 'one_time').reduce((s: number, pi: any) => s + (Number(pi.preco_unitario) || 0) * (Number(pi.quantidade) || 1), 0)
+      : (prop.valor || 0);
+    const oneTimeTotal = linkedItems.filter((pi: any) => pi.billing_type === 'one_time').reduce((s: number, pi: any) => s + (Number(pi.preco_unitario) || 0) * (Number(pi.quantidade) || 1), 0);
+
+    // `prop.titulo` é só o título genérico da proposta ("Proposta Comercial —
+    // Cliente X"), não o plano/produto vendido — usar isso como "Plano" do
+    // contrato escondia o produto real do catálogo. O plano do contrato passa
+    // a ser os produtos de fato vinculados na proposta (proposal_items.product_name),
+    // caindo no título só quando a proposta não tem itens estruturados (texto/arquivo).
+    const planLabel = linkedItems.length > 0
+      ? [...new Set(linkedItems.map((pi: any) => pi.product_name).filter(Boolean))].join(" + ")
+      : (prop.titulo || "Proposta Comercial");
+
+    // Duração do contrato (em meses). Prioriza o prazo REALMENTE fechado nesta
+    // venda (proposal_items.contract_months — pode ter sido negociado
+    // diferente do padrão do catálogo, ex.: licença de 12 meses fechada por 4
+    // meses com pagamento adiantado); só cai pro padrão do produto do catálogo
+    // em propostas antigas, criadas antes desse campo existir.
+    const linkedProducts = linkedItems
+      .map((pi: any) => (products || []).find((p: any) => p.id === pi.product_id))
+      .filter(Boolean);
+    const contractMonths =
+      linkedItems
+        .map((pi: any) => Number(pi.contract_months) || 0)
+        .filter((m: number) => m > 0)
+        .sort((a: number, b: number) => b - a)[0]
+      ?? linkedProducts
+        .map((p: any) => Number(p.contractMonths) || 0)
+        .filter((m: number) => m > 0)
+        .sort((a: number, b: number) => b - a)[0];
+
+    if (jaExiste) {
+      // Backfill: contratos criados ANTES das correções de plano/data de
+      // término (fase de auditoria) ficaram presos com o título genérico da
+      // proposta e sem data de término — corrige aqui, sem re-somar valor no
+      // lead nem duplicar nada (só plan/endDate/proposalId). Carimba
+      // proposalId também nos que só tinham o vínculo por nome, senão o match
+      // por nome quebra assim que o `plan` muda e recria um duplicado na
+      // próxima reconciliação.
+      const dm = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(existingContract.date || "");
+      const baseDate = dm ? new Date(Number(dm[3]), Number(dm[2]) - 1, Number(dm[1])) : new Date();
+      const backfillEndDate = contractMonths
+        ? new Date(baseDate.getFullYear(), baseDate.getMonth() + contractMonths, baseDate.getDate()).toLocaleDateString("pt-BR")
+        : null;
+      const updates: any = {};
+      if (planLabel && planLabel !== existingContract.plan) updates.plan = planLabel;
+      if (backfillEndDate && backfillEndDate !== existingContract.endDate) updates.endDate = backfillEndDate;
+      if (!existingContract.proposalId) updates.proposalId = prop.id;
+      // Descrição = título original da proposta ("Proposta Comercial — Cliente
+      // X") — separado do plano (produto do catálogo) desde a correção acima.
+      if (prop.titulo && prop.titulo !== existingContract.description) updates.description = prop.titulo;
+      if (Object.keys(updates).length > 0) updateContract(existingContract.id, updates, { silent: true });
+      return false;
+    }
+
+    const signedDate = new Date();
+    const endDate = contractMonths
+      ? new Date(signedDate.getFullYear(), signedDate.getMonth() + contractMonths, signedDate.getDate()).toLocaleDateString("pt-BR")
+      : null;
+
+    addContract({
+      client: prop.cliente || "Cliente",
+      plan: planLabel || prop.titulo || "Proposta Comercial",
+      description: prop.titulo || null,
+      mrr: formatCurrency(recurringTotal),
+      totalValue: recurringTotal + oneTimeTotal,
+      status: "Ativo",
+      date: signedDate.toLocaleDateString("pt-BR"),
+      endDate,
+      progress: 100,
+      proposalId: prop.id,
+    }, { silent });
+
+    addFinanceEntry({
+      description: `Contrato: ${prop.titulo} (${prop.cliente})`,
+      category: "Contrato / Recorrente",
+      value: recurringTotal,
+      type: "Receber",
+      date: new Date().toISOString().slice(0, 10),
+      status: "A Vencer",
+    }, { silent });
+
+    // Implantação/setup é receita única — lançamento à parte, não recorrente,
+    // pra não poluir relatórios de MRR/receita recorrente com valor avulso.
+    if (oneTimeTotal > 0) {
+      addFinanceEntry({
+        description: `Implantação/Setup: ${prop.titulo} (${prop.cliente})`,
+        category: "Implantação / Setup",
+        value: oneTimeTotal,
+        type: "Receber",
+        date: new Date().toISOString().slice(0, 10),
+        status: "A Vencer",
+      }, { silent });
+    }
+
+    if (!silent) toast.success("🎉 Proposta Aceita! Contrato ativado e fatura a receber gerada no financeiro!");
+    return true;
+  };
+
+  // Reconciliação: propostas "Aceita" sem contrato correspondente (aceitas
+  // antes dessa sincronização existir) ou com contrato desatualizado (plano
+  // genérico / sem data de término, de antes da correção) — roda globalmente
+  // assim que os dados do tenant carregam, não depende de nenhuma página
+  // específica estar montada.
+  useEffect(() => {
+    if (!proposals || proposals.length === 0 || !contracts) return;
+    (proposals as any[])
+      .filter((p) => p.status === "Aceita")
+      .forEach((p) => syncAcceptedProposal(p, { silent: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proposals, contracts]);
+
   const deleteFinanceEntry = async (id: string) => {
+    const before = financeEntries.find(f => f.id === id);
+    if (checkFinanceEntryLock(before)) {
+      toast.error("Este lançamento está pago dentro de um período bloqueado — não pode ser excluído.");
+      return;
+    }
     setFinanceEntries(prev => prev.filter(f => f.id !== id));
     if (supabase) {
       const { error } = await supabase.from('finance_entries').delete().eq('id', id);
@@ -1424,22 +1953,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     }
+    if (before) writeFinanceAuditLog({ tipo_acao: 'EXCLUSAO', descricao_alvo: before.description || 'Lançamento financeiro', diff: buildFinanceAuditDiff(before, null) });
     toast.info('Lançamento financeiro removido.');
   };
 
   const updateFinanceEntry = async (id: string, updates: Partial<FinanceEntry>) => {
+    const before = financeEntries.find(f => f.id === id);
+    if (checkFinanceEntryLock(before)) {
+      toast.error("Este lançamento está pago dentro de um período bloqueado — não pode ser editado.");
+      return;
+    }
     setFinanceEntries(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
     if (supabase) {
       const { error } = await supabase.from('finance_entries').update(updates).eq('id', id);
       if (error) {
         console.error("Supabase update finance_entries failed:", error.message);
         toast.error(`Erro ao atualizar lançamento: ${error.message}`);
+        return;
       }
     }
+    if (before) writeFinanceAuditLog({ tipo_acao: 'ATUALIZACAO', descricao_alvo: before.description || 'Lançamento financeiro', diff: buildFinanceAuditDiff(before, { ...before, ...updates }) });
   };
 
   const addAppointment = async (apt: Omit<Appointment, 'id'>) => {
-    const newApt: any = { ...apt, id: Math.random().toString(36).substr(2, 9) };
+    const newApt: any = { ...apt, id: crypto.randomUUID() };
     if (tenantId) newApt.tenant_id = tenantId;
     newApt.filial_id = activeFilialId;
     setAppointments(prev => [newApt, ...prev]);
@@ -1490,7 +2027,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       leads, tasks, contracts, notifications, leadActivities, financeEntries, appointments,
       theme, toggleTheme,
       addLead, updateLead, deleteLead, moveLead,
-      addTask, updateTask, deleteTask, addContract, deleteContract,
+      addTask, updateTask, deleteTask, addContract, updateContract, deleteContract,
       addNotification, markNotificationAsRead, markAllNotificationsAsRead,
       addLeadActivity,
       getSmartInsight,
@@ -1536,6 +2073,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addFinanceCategory: financeCategoryCrud.add,
       updateFinanceCategory: financeCategoryCrud.update,
       deleteFinanceCategory: financeCategoryCrud.del,
+      financeBankAccounts,
+      addFinanceBankAccount: financeBankAccountCrud.add,
+      updateFinanceBankAccount: financeBankAccountCrud.update,
+      deleteFinanceBankAccount: financeBankAccountCrud.del,
+      setContaPrincipal,
+      financeTransfers,
+      addFinanceTransfer: financeTransferCrud.add,
+      updateFinanceTransfer: financeTransferCrud.update,
+      deleteFinanceTransfer: financeTransferCrud.del,
+      financePeriodLocks,
+      addFinancePeriodLock: financePeriodLockCrud.add,
+      deleteFinancePeriodLock: financePeriodLockCrud.del,
+      financeAuditLog,
+      financeCentrosCusto,
+      addFinanceCentroCusto: financeCentroCustoCrud.add,
+      updateFinanceCentroCusto: financeCentroCustoCrud.update,
+      deleteFinanceCentroCusto: financeCentroCustoCrud.del,
+      financeAttachments,
+      addFinanceAttachment: financeAttachmentCrud.add,
+      deleteFinanceAttachment: financeAttachmentCrud.del,
+      addClienteBase: clienteBaseCrud.add,
+      updateClienteBase: clienteBaseCrud.update,
+      deleteClienteBase: clienteBaseCrud.del,
       financeCommissionEntries,
       addFinanceCommissionEntry: financeCommissionEntryCrud.add,
       updateFinanceCommissionEntry: financeCommissionEntryCrud.update,
@@ -1588,6 +2148,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       deleteProposal: proposalCrud.del,
       proposalItems,
       createProposalWithItems,
+      syncAcceptedProposal,
       certificates,
       setCertificates,
       turmas,
@@ -1624,6 +2185,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addCargo: cargoCrud.add,
       updateCargo: cargoCrud.update,
       deleteCargo: cargoCrud.del,
+      auroraAgents,
+      addAuroraAgent: auroraAgentCrud.add,
+      updateAuroraAgent: auroraAgentCrud.update,
+      deleteAuroraAgent: auroraAgentCrud.del,
+      toggleAuroraAgent,
       clienteBase,
       setClienteBase,
     }}>

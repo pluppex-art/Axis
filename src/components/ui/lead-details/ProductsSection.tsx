@@ -15,6 +15,7 @@ import {
   DollarSign,
   Layers,
   ChevronUp,
+  ChevronDown,
   Sparkles,
   Zap,
   Edit3,
@@ -32,6 +33,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
+import { useLocalization } from "../../../contexts/LocalizationContext";
 import { handleDownloadPdf } from "../../../pages/crm/utils/proposalPdf";
 import {
   PropostaEditorWordModal,
@@ -57,6 +59,7 @@ interface ProductsSectionProps {
     contractMonths?: number;
     hasImplementation?: boolean;
     implementationFee?: number;
+    currentStock?: number;
   }) => Promise<string>;
   toggleProductLink: (id: string) => void;
   seller: string;
@@ -90,7 +93,11 @@ export function ProductsSection({
     updateTurma,
     proposals,
     proposalItems,
+    appSettings,
+    leads,
   } = useData();
+  const empresaDadosBranding = appSettings?.empresa_dados || {};
+  const { formatCurrency } = useLocalization();
 
   // Mini PDV State
   const [searchTerm, setSearchTerm] = useState("");
@@ -121,11 +128,15 @@ export function ProductsSection({
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
   const [currentProposalData, setCurrentProposalData] = useState<PropostaEditorData | null>(null);
 
+  // Collapsible state for Composição Comercial & Financeira
+  const [isFinancialBreakdownOpen, setIsFinancialBreakdownOpen] = useState(true);
+
   // New Product Form State
   const [newProdName, setNewProdName] = useState("");
   const [newProdPrice, setNewProdPrice] = useState("");
   const [newProdCost, setNewProdCost] = useState("");
   const [newProdCommission, setNewProdCommission] = useState("5");
+  const [newProdStock, setNewProdStock] = useState("10");
   const [newProdCategory, setNewProdCategory] = useState("Software");
   const [newProdType, setNewProdType] = useState("Digital");
   const [newProdIsRecurring, setNewProdIsRecurring] = useState(false);
@@ -181,9 +192,50 @@ export function ProductsSection({
     Recusada: "destructive",
   };
 
+  const isProposalAccepted = existingProposal?.status === "Aceita";
+  const [isCreatingNewProposal, setIsCreatingNewProposal] = useState(false);
+
+  // Se a proposta já foi Aceita e o vendedor não optou explicitamente por criar um novo orçamento (upsell),
+  // o carrinho do Mini PDV não deve ter produtos ativos da proposta já finalizada.
+  const effectiveLinkedProductIds = useMemo(() => {
+    if (isProposalAccepted && !isCreatingNewProposal) {
+      return [];
+    }
+    return linkedProductIds;
+  }, [isProposalAccepted, isCreatingNewProposal, linkedProductIds]);
+
+  const handleToggleProduct = (prodId: string) => {
+    if (isProposalAccepted && !isCreatingNewProposal) {
+      setIsCreatingNewProposal(true);
+    }
+    toggleProductLink(prodId);
+  };
+
+  const handleDownloadExistingProposalPdf = () => {
+    if (!existingProposal) return;
+    handleDownloadPdf(
+      {
+        id: existingProposal.id,
+        cliente: existingProposal.cliente,
+        titulo: existingProposal.titulo,
+        valor: existingProposal.valor,
+        validade: existingProposal.validade,
+        vendedor: existingProposal.vendedor || seller || "Consultor S.P.Y.",
+        status: existingProposal.status || "Aceita",
+      },
+      existingProposalItems.map((p: any) => ({
+        product_name: p.product_name,
+        quantidade: p.quantidade,
+        preco_unitario: p.preco_unitario,
+      })),
+      { logoUrl: empresaDadosBranding?.logoUrl }
+    );
+    toast.success("PDF da proposta gerado com sucesso!");
+  };
+
   // Linked items with quantity, recurrence and implementation fee
   const linkedItems = useMemo(() => {
-    return linkedProductIds
+    return effectiveLinkedProductIds
       .map((id) => {
         const prod = availableProducts.find((p) => p.id === id);
         if (!prod) return null;
@@ -318,6 +370,7 @@ export function ProductsSection({
           contractMonths: newProdIsRecurring ? (parseInt(newProdMonths) || 12) : 1,
           hasImplementation: newProdHasImpl,
           implementationFee: newProdHasImpl ? (parseFloat(newProdImplFee.replace(",", ".")) || 0) : 0,
+          currentStock: parseInt(newProdStock) || 0,
         });
       } else {
         toast.info("Produto adicionado localmente.");
@@ -328,6 +381,7 @@ export function ProductsSection({
       setNewProdPrice("");
       setNewProdCost("");
       setNewProdCommission("5");
+      setNewProdStock("10");
       setNewProdIsRecurring(false);
       setNewProdMonths("12");
       setNewProdHasImpl(false);
@@ -355,6 +409,8 @@ export function ProductsSection({
       quantidade: number;
       preco_unitario: number;
       precoUnitario: number;
+      billing_type: 'recurring' | 'one_time';
+      contract_months: number | null;
     }> = [];
 
     linkedItems.forEach((p) => {
@@ -366,6 +422,14 @@ export function ProductsSection({
           quantidade: p.contractMonths * p.quantity,
           preco_unitario: p.price,
           precoUnitario: p.price,
+          billing_type: 'recurring',
+          // Prazo REALMENTE fechado nesta venda (pode ter sido negociado
+          // diferente do padrão do catálogo, ex.: 4 meses em vez dos 12 padrão
+          // de uma licença, com pagamento adiantado) — grava explícito no item
+          // em vez de só embutir no texto, senão o cálculo de data de término
+          // do contrato (Propostas.tsx > syncAcceptedProposal) não tem como
+          // saber o prazo real dessa venda específica depois.
+          contract_months: p.contractMonths,
         });
       } else {
         items.push({
@@ -375,6 +439,8 @@ export function ProductsSection({
           quantidade: p.quantity,
           preco_unitario: p.price,
           precoUnitario: p.price,
+          billing_type: 'one_time',
+          contract_months: null,
         });
       }
 
@@ -386,6 +452,8 @@ export function ProductsSection({
           quantidade: 1,
           preco_unitario: p.implFee,
           precoUnitario: p.implFee,
+          billing_type: 'one_time',
+          contract_months: null,
         });
       }
     });
@@ -424,6 +492,8 @@ export function ProductsSection({
           descricao: p.descricao,
           quantidade: p.quantidade,
           precoUnitario: p.precoUnitario,
+          billingType: p.billing_type,
+          contractMonths: p.contract_months,
         })),
       });
 
@@ -432,12 +502,12 @@ export function ProductsSection({
       const isInstantPayment = formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito";
       const formattedDate = new Date(dueDate + "T12:00:00").toLocaleDateString("pt-BR");
       const installmentInfo = parcelas > 1
-        ? ` (${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+        ? ` (${parcelas}x de ${formatCurrency(valorParcela)})`
         : " (À Vista)";
       const paymentInfoStr = `Forma: ${formaPagamento}${installmentInfo} | Data: ${formattedDate}${detalhesPagamento ? ` - Obs: ${detalhesPagamento}` : ""}`;
 
       await addFinanceEntry({
-        description: `Venda PDV — ${clientName} | ${paymentInfoStr} (${linkedItems.length} soluções: 1º Vencimento R$ ${firstPaymentTotal.toLocaleString("pt-BR")} | Total R$ ${finalTotal.toLocaleString("pt-BR")})`,
+        description: `Venda PDV — ${clientName} | ${paymentInfoStr} (${linkedItems.length} soluções: 1º Vencimento ${formatCurrency(firstPaymentTotal)} | Total ${formatCurrency(finalTotal)})`,
         category: "Vendas / Serviços",
         value: finalTotal,
         type: "Receber",
@@ -446,10 +516,17 @@ export function ProductsSection({
       });
 
       // 3. Atualizar Lead no banco (valor, produtos, status fechado, score 100 e dados do pagamento)
+      // Soma com o valor/produtos já existentes no lead (de uma proposta
+      // anterior já realizada/aceita) em vez de sobrescrever — um novo pedido
+      // no mini PDV pra um cliente que já tinha comprado antes precisa
+      // acumular, não substituir o valor total exibido no card do lead.
       if (leadId && updateLead) {
+        const currentLead = (leads || []).find((l: any) => l.id === leadId);
+        const accumulatedValue = (currentLead ? Number(currentLead.value) || 0 : 0) + finalTotal;
+        const accumulatedProductIds = [...new Set([...(currentLead?.productIds || []), ...linkedProductIds])];
         await updateLead(leadId, {
-          value: finalTotal,
-          productIds: linkedProductIds,
+          value: accumulatedValue,
+          productIds: accumulatedProductIds,
           status: "Fechado",
           scoreIA: 100,
           temperature: "quente",
@@ -497,7 +574,7 @@ export function ProductsSection({
         {
           id: Date.now().toString(),
           author: seller || "Mini PDV",
-          desc: `⚡ Pedido de R$ ${finalTotal.toLocaleString("pt-BR")} concluído via ${formaPagamento}${installmentInfo} (Data: ${formattedDate}): Proposta gerada, Contas a Receber lançado e Lead atualizado.`,
+          desc: `⚡ Pedido de ${formatCurrency(finalTotal)} concluído via ${formaPagamento}${installmentInfo} (Data: ${formattedDate}): Proposta gerada, Contas a Receber lançado e Lead atualizado.`,
           time: "Agora",
         },
         ...prev,
@@ -505,7 +582,7 @@ export function ProductsSection({
 
       addNotification({
         title: `🎉 Venda Concluída no PDV: ${clientName}`,
-        desc: `Venda de R$ ${finalTotal.toLocaleString("pt-BR")} processada via ${formaPagamento}${installmentInfo} para ${formattedDate}. Proposta vinculada e receita provisionada no financeiro.`,
+        desc: `Venda de ${formatCurrency(finalTotal)} processada via ${formaPagamento}${installmentInfo} para ${formattedDate}. Proposta vinculada e receita provisionada no financeiro.`,
         type: "success",
         category: "CRM & Vendas",
         link: "/app/crm/propostas",
@@ -588,14 +665,15 @@ export function ProductsSection({
         product_name: p.product_name,
         quantidade: p.quantidade,
         preco_unitario: p.preco_unitario,
-      }))
+      })),
+      { logoUrl: empresaDadosBranding?.logoUrl }
     );
 
     setAlterationLogs((prev: any[]) => [
       {
         id: Date.now().toString(),
         author: seller || "Sistema",
-        desc: `PDF do Orçamento gerado no valor de R$ ${finalTotal.toLocaleString("pt-BR")}`,
+        desc: `PDF do Orçamento gerado no valor de ${formatCurrency(finalTotal)}`,
         time: "Agora",
       },
       ...prev,
@@ -605,47 +683,16 @@ export function ProductsSection({
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* ── HEADER DO MINI PDV ── */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/25 ring-1 ring-white/10 shrink-0">
-            <ShoppingCart className="w-4.5 h-4.5" />
-          </div>
-          <div className="min-w-0">
-            <h4 className="text-[13px] font-black uppercase tracking-wider text-white leading-tight">
-              Mini PDV & Orçamento
-            </h4>
-            <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
-              Composição de itens e proposta comercial
-            </p>
-          </div>
-        </div>
-
-        <Button
-          type="button"
-          size="sm"
-          variant={showAddForm ? "secondary" : "default"}
-          onClick={() => setShowAddForm((v) => !v)}
-          className="text-[11px] font-bold h-8 gap-1.5 cursor-pointer shrink-0"
-        >
-          {showAddForm ? (
-            <>
-              <ChevronUp className="w-3.5 h-3.5" /> Fechar Cadastro
-            </>
-          ) : (
-            <>
-              <Plus className="w-3.5 h-3.5" /> Novo Produto
-            </>
-          )}
-        </Button>
-      </div>
-
-      {/* ── PROPOSTA COMERCIAL JÁ EXISTENTE (se houver, aparece acima do Mini PDV) ── */}
+      {/* ── PROPOSTA COMERCIAL JÁ EXISTENTE (se houver, aparece no topo em destaque) ── */}
       {existingProposal && (
-        <Card className="p-4 bg-[var(--color-surface-elevated)] border border-emerald-500/25 shadow-sm space-y-3">
+        <Card className={cn(
+          "p-4 bg-[var(--color-surface-elevated)] shadow-sm space-y-3",
+          isProposalAccepted ? "border border-emerald-500/30 bg-emerald-500/[0.03]" : "border border-blue-500/25"
+        )}>
           <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-2.5">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <FileText className="w-3.5 h-3.5 text-emerald-400" /> Proposta Comercial Vinculada
+              <FileText className={cn("w-3.5 h-3.5", isProposalAccepted ? "text-emerald-400" : "text-blue-400")} />
+              Proposta Comercial Vinculada
             </span>
             <Badge
               variant={PROPOSAL_STATUS_VARIANT[existingProposal.status] || "secondary"}
@@ -665,9 +712,9 @@ export function ProductsSection({
                 )}
               </p>
             </div>
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
               <span className="text-sm font-mono font-black text-emerald-400">
-                R$ {(existingProposal.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                {formatCurrency(existingProposal.valor || 0)}
               </span>
               <Button
                 type="button"
@@ -678,9 +725,116 @@ export function ProductsSection({
               >
                 <Edit3 className="w-3.5 h-3.5" /> Ver / Editar Proposta
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadExistingProposalPdf}
+                className="h-8 text-xs font-bold gap-1.5 border-blue-500/30 hover:bg-blue-500/10 text-blue-300 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" /> Baixar PDF
+              </Button>
             </div>
           </div>
+
+          {isProposalAccepted && (
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                <strong>Proposta Aceita & Venda Fechada!</strong> O contrato está ativado e as faturas foram provisionadas no financeiro.
+              </span>
+            </div>
+          )}
+
+          {isProposalAccepted && existingProposalItems.length > 0 && (
+            <div className="space-y-1.5 pt-1 border-t border-white/5">
+              <span className="text-[9px] uppercase font-bold text-slate-400 block">Itens da Proposta Aprovada:</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto scrollbar-thin">
+                {existingProposalItems.map((item: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-[var(--color-surface-sunken)] border border-white/5">
+                    <span className="text-slate-300 font-medium truncate text-[11px]">{item.product_name}</span>
+                    <span className="font-mono text-emerald-400 text-[11px] font-bold shrink-0 ml-2">
+                      {item.quantidade}x {formatCurrency(item.preco_unitario)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
+      )}
+
+      {/* Se a proposta já foi Aceita e o usuário ainda não clicou em Criar Novo Orçamento,
+          mostra banner de upsell e não exibe o carrinho ativo repetindo a venda já fechada */}
+      {isProposalAccepted && !isCreatingNewProposal && (
+        <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <p className="text-xs font-bold text-white">Deseja criar uma nova proposta comercial ou adicionar itens adicionais?</p>
+            <p className="text-[10px] text-slate-400">
+              Inicie um novo orçamento independente mantendo o contrato atual intacto.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCreatingNewProposal(true)}
+            className="h-8 text-xs font-bold gap-1.5 border-blue-500/30 text-blue-400 hover:bg-blue-500/10 cursor-pointer shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" /> Criar Novo Orçamento (Upsell)
+          </Button>
+        </Card>
+      )}
+
+      {/* ── HEADER DO MINI PDV (exibido quando não há proposta aceita ou quando o usuário quer novo orçamento) ── */}
+      {(!isProposalAccepted || isCreatingNewProposal) && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/25 ring-1 ring-white/10 shrink-0">
+              <ShoppingCart className="w-4.5 h-4.5" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-[13px] font-black uppercase tracking-wider text-white leading-tight">
+                {isCreatingNewProposal ? "Novo Orçamento Comercial (Upsell)" : "Mini PDV & Orçamento"}
+              </h4>
+              <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                Composição de itens e proposta comercial
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isCreatingNewProposal && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setIsCreatingNewProposal(false)}
+                className="text-[11px] font-bold h-8 text-slate-400 hover:text-white cursor-pointer"
+              >
+                Cancelar
+              </Button>
+            )}
+
+            <Button
+              type="button"
+              size="sm"
+              variant={showAddForm ? "secondary" : "default"}
+              onClick={() => setShowAddForm((v) => !v)}
+              className="text-[11px] font-bold h-8 gap-1.5 cursor-pointer shrink-0"
+            >
+              {showAddForm ? (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5" /> Fechar Cadastro
+                </>
+              ) : (
+                <>
+                  <Plus className="w-3.5 h-3.5" /> Novo Produto
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* ── FORMULÁRIO DE CADASTRO RÁPIDO DE PRODUTO NO BANCO ── */}
@@ -711,7 +865,7 @@ export function ProductsSection({
               />
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
                   Preço Venda (R$) *
@@ -749,6 +903,19 @@ export function ProductsSection({
                   onChange={(e) => setNewProdCommission(e.target.value)}
                   placeholder="5"
                   className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-3 py-1.5 text-xs text-amber-400 font-mono font-bold focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Estoque Inicial
+                </label>
+                <input
+                  type="number"
+                  value={newProdStock}
+                  onChange={(e) => setNewProdStock(e.target.value)}
+                  placeholder="10"
+                  className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-3 py-1.5 text-xs text-blue-300 font-mono font-bold focus:outline-none focus:border-blue-500"
                 />
               </div>
 
@@ -863,21 +1030,21 @@ export function ProductsSection({
         </Card>
       )}
 
-      {/* ── ITENS DO PEDIDO / CHECKOUT (MINI PDV) ── */}
-      <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3.5">
-        <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-3">
-          <div className="flex items-center gap-2">
-            <Receipt className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-              Itens da Proposta Comercial ({linkedItems.length})
-            </span>
+      {/* ── ITENS DO PEDIDO / COMPOSIÇÃO DA PROPOSTA (SÓ APARECE QUANDO HÁ PRODUTOS SELECIONADOS) ── */}
+      {linkedItems.length > 0 ? (
+        <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] pb-3">
+            <div className="flex items-center gap-2">
+              <Receipt className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                Itens da Proposta Comercial ({linkedItems.length})
+              </span>
+            </div>
+            <Badge variant="success" className="font-mono text-xs font-bold px-2.5 py-1">
+              Total: {formatCurrency(finalTotal)}
+            </Badge>
           </div>
-          <Badge variant="success" className="font-mono text-xs font-bold px-2.5 py-1">
-            Total: R$ {finalTotal.toLocaleString("pt-BR")}
-          </Badge>
-        </div>
 
-        {linkedItems.length > 0 ? (
           <div className="space-y-2.5 max-h-[320px] overflow-y-auto scrollbar-thin pr-1">
             {linkedItems.map((item) => (
               <div
@@ -893,7 +1060,7 @@ export function ProductsSection({
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                      Preço Unitário: R$ {item.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      Preço Unitário: {formatCurrency(item.price)}
                     </div>
                   </div>
 
@@ -923,10 +1090,10 @@ export function ProductsSection({
                   {/* Subtotal do Item */}
                   <div className="text-right min-w-[90px]">
                     <div className="text-xs font-mono font-black text-emerald-400">
-                      R$ {item.subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {formatCurrency(item.subtotal)}
                     </div>
                     <div className="text-[9px] text-slate-500 font-mono">
-                      {item.isRecurring ? `${item.contractMonths}x R$ ${item.monthlyPrice.toLocaleString("pt-BR")}` : "Valor Pontual"}
+                      {item.isRecurring ? `${item.contractMonths}x ${formatCurrency(item.monthlyPrice)}` : "Valor Pontual"}
                     </div>
                   </div>
 
@@ -934,7 +1101,7 @@ export function ProductsSection({
                   <button
                     type="button"
                     onClick={() => toggleProductLink(item.id)}
-                    className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer ml-1"
+                    className="p-1 rounded bg-white/5 border border-white/10 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/25 transition-colors cursor-pointer ml-1"
                     title="Remover item da proposta"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1058,86 +1225,114 @@ export function ProductsSection({
               </div>
             ))}
           </div>
-        ) : (
-          <div className="py-6 text-center flex flex-col items-center gap-2 border border-dashed border-[var(--color-border-subtle)] rounded-xl">
-            <Package className="w-6 h-6 text-slate-500" />
-            <p className="text-xs text-slate-400 font-medium">
-              Nenhum produto selecionado para esta proposta.
-            </p>
-            <p className="text-[10px] text-slate-500">
-              Escolha produtos no catálogo abaixo ou cadastre um novo.
-            </p>
-          </div>
-        )}
 
         {/* ── DETALHAMENTO FINANCEIRO DO PDV — borda de topo tracejada evoca o corte de um recibo ── */}
         <div
-          className="bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3"
+          className="bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3 transition-all duration-200"
           style={{ borderTopStyle: "dashed", borderTopWidth: "2px", borderTopColor: "rgba(148,163,184,0.35)" }}
         >
           <div className="flex items-center justify-between text-[10px] uppercase font-black text-slate-400 pb-0.5">
             <span className="flex items-center gap-1.5">
               <Receipt className="w-3.5 h-3.5 text-blue-400" /> Composição Comercial & Financeira
             </span>
-            <span className="flex items-center gap-1 text-emerald-400 font-mono font-bold">
-              <Percent className="w-3 h-3" /> Margem Líquida: {marginPercent}%
-            </span>
-          </div>
-
-          {/* Linha 1: Métricas de Venda & Contrato */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-blue-500/20 space-y-1">
-              <span className="text-[9px] text-blue-400 flex items-center gap-1 uppercase font-bold">
-                <DollarSign className="w-2.5 h-2.5" /> 1º Vencimento
+            <div className="flex items-center gap-2.5">
+              <span className="flex items-center gap-1 text-emerald-400 font-mono font-bold">
+                <Percent className="w-3 h-3" /> Margem: {marginPercent}%
               </span>
-              <span className="text-white font-black text-xs block">R$ {firstPaymentTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
-
-            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
-              <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
-                <RefreshCw className="w-2.5 h-2.5" /> Mensalidade (MRR)
-              </span>
-              <span className="text-blue-300 font-bold text-xs block">R$ {totalMonthlyMRR.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
-
-            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
-              <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
-                <Layers className="w-2.5 h-2.5" /> Implantação
-              </span>
-              <span className="text-amber-300 font-bold text-xs block">R$ {totalImplementation.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
-
-            <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-emerald-500/20 space-y-1">
-              <span className="text-[9px] text-emerald-400 flex items-center gap-1 uppercase font-bold">
-                <TrendingUp className="w-2.5 h-2.5" /> Total Contrato (LTV)
-              </span>
-              <span className="text-emerald-400 font-black text-xs block">R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+              <button
+                type="button"
+                onClick={() => setIsFinancialBreakdownOpen((prev) => !prev)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[var(--color-surface-elevated)] border border-white/10 hover:border-white/20 text-white hover:text-blue-300 font-sans font-bold text-[10px] transition-all cursor-pointer shadow-sm"
+                title={isFinancialBreakdownOpen ? "Esconder Composição" : "Abrir Composição"}
+              >
+                {isFinancialBreakdownOpen ? (
+                  <>
+                    <span>Esconder</span>
+                    <ChevronUp className="w-3 h-3 text-blue-400" />
+                  </>
+                ) : (
+                  <>
+                    <span>Abrir</span>
+                    <ChevronDown className="w-3 h-3 text-blue-400" />
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Linha 2: Custos, Comissão e Lucro */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono pt-2 border-t border-white/5">
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
-              <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
-                <TrendingDown className="w-2.5 h-2.5" /> Custos Totais
-              </span>
-              <span className="text-rose-400 font-bold text-[11px] block">R$ {totalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
+          {isFinancialBreakdownOpen ? (
+            <div className="space-y-3 animate-in fade-in duration-200">
+              {/* Linha 1: Métricas de Venda & Contrato */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-blue-500/20 space-y-1">
+                  <span className="text-[9px] text-blue-400 flex items-center gap-1 uppercase font-bold">
+                    <DollarSign className="w-2.5 h-2.5" /> 1º Vencimento
+                  </span>
+                  <span className="text-white font-black text-xs block">{formatCurrency(firstPaymentTotal)}</span>
+                </div>
 
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
-              <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
-                <Percent className="w-2.5 h-2.5" /> Comissão Vendas
-              </span>
-              <span className="text-amber-400 font-bold text-[11px] block">R$ {totalCommission.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
+                <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
+                  <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
+                    <RefreshCw className="w-2.5 h-2.5" /> Mensalidade (MRR)
+                  </span>
+                  <span className="text-blue-300 font-bold text-xs block">{formatCurrency(totalMonthlyMRR)}</span>
+                </div>
 
-            <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] col-span-2 sm:col-span-1 space-y-0.5">
-              <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
-                <TrendingUp className="w-2.5 h-2.5" /> Lucro Líquido
-              </span>
-              <span className="text-emerald-400 font-bold text-[11px] block">R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-white/[0.04] space-y-1">
+                  <span className="text-[9px] text-slate-400 flex items-center gap-1 uppercase font-bold">
+                    <Layers className="w-2.5 h-2.5" /> Implantação
+                  </span>
+                  <span className="text-amber-300 font-bold text-xs block">{formatCurrency(totalImplementation)}</span>
+                </div>
+
+                <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-emerald-500/20 space-y-1">
+                  <span className="text-[9px] text-emerald-400 flex items-center gap-1 uppercase font-bold">
+                    <TrendingUp className="w-2.5 h-2.5" /> Total Contrato (LTV)
+                  </span>
+                  <span className="text-emerald-400 font-black text-xs block">{formatCurrency(finalTotal)}</span>
+                </div>
+              </div>
+
+              {/* Linha 2: Custos, Comissão e Lucro */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono pt-2 border-t border-white/5">
+                <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
+                  <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
+                    <TrendingDown className="w-2.5 h-2.5" /> Custos Totais
+                  </span>
+                  <span className="text-rose-400 font-bold text-[11px] block">{formatCurrency(totalCost)}</span>
+                </div>
+
+                <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] space-y-0.5">
+                  <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
+                    <Percent className="w-2.5 h-2.5" /> Comissão Vendas
+                  </span>
+                  <span className="text-amber-400 font-bold text-[11px] block">{formatCurrency(totalCommission)}</span>
+                </div>
+
+                <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-white/[0.04] col-span-2 sm:col-span-1 space-y-0.5">
+                  <span className="text-[9px] text-slate-500 flex items-center gap-1 uppercase">
+                    <TrendingUp className="w-2.5 h-2.5" /> Lucro Líquido
+                  </span>
+                  <span className="text-emerald-400 font-bold text-[11px] block">{formatCurrency(netProfit)}</span>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] font-mono bg-[var(--color-surface-elevated)] px-3 py-2 rounded-lg border border-white/5 animate-in fade-in">
+              <span className="text-slate-400">
+                1º Venc: <strong className="text-white">{formatCurrency(firstPaymentTotal)}</strong>
+              </span>
+              <span className="text-slate-400">
+                MRR: <strong className="text-blue-300">{formatCurrency(totalMonthlyMRR)}</strong>
+              </span>
+              <span className="text-slate-400">
+                LTV: <strong className="text-emerald-400">{formatCurrency(finalTotal)}</strong>
+              </span>
+              <span className="text-slate-400">
+                Lucro: <strong className="text-emerald-400">{formatCurrency(netProfit)}</strong>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* ── FORMA DE PAGAMENTO & PARCELAS DO MINI PDV ── */}
@@ -1147,7 +1342,7 @@ export function ProductsSection({
               <CreditCard className="w-3.5 h-3.5" /> Condição de Pagamento & Parcelas (PDV)
             </span>
             <span className="text-[var(--color-text-muted)] font-mono">
-              {parcelas > 1 ? `${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "À Vista"}
+              {parcelas > 1 ? `${parcelas}x de ${formatCurrency(valorParcela)}` : "À Vista"}
             </span>
           </div>
 
@@ -1262,10 +1457,10 @@ export function ProductsSection({
                 onChange={(e) => setParcelas(Number(e.target.value))}
                 className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none cursor-pointer"
               >
-                <option value={1}>1x à vista (R$ {finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})</option>
+                <option value={1}>1x à vista ({formatCurrency(finalTotal)})</option>
                 {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map((num) => (
                   <option key={num} value={num}>
-                    {num}x de R$ {(finalTotal / num).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {num}x de {formatCurrency(finalTotal / num)}
                   </option>
                 ))}
               </select>
@@ -1300,7 +1495,7 @@ export function ProductsSection({
               </span>
             </div>
             <span className="text-xs font-mono font-black text-emerald-400">
-              {parcelas > 1 ? `${parcelas}x de R$ ${valorParcela.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `R$ ${finalTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} à vista`}
+              {parcelas > 1 ? `${parcelas}x de ${formatCurrency(valorParcela)}` : `${formatCurrency(finalTotal)} à vista`}
             </span>
           </div>
         </div>
@@ -1350,6 +1545,19 @@ export function ProductsSection({
           </div>
         </div>
       </Card>
+      ) : (
+        (!isProposalAccepted || isCreatingNewProposal) && (
+          <div className="p-6 rounded-2xl bg-[var(--color-surface-elevated)] border border-dashed border-[var(--color-border-subtle)] text-center flex flex-col items-center justify-center gap-2.5 animate-in fade-in duration-200">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+              <Package className="w-5 h-5" />
+            </div>
+            <p className="text-xs font-bold text-white">Nenhum produto selecionado para o orçamento</p>
+            <p className="text-[11px] text-slate-400 max-w-sm">
+              Escolha um ou mais produtos no catálogo abaixo para iniciar a composição comercial e financeira da proposta.
+            </p>
+          </div>
+        )
+      )}
 
       {/* ── CATÁLOGO DE PRODUTOS DISPONÍVEIS ── */}
       <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3">
@@ -1395,11 +1603,11 @@ export function ProductsSection({
         {filteredCatalog.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[280px] overflow-y-auto scrollbar-thin pr-1">
             {filteredCatalog.map((prod) => {
-              const isLinked = linkedProductIds.includes(prod.id);
+              const isLinked = effectiveLinkedProductIds.includes(prod.id);
               return (
                 <div
                   key={prod.id}
-                  onClick={() => toggleProductLink(prod.id)}
+                  onClick={() => handleToggleProduct(prod.id)}
                   className={cn(
                     "p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2 group",
                     isLinked
@@ -1416,7 +1624,7 @@ export function ProductsSection({
 
                   <div className="text-right flex items-center gap-2">
                     <span className="text-xs font-mono font-black text-emerald-400 whitespace-nowrap">
-                      R$ {prod.price.toLocaleString("pt-BR")}
+                      {formatCurrency(prod.price)}
                     </span>
                     <div
                       className={cn(

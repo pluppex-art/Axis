@@ -273,7 +273,7 @@ export default function ProntuariosDashboard() {
                             <span className="text-xs font-bold text-[var(--color-text-primary)]">{entry.data}</span>
                             {entry.profissional && <span className="text-[10px] text-[var(--color-text-faint)]">— {entry.profissional}</span>}
                           </div>
-                          <button onClick={() => handleDeleteEntrada(entry.id)} className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-rose-500/10 text-rose-500 transition-all">
+                          <button onClick={() => handleDeleteEntrada(entry.id)} className="p-1 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] opacity-0 group-hover:opacity-100 hover:bg-rose-500/10 hover:border-rose-500/25 text-rose-500 transition-all">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>

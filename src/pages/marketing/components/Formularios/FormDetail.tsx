@@ -34,8 +34,44 @@ export function FormDetail({ form, tenantId }: { form: FormDefinition; tenantId:
   const [loading,     setLoading]   = useState(true);
   const [saving,      setSaving]    = useState(false);
   const [iframeKey,   setIframeKey] = useState(0);
+  const [viewFormat,  setViewFormat] = useState<"passo_a_passo" | "scroll" | "iframe">("passo_a_passo");
+  const [currentStep, setCurrentStep] = useState(0);
+  const [stepData,    setStepData]    = useState({
+    nome: "",
+    email: "",
+    telefone: "",
+    perfil: "iniciante",
+  });
 
-  useEffect(() => { loadAll(); }, [form.id]);
+  const stepsList = [
+    { subtitle: "1 → IDENTIFICAÇÃO", title: "Qual é o seu nome completo?" },
+    { subtitle: "2 → CONTATO DIRETO", title: "Como nossa equipe pode falar com você?" },
+    { subtitle: "3 → PERFIL ATUAL", title: "Qual o seu momento profissional hoje?" },
+    { subtitle: "4 → CONFIRMAÇÃO", title: "Revise e envie sua solicitação" },
+  ];
+
+  const saveFormatSetting = async (format: "passo_a_passo" | "scroll" | "iframe") => {
+    try {
+      await supabase.from("app_settings").upsert({
+        id: `${tenantId}_form_format_${form.id}`,
+        tenant_id: tenantId,
+        key: `form_format_${form.id}`,
+        value: { format },
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "id" });
+    } catch {}
+  };
+
+  useEffect(() => {
+    supabase.from("app_settings").select("value")
+      .eq("tenant_id", tenantId).eq("key", `form_format_${form.id}`).maybeSingle()
+      .then(({ data }) => {
+        if (data?.value?.format) {
+          setViewFormat(data.value.format);
+        }
+      });
+    loadAll();
+  }, [form.id]);
 
   async function loadAll() {
     setLoading(true);
@@ -132,35 +168,313 @@ export function FormDetail({ form, tenantId }: { form: FormDefinition; tenantId:
 
           {tab === "visualizar" && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <a href={form.previewUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-[11px] font-bold text-orange-400 hover:underline inline-flex items-center gap-1">
-                  {form.previewUrl} <ExternalLink className="w-3 h-3" />
-                </a>
-                <button onClick={() => setIframeKey(k => k + 1)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-black text-slate-400 hover:text-white uppercase tracking-widest transition-all">
-                  <RefreshCw className="w-3 h-3" /> Recarregar
-                </button>
-              </div>
-              <div className="rounded-2xl overflow-hidden border border-white/8 bg-[var(--color-surface)]">
-                <div className="flex items-center gap-2 px-4 py-3 bg-white/[0.03] border-b border-white/5">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-rose-500/60" />
-                    <div className="w-3 h-3 rounded-full bg-amber-500/60" />
-                    <div className="w-3 h-3 rounded-full bg-emerald-500/60" />
+              {/* Formato Switcher */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 bg-slate-900/90 border border-slate-700/80 rounded-2xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo de Exibição:</span>
+                  <div className="flex gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => { setViewFormat("passo_a_passo"); saveFormatSetting("passo_a_passo"); }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                        viewFormat === "passo_a_passo"
+                          ? "bg-orange-600 text-white shadow-md"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      🏃 Passo a Passo (Corridinha)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setViewFormat("scroll"); saveFormatSetting("scroll"); }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                        viewFormat === "scroll"
+                          ? "bg-orange-600 text-white shadow-md"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      📜 Scroll Contínuo (Google Forms)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setViewFormat("iframe"); saveFormatSetting("iframe"); }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                        viewFormat === "iframe"
+                          ? "bg-orange-600 text-white shadow-md"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      📱 Iframe Real
+                    </button>
                   </div>
-                  <div className="flex-1 flex justify-center">
-                    <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-md">
-                      <Smartphone className="w-3 h-3 text-slate-500" />
-                      <span className="text-[10px] text-slate-400 font-medium">{form.previewUrl}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <a href={form.previewUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-[11px] font-bold text-orange-400 hover:underline inline-flex items-center gap-1">
+                    {form.previewUrl} <ExternalLink className="w-3 h-3" />
+                  </a>
+                  {viewFormat === "iframe" && (
+                    <button onClick={() => setIframeKey(k => k + 1)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-[10px] font-black text-slate-300 hover:text-white uppercase tracking-widest transition-all">
+                      <RefreshCw className="w-3 h-3" /> Recarregar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Modo: Passo a Passo (Corridinha / Typeform) */}
+              {viewFormat === "passo_a_passo" && (
+                <div className="rounded-2xl border border-slate-700 bg-slate-950 p-6 shadow-2xl relative overflow-hidden">
+                  <div className="max-w-xl mx-auto space-y-6">
+                    {/* Header / Progress */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-orange-400">
+                          Etapa {currentStep + 1} de {stepsList.length}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-400">
+                          {Math.round(((currentStep + 1) / stepsList.length) * 100)}% concluído
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-300"
+                          style={{ width: `${((currentStep + 1) / stepsList.length) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Step Content */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">
+                          {stepsList[currentStep]?.subtitle}
+                        </span>
+                        <h4 className="text-lg font-black text-white">
+                          {stepsList[currentStep]?.title}
+                        </h4>
+                      </div>
+
+                      {currentStep === 0 && (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase text-slate-400">Seu Nome Completo</label>
+                            <input
+                              type="text"
+                              value={stepData.nome}
+                              onChange={e => setStepData({ ...stepData, nome: e.target.value })}
+                              placeholder="Ex: João da Silva"
+                              className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:border-orange-500 outline-none"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {currentStep === 1 && (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase text-slate-400">E-mail Principal</label>
+                            <input
+                              type="email"
+                              value={stepData.email}
+                              onChange={e => setStepData({ ...stepData, email: e.target.value })}
+                              placeholder="joao@empresa.com.br"
+                              className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:border-orange-500 outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold uppercase text-slate-400">WhatsApp / Telefone</label>
+                            <input
+                              type="text"
+                              value={stepData.telefone}
+                              onChange={e => setStepData({ ...stepData, telefone: e.target.value })}
+                              placeholder="(11) 99999-9999"
+                              className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:border-orange-500 outline-none"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {currentStep === 2 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {[
+                            { value: "aspirante", label: "Quero Empreender", desc: "Tenho uma ideia ou desejo abrir negócio", icon: "🌱" },
+                            { value: "iniciante", label: "Estou Começando", desc: "Negócio com menos de 2 anos", icon: "🚀" },
+                            { value: "pequeno", label: "Já Empreendo", desc: "Tenho empresa ativa e quero escalar", icon: "📈" },
+                            { value: "retomada", label: "Quero Recomeçar", desc: "Já empreendi antes e vou retomar", icon: "🔄" },
+                          ].map(item => (
+                            <button
+                              key={item.value}
+                              type="button"
+                              onClick={() => setStepData({ ...stepData, perfil: item.value })}
+                              className={`p-3.5 rounded-xl border text-left transition-all ${
+                                stepData.perfil === item.value
+                                  ? "bg-orange-500/20 border-orange-500 ring-1 ring-orange-500/40 text-white"
+                                  : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700"
+                              }`}
+                            >
+                              <div className="text-xl mb-1">{item.icon}</div>
+                              <div className="text-xs font-black text-white">{item.label}</div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">{item.desc}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {currentStep === 3 && (
+                        <div className="space-y-3">
+                          <p className="text-xs text-slate-300 leading-relaxed">
+                            Confirme o envio da sua inscrição para entrar imediatamente no pipeline comercial e receber o atendimento de um SDR qualificado.
+                          </p>
+                          <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1 text-xs text-slate-400">
+                            <div><strong className="text-white">Nome:</strong> {stepData.nome || "Não informado"}</div>
+                            <div><strong className="text-white">Contato:</strong> {stepData.email || "—"} | {stepData.telefone || "—"}</div>
+                            <div><strong className="text-white">Perfil:</strong> {stepData.perfil || "—"}</div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Navigation buttons */}
+                      <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+                        <button
+                          type="button"
+                          disabled={currentStep === 0}
+                          onClick={() => setCurrentStep(prev => Math.max(0, prev - 1))}
+                          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                        >
+                          ← Voltar
+                        </button>
+
+                        {currentStep < stepsList.length - 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => setCurrentStep(prev => Math.min(stepsList.length - 1, prev + 1))}
+                            className="px-5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-lg"
+                          >
+                            Avançar →
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              toast.success("Simulação de envio concluída! Lead qualificado gerado com sucesso.");
+                              setCurrentStep(0);
+                            }}
+                            className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-lg"
+                          >
+                            ✓ Enviar Inscrição
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-                <iframe key={iframeKey} src={form.previewUrl} title={form.name}
-                  className="w-full" style={{ height: "540px", border: "none" }}
-                  sandbox="allow-scripts allow-same-origin allow-forms" />
-              </div>
-              {!supportsStepsEditor && (
+              )}
+
+              {/* Modo: Scroll Contínuo (Google Forms) */}
+              {viewFormat === "scroll" && (
+                <div className="rounded-2xl border border-slate-700 bg-slate-950 p-6 shadow-2xl space-y-6 max-w-2xl mx-auto">
+                  <div className="border-b border-slate-800 pb-4">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-orange-400">Formulário Contínuo</span>
+                    <h3 className="text-xl font-black text-white mt-1">{form.name}</h3>
+                    <p className="text-xs text-slate-400 mt-1">{form.description}</p>
+                  </div>
+
+                  <div className="space-y-5">
+                    {/* Seção 1 */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">1. Identificação & Contato</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-slate-400">Nome Completo *</label>
+                          <input
+                            type="text"
+                            placeholder="Seu nome"
+                            className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-orange-500 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-slate-400">E-mail *</label>
+                          <input
+                            type="email"
+                            placeholder="seuemail@empresa.com"
+                            className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-orange-500 outline-none"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="text-[10px] font-bold uppercase text-slate-400">WhatsApp / Telefone com DDD *</label>
+                          <input
+                            type="text"
+                            placeholder="(11) 98888-8888"
+                            className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-xs focus:border-orange-500 outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Seção 2 */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">2. Perfil e Momento Atual</h4>
+                      <div className="space-y-2">
+                        {[
+                          "Tenho uma ideia de negócio e quero começar do jeito certo",
+                          "Já tenho um negócio operando e quero estruturar as vendas",
+                          "Quero acelerar faturamento e escalar minha equipe comercial",
+                          "Preciso de consultoria estratégica para reestruturação",
+                        ].map((opt, i) => (
+                          <label key={i} className="flex items-center gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 cursor-pointer transition-all">
+                            <input type="radio" name="perfil_scroll" className="accent-orange-500" />
+                            <span className="text-xs text-slate-200">{opt}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Seção 3 */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">3. Mensagem ou Detalhes Adicionais</h4>
+                      <textarea
+                        rows={3}
+                        placeholder="Conte brevemente sobre o seu momento comercial..."
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white text-xs focus:border-orange-500 outline-none resize-none"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => toast.success("Inscrição via Scroll Contínuo enviada com sucesso!")}
+                      className="w-full py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-xl"
+                    >
+                      Enviar Respostas do Formulário
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Modo: Iframe Real */}
+              {viewFormat === "iframe" && (
+                <div className="rounded-2xl overflow-hidden border border-white/8 bg-[var(--color-surface)]">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-white/[0.03] border-b border-white/5">
+                    <div className="flex gap-1.5">
+                      <div className="w-3 h-3 rounded-full bg-rose-500/60" />
+                      <div className="w-3 h-3 rounded-full bg-amber-500/60" />
+                      <div className="w-3 h-3 rounded-full bg-emerald-500/60" />
+                    </div>
+                    <div className="flex-1 flex justify-center">
+                      <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-md">
+                        <Smartphone className="w-3 h-3 text-slate-500" />
+                        <span className="text-[10px] text-slate-400 font-medium">{form.previewUrl}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <iframe key={iframeKey} src={form.previewUrl} title={form.name}
+                    className="w-full" style={{ height: "540px", border: "none" }}
+                    sandbox="allow-scripts allow-same-origin allow-forms" />
+                </div>
+              )}
+
+              {!supportsStepsEditor && viewFormat === "iframe" && (
                 <div className="flex items-start gap-2 p-3 bg-amber-500/5 border border-amber-500/15 rounded-xl">
                   <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <p className="text-[11px] text-amber-300/70 font-medium leading-relaxed">

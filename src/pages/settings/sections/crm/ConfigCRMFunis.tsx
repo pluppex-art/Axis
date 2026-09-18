@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Card } from "../../../../components/ui/card";
 import { Button } from "../../../../components/ui/button";
 import { Plus, Bot, ChevronRight, ChevronDown, ToggleLeft, ToggleRight, Pencil, Trash2, Columns3, Users } from "lucide-react";
 import { useData } from "../../../../contexts/DataContext";
-import { supabase } from "../../../../lib/supabase";
 import { toast } from "sonner";
 import { Funil, FUNIS_DEFAULT, ETAPA_CORES, initStageConfigs } from "./funisTypes";
 import { EtapaCard } from "./EtapaCard";
@@ -12,15 +11,14 @@ import { FunilModal } from "./FunilModal";
 import { confirmDialog } from "../../../../components/ui/confirm-dialog";
 
 export function ConfigCRMFunis() {
-  const { funis: dbFunis, addFunil, updateFunil, deleteFunil } = useData();
-  const [availableClients, setAvailableClients] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.from("clientes").select("name").order("name", { ascending: true }).then(({ data }) => {
-      if (data) setAvailableClients(data.map((c: any) => c.name).filter(Boolean));
-    });
-  }, []);
+  const { funis: dbFunis, addFunil, updateFunil, deleteFunil, clienteBase } = useData();
+  // `clienteBase` já vem escopado ao tenant ativo — um fetch próprio de
+  // "clientes" aqui não filtrava por tenant_id e vazava linhas de outros
+  // tenants pra contas de parceiro.
+  const availableClients = useMemo(
+    () => [...new Set((clienteBase as any[]).map((c: any) => c.name).filter(Boolean))].sort(),
+    [clienteBase]
+  );
 
   // Tenant sem nenhum funil salvo ainda: mostra os padrões só na tela (não
   // grava nada sozinho — vira registro real assim que o usuário salvar algo).
@@ -74,10 +72,15 @@ export function ConfigCRMFunis() {
     });
   };
 
-  const handleStageDelete = (funilId: string, idx: number) => {
+  const handleStageDelete = async (funilId: string, idx: number) => {
     const f = funis.find(x => x.id === funilId);
     if (!f) return;
     const configs = initStageConfigs(f.etapas, f.etapasConfig);
+    const stageName = configs[idx]?.nome || f.etapas[idx];
+    if (!(await confirmDialog({
+      title: "Excluir etapa",
+      description: `Excluir a etapa "${stageName}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     updateFunil(funilId, { etapas: f.etapas.filter((_, i) => i !== idx), etapasConfig: configs.filter((_, i) => i !== idx) });
   };
 

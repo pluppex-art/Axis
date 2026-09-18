@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface ServicoClinicoItem {
   id: string;
@@ -106,6 +107,11 @@ export default function ServicosClinica() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const servico = servicos.find(s => s.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir procedimento",
+      description: `Excluir o procedimento "${servico?.nome || "selecionado"}"? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("clinica_servicos").delete().eq("id", id);
     if (error) { toast.error("Erro ao remover procedimento."); return; }
     setServicos(prev => prev.filter(s => s.id !== id));

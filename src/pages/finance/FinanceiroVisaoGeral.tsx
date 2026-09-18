@@ -1,13 +1,23 @@
 import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "../../components/ui/dropdown-menu";
-import { Printer, Download, Calendar, Check } from "lucide-react";
+import { Printer, Download, Calendar, Check, Inbox, Wallet, Scale, Repeat2, TrendingUp, TrendingDown, AlertTriangle, Waves, Landmark } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
 import { PageContainer } from "../../components/PageContainer";
-import { FinanceiroKPIs } from "./components/FinanceiroVisaoGeral/FinanceiroKPIs";
+import { FinanceiroKPIs, type FinanceiroKpiCard } from "./components/FinanceiroVisaoGeral/FinanceiroKPIs";
+import { FinanceiroAlertas, type FinanceiroAlertaItem } from "./components/FinanceiroVisaoGeral/FinanceiroAlertas";
 import { FinanceiroCashflowChart } from "./components/FinanceiroVisaoGeral/FinanceiroCashflowChart";
 import { FinanceiroBottomPanels } from "./components/FinanceiroVisaoGeral/FinanceiroBottomPanels";
+import { FinanceiroProjecaoReceita } from "./components/FinanceiroVisaoGeral/FinanceiroProjecaoReceita";
+import { FinanceiroPrevistoRealizado } from "./components/FinanceiroVisaoGeral/FinanceiroPrevistoRealizado";
+import { FinanceiroComparativoMes } from "./components/FinanceiroVisaoGeral/FinanceiroComparativoMes";
+import { FinanceiroAgendaMes } from "./components/FinanceiroVisaoGeral/FinanceiroAgendaMes";
+import { FinanceiroAnexosResumo } from "./components/FinanceiroVisaoGeral/FinanceiroAnexosResumo";
 import { downloadCsv } from "../../lib/csvExport";
+import { useLocalization } from "../../contexts/LocalizationContext";
+import { getMRR, getActiveCustomers, getChurnRate, getRevenueProjection } from "../../lib/revenueMetrics";
+import { parseEntryDate } from "./lib/financeDates";
+import { saldoDaConta, transferenciasDaConta, previstoRealizado, comparativoMesAnterior, categoriesById, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
@@ -18,23 +28,6 @@ const CICLOS: { id: Ciclo; label: string }[] = [
   { id: "ano", label: "Ano Atual" },
   { id: "tudo", label: "Tudo" },
 ];
-
-// `finance_entries.date` nem sempre vem no formato legado DD/MM/AAAA — o
-// fluxo de vendas do PDV (finalizar_venda RPC) grava em ISO (AAAA-MM-DD).
-// Sem os dois formatos aqui, uma venda paga com data ISO desaparecia de
-// todos os totais/gráficos desta tela (só "Tudo" ignora isInCiclo).
-function parseEntryDate(dateStr?: string): Date | null {
-  if (!dateStr) return null;
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
-  if (iso) {
-    const d = new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
-    return isNaN(d.getTime()) ? null : d;
-  }
-  const parts = dateStr.split("/");
-  if (parts.length < 3) return null;
-  const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-  return isNaN(d.getTime()) ? null : d;
-}
 
 function isInCiclo(date: Date | null, ciclo: Ciclo, now: Date): boolean {
   if (ciclo === "tudo") return true;
@@ -48,8 +41,23 @@ function isInCiclo(date: Date | null, ciclo: Ciclo, now: Date): boolean {
   return date.getFullYear() === now.getFullYear(); // ano
 }
 
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function isInMonth(date: Date | null, year: number, month: number): boolean {
+  return !!date && date.getFullYear() === year && date.getMonth() === month;
+}
+
+/** `null` = sem base de comparação (mês anterior zerado) — nunca "Infinity%". */
+function pctChange(curr: number, prev: number): number | null {
+  if (prev === 0) return null;
+  return ((curr - prev) / Math.abs(prev)) * 100;
+}
+
 export default function FinanceiroVisaoGeral() {
-  const { financeEntries, contracts, leads } = useData();
+  const { financeEntries, contracts, leads, financeBankAccounts, financeTransfers, financeCategories, financeAttachments } = useData();
+  const { formatCurrency } = useLocalization();
   const [ciclo, setCiclo] = useState<Ciclo>("mes");
 
   const cicloEntries = useMemo(() => {
@@ -58,28 +66,148 @@ export default function FinanceiroVisaoGeral() {
     return financeEntries.filter(f => isInCiclo(parseEntryDate(f.date), ciclo, now));
   }, [financeEntries, ciclo]);
 
-  const { receita, despesa, mrr, inadimplencia } = useMemo(() => {
+  const { receita, despesa, mrr, receitaAvulsa, clientesAtivos, churnRate } = useMemo(() => {
     const receita = cicloEntries.filter(f => f.type === "Receber" && f.status === "Pago").reduce((s, f) => s + f.value, 0);
     const despesa = cicloEntries.filter(f => f.type === "Pagar"   && f.status === "Pago").reduce((s, f) => s + f.value, 0);
-    const mrr = contracts.filter(c => c.status === "Ativo").reduce((s, c) => {
-      const raw = c.mrr;
-      const valStr = typeof raw === "number" ? String(raw) : (raw ?? "0");
-      const val = parseFloat(String(valStr).replace(/[^\d]/g, "") || "0") / 100;
-      return s + (isNaN(val) ? 0 : val);
-    }, 0);
-    const entriesPagar = cicloEntries.filter(f => f.type === "Pagar");
-    const inadimplencia = entriesPagar.length > 0 ? (entriesPagar.filter(f => f.status === "Atrasado").length / entriesPagar.length) * 100 : 0;
-    return { receita, despesa, mrr, inadimplencia };
+    const mrr = getMRR(contracts);
+    // Implantação/Setup é lançado à parte pela reconciliação de propostas
+    // (DataContext.tsx syncAcceptedProposal) exatamente pra não entrar no MRR —
+    // aqui ela aparece como receita avulsa do período, separada.
+    const receitaAvulsa = cicloEntries.filter(f => f.type === "Receber" && f.status === "Pago" && f.category === "Implantação / Setup").reduce((s, f) => s + f.value, 0);
+    const clientesAtivos = getActiveCustomers(contracts);
+    const churnRate = getChurnRate(contracts);
+    return { receita, despesa, mrr, receitaAvulsa, clientesAtivos, churnRate };
   }, [cicloEntries, contracts]);
+
+  const revenueProjection = useMemo(() => getRevenueProjection(contracts), [contracts]);
+
+  // Liquidez = quanto da despesa paga no período a receita paga cobre (100% =
+  // cobertura total). Burn Rate = queima de caixa do período (só existe
+  // quando a despesa supera a receita — senão não há "queima", há sobra).
+  const liquidez = despesa > 0 ? (receita / despesa) * 100 : (receita > 0 ? 100 : null);
+  const burnRate = despesa > receita ? despesa - receita : 0;
+
+  // Cartões do topo comparam sempre mês atual vs mês anterior, independente
+  // do seletor de ciclo acima (que só afeta o restante do painel) — é o que
+  // o card "Receitas · +12,4% vs. mês anterior" pede.
+  const kpiCards: FinanceiroKpiCard[] = useMemo(() => {
+    const now = new Date();
+    const curY = now.getFullYear(), curM = now.getMonth();
+    const prevDate = new Date(curY, curM - 1, 1);
+    const prevY = prevDate.getFullYear(), prevM = prevDate.getMonth();
+
+    const inCurMonth = (f: typeof financeEntries[number]) => isInMonth(parseEntryDate(f.date), curY, curM);
+    const inPrevMonth = (f: typeof financeEntries[number]) => isInMonth(parseEntryDate(f.date), prevY, prevM);
+
+    const receitaMes = financeEntries.filter(f => f.type === "Receber" && f.status === "Pago" && inCurMonth(f)).reduce((s, f) => s + f.value, 0);
+    const receitaMesAnt = financeEntries.filter(f => f.type === "Receber" && f.status === "Pago" && inPrevMonth(f)).reduce((s, f) => s + f.value, 0);
+    const despesaMes = financeEntries.filter(f => f.type === "Pagar" && f.status === "Pago" && inCurMonth(f)).reduce((s, f) => s + f.value, 0);
+    const despesaMesAnt = financeEntries.filter(f => f.type === "Pagar" && f.status === "Pago" && inPrevMonth(f)).reduce((s, f) => s + f.value, 0);
+    const resultadoMes = receitaMes - despesaMes;
+    const resultadoMesAnt = receitaMesAnt - despesaMesAnt;
+
+    const abertoReceber = financeEntries.filter(f => f.type === "Receber" && (f.status === "A Vencer" || f.status === "Atrasado"));
+    const abertoPagar = financeEntries.filter(f => f.type === "Pagar" && (f.status === "A Vencer" || f.status === "Atrasado"));
+    const vencidoReceber = financeEntries.filter(f => f.type === "Receber" && f.status === "Atrasado");
+
+    const next30 = new Date(now); next30.setDate(next30.getDate() + 30);
+    const previstoReceber30 = financeEntries.filter(f => {
+      const d = parseEntryDate(f.date);
+      return f.type === "Receber" && f.status === "A Vencer" && d && d >= now && d <= next30;
+    }).reduce((s, f) => s + f.value, 0);
+    const previstoPagar30 = financeEntries.filter(f => {
+      const d = parseEntryDate(f.date);
+      return f.type === "Pagar" && f.status === "A Vencer" && d && d >= now && d <= next30;
+    }).reduce((s, f) => s + f.value, 0);
+    const fluxoProjetado30 = previstoReceber30 - previstoPagar30;
+
+    // MRR não tem snapshot histórico por mês salvo em banco — sem isso não dá
+    // pra calcular a variação vs. mês anterior sem inventar número, então o
+    // card de MRR fica sem delta (deltaPct: null) até essa série existir.
+    const mrrAtual = getMRR(contracts);
+
+    // Saldo real de caixa: soma o saldo de cada conta bancária ativa (saldo
+    // inicial + pagos). Sem contas cadastradas o card mostra R$ 0 — nunca um
+    // saldo inventado.
+    const contasAtivas = (financeBankAccounts as any[]).filter(c => !c.arquivada);
+    const saldoTotalContas = contasAtivas.reduce((soma, conta) => {
+      const entriesDaConta = (financeEntries as FinanceEntryLike[]).filter((e: any) => e.conta_bancaria_id === conta.id);
+      const { recebidas, enviadas } = transferenciasDaConta(financeTransfers as any[], conta.id);
+      return soma + saldoDaConta({ saldoInicial: conta.saldo_inicial, sinalSaldoInicial: conta.sinal_saldo_inicial, entriesDaConta, transferenciasRecebidasPagas: recebidas, transferenciasEnviadasPagas: enviadas });
+    }, 0);
+
+    return [
+      { label: "Saldo em Contas", value: saldoTotalContas, format: "currency", count: contasAtivas.length || undefined, deltaPct: null, deltaGoodWhenUp: null, danger: saldoTotalContas < 0, icon: Landmark, href: "/app/financeiro/bancos" },
+      { label: "Receitas do Mês", value: receitaMes, format: "currency", deltaPct: pctChange(receitaMes, receitaMesAnt), deltaGoodWhenUp: true, icon: Inbox, href: "/app/financeiro/receitas" },
+      { label: "Despesas do Mês", value: despesaMes, format: "currency", deltaPct: pctChange(despesaMes, despesaMesAnt), deltaGoodWhenUp: false, icon: TrendingDown, href: "/app/financeiro/despesas" },
+      { label: "Resultado do Mês", value: resultadoMes, format: "currency", deltaPct: pctChange(resultadoMes, resultadoMesAnt), deltaGoodWhenUp: true, danger: resultadoMes < 0, icon: Scale, href: "/app/financeiro/transacoes" },
+      { label: "MRR Ativo", value: mrrAtual, format: "currency", deltaPct: null, deltaGoodWhenUp: true, icon: Repeat2, href: "/app/financeiro/mrr" },
+      { label: "Contas a Receber", value: abertoReceber.reduce((s, f) => s + f.value, 0), format: "currency", count: abertoReceber.length, deltaPct: null, deltaGoodWhenUp: null, icon: TrendingUp, href: "/app/financeiro/receber" },
+      { label: "Contas a Pagar", value: abertoPagar.reduce((s, f) => s + f.value, 0), format: "currency", count: abertoPagar.length, deltaPct: null, deltaGoodWhenUp: null, icon: Wallet, href: "/app/financeiro/pagar" },
+      { label: "Vencido (Inadimplência)", value: vencidoReceber.reduce((s, f) => s + f.value, 0), format: "currency", count: vencidoReceber.length, deltaPct: null, deltaGoodWhenUp: null, danger: vencidoReceber.length > 0, icon: AlertTriangle, href: "/app/financeiro/inadimplencia" },
+      { label: "Fluxo Projetado (30d)", value: fluxoProjetado30, format: "currency", deltaPct: null, deltaGoodWhenUp: null, danger: fluxoProjetado30 < 0, icon: Waves, href: "/app/financeiro/projecao" },
+    ];
+  }, [financeEntries, contracts, financeBankAccounts, financeTransfers]);
+
+  // Previsto × Realizado e Comparativo com mês anterior vêm direto do motor
+  // de cálculo central — nunca recalculados aqui, pra não divergir do que a
+  // tela de DRE/Projeção mostra pro mesmo período.
+  const catMap = useMemo(() => categoriesById(financeCategories as FinanceCategoryLike[]), [financeCategories]);
+  const previstoRealizadoRecebimentos = useMemo(() => previstoRealizado(financeEntries as FinanceEntryLike[], "Receber", new Date()), [financeEntries]);
+  const previstoRealizadoDespesas = useMemo(() => previstoRealizado(financeEntries as FinanceEntryLike[], "Pagar", new Date()), [financeEntries]);
+  const comparativoLinhas = useMemo(() => comparativoMesAnterior(financeEntries as FinanceEntryLike[], catMap, new Date()), [financeEntries, catMap]);
+
+  const alertasResumo = useMemo(() => {
+    const now = new Date();
+    const hojeEntradas = financeEntries.filter(f => {
+      const d = parseEntryDate(f.date);
+      return f.type === "Receber" && f.status === "Pago" && d && isSameDay(d, now);
+    }).reduce((s, f) => s + f.value, 0);
+    const hojeSaidas = financeEntries.filter(f => {
+      const d = parseEntryDate(f.date);
+      return f.type === "Pagar" && f.status === "Pago" && d && isSameDay(d, now);
+    }).reduce((s, f) => s + f.value, 0);
+
+    const next7 = new Date(now); next7.setDate(next7.getDate() + 7);
+    const aReceber7 = financeEntries.filter(f => {
+      const d = parseEntryDate(f.date);
+      return f.type === "Receber" && f.status === "A Vencer" && d && d >= now && d <= next7;
+    }).reduce((s, f) => s + f.value, 0);
+    const aPagar7 = financeEntries.filter(f => {
+      const d = parseEntryDate(f.date);
+      return f.type === "Pagar" && f.status === "A Vencer" && d && d >= now && d <= next7;
+    }).reduce((s, f) => s + f.value, 0);
+
+    const vencidasReceber = financeEntries.filter(f => f.type === "Receber" && f.status === "Atrasado");
+    const vencidasPagar = financeEntries.filter(f => f.type === "Pagar" && f.status === "Atrasado");
+    const vencendoEm3 = financeEntries.filter(f => {
+      const d = parseEntryDate(f.date);
+      const in3 = new Date(now); in3.setDate(in3.getDate() + 3);
+      return f.status === "A Vencer" && d && d >= now && d <= in3;
+    });
+
+    const alertas: FinanceiroAlertaItem[] = [];
+    if (vencidasPagar.length > 0) {
+      alertas.push({ tone: "danger", href: "/app/financeiro/pagar", text: `${vencidasPagar.length} conta(s) a pagar vencida(s), somando ${formatCurrency(vencidasPagar.reduce((s, f) => s + f.value, 0))}.` });
+    }
+    if (vencidasReceber.length > 0) {
+      alertas.push({ tone: "danger", href: "/app/financeiro/inadimplencia", text: `${vencidasReceber.length} cobrança(s) vencida(s), somando ${formatCurrency(vencidasReceber.reduce((s, f) => s + f.value, 0))}.` });
+    }
+    if (vencendoEm3.length > 0) {
+      alertas.push({ tone: "warning", href: "/app/financeiro/transacoes", text: `${formatCurrency(vencendoEm3.reduce((s, f) => s + f.value, 0))} em lançamentos vencem nos próximos 3 dias.` });
+    }
+
+    return { hoje: { entradas: hojeEntradas, saidas: hojeSaidas }, proximos7: { aReceber: aReceber7, aPagar: aPagar7 }, alertas };
+  }, [financeEntries, formatCurrency]);
 
   const upcomingEntries = useMemo(() =>
     financeEntries.filter(f => f.status === "A Vencer").slice(0, 4).map(f => ({
       label: f.description,
       date: f.date,
-      value: new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(f.value),
+      value: formatCurrency(f.value),
       type: f.type.toLowerCase() as "pagar" | "receber",
     })),
-  [financeEntries]);
+  [financeEntries, formatCurrency]);
 
   const chartData = useMemo(() => {
     const now = new Date();
@@ -92,11 +220,9 @@ export default function FinanceiroVisaoGeral() {
       });
       const rec = monthEntries.filter(f => f.type === "Receber" && f.status === "Pago").reduce((s, f) => s + f.value, 0);
       const des = monthEntries.filter(f => f.type === "Pagar"   && f.status === "Pago").reduce((s, f) => s + f.value, 0);
-      return { name: MONTH_NAMES[m], receita: rec, despesa: des, projection: Math.round(rec * 1.1) };
+      return { name: MONTH_NAMES[m], receita: rec, despesa: des };
     });
   }, [financeEntries]);
-
-  const stabilityScore = receita + despesa > 0 ? Math.round((receita / (receita + despesa)) * 100) : 0;
 
   const operationalInsights = useMemo(() => {
     const marketingSpend = financeEntries
@@ -119,47 +245,51 @@ export default function FinanceiroVisaoGeral() {
   return (
     <PageContainer
       title="Painel Financeiro"
-      description="Monitoramento avançado de fluxo, MRR, inadimplência e projeção de caixa em tempo real."
+      description="Saúde financeira, fluxo de caixa, MRR e inadimplência em um só lugar."
       actions={
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className="hidden sm:flex print:hidden h-9 px-4 text-xs font-bold gap-1.5 border-[var(--color-border-default)]"
-              >
-                <Calendar className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> {CICLOS.find(c => c.id === ciclo)?.label}
+              <Button variant="outline" className="hidden sm:flex print:hidden h-9 px-4 text-xs font-medium gap-1.5">
+                <Calendar className="w-3.5 h-3.5" /> {CICLOS.find(c => c.id === ciclo)?.label}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {CICLOS.map(c => (
                 <DropdownMenuItem key={c.id} onClick={() => setCiclo(c.id)} className="justify-between">
                   {c.label}
-                  {ciclo === c.id && <Check className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" />}
+                  {ciclo === c.id && <Check className="w-3.5 h-3.5" />}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            variant="outline"
-            onClick={() => window.print()}
-            className="print:hidden h-9 px-3 text-xs font-bold border-[var(--color-border-default)]"
-            title="Imprimir relatório"
-          >
+          <Button variant="outline" onClick={() => window.print()} className="print:hidden h-9 px-3 text-xs font-medium" title="Imprimir relatório">
             <Printer className="w-3.5 h-3.5" />
           </Button>
-          <Button
-            onClick={handleExport}
-            className="print:hidden h-9 px-4 text-xs font-bold gap-1.5 shadow-xs"
-          >
+          <Button onClick={handleExport} className="print:hidden h-9 px-4 text-xs font-medium gap-1.5">
             <Download className="w-3.5 h-3.5" /> Exportar
           </Button>
         </div>
       }
     >
-      <div className="space-y-6 max-w-[1700px] mx-auto pb-12">
-        <FinanceiroKPIs receita={receita} despesa={despesa} mrr={mrr} inadimplencia={inadimplencia} />
-        <FinanceiroCashflowChart chartData={chartData} stabilityScore={stabilityScore} />
+      <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
+        <FinanceiroKPIs cards={kpiCards} />
+        <FinanceiroAlertas {...alertasResumo} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <FinanceiroPrevistoRealizado recebimentos={previstoRealizadoRecebimentos} despesas={previstoRealizadoDespesas} />
+          <FinanceiroComparativoMes linhas={comparativoLinhas} />
+        </div>
+        <FinanceiroCashflowChart chartData={chartData} liquidez={liquidez} burnRate={burnRate} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <FinanceiroAgendaMes />
+          </div>
+          <FinanceiroAnexosResumo
+            totalArquivos={(financeAttachments as any[]).length}
+            totalBytes={(financeAttachments as any[]).reduce((s, a) => s + (a.tamanho_bytes || 0), 0)}
+          />
+        </div>
+        <FinanceiroProjecaoReceita mrr={mrr} receitaAvulsa={receitaAvulsa} clientesAtivos={clientesAtivos} churnRate={churnRate} projection={revenueProjection} />
         <FinanceiroBottomPanels upcomingEntries={upcomingEntries} {...operationalInsights} />
       </div>
     </PageContainer>

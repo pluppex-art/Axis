@@ -27,7 +27,7 @@ const tempOrder: Record<string, number> = { quente: 3, morno: 2, frio: 1 };
 
 export default function Pipeline() {
   const navigate = useNavigate();
-  const { user, updatePreferences } = useAuth();
+  const { user, updatePreferences, activeTenantId } = useAuth();
   const [view, setView] = useState<ViewMode>("kanban");
 
   useEffect(() => {
@@ -116,9 +116,13 @@ export default function Pipeline() {
   const handleReuniaoConfirm = async (reuniaoId: string) => {
     setAgendarReuniaoLead(null);
     let targetStageId = "1";
-    if (supabase) {
+    if (supabase && activeTenantId) {
       try {
-        const { data } = await supabase.from("app_settings").select("value").eq("key", "axis_reuniao_config").maybeSingle();
+        // Sem o filtro de tenant, contas de parceiro com acesso a vários
+        // tenants que também salvaram essa key recebiam múltiplas linhas —
+        // .maybeSingle() falha nesse caso e o erro era engolido pelo catch,
+        // caindo silenciosamente no stageId "1" padrão em vez do configurado.
+        const { data } = await supabase.from("app_settings").select("value").eq("key", "axis_reuniao_config").eq("tenant_id", activeTenantId).maybeSingle();
         if (data?.value) {
           const cfg = typeof data.value === "string" ? JSON.parse(data.value) : data.value;
           if (cfg?.promotionStageId) targetStageId = cfg.promotionStageId;

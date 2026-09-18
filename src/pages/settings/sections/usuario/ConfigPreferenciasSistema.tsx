@@ -8,6 +8,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "../../../../contexts/AuthContext";
 import { useData } from "../../../../contexts/DataContext";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 import { BRAND_COLORS } from "../../../../lib/theme";
 import { Logo } from "../../../../components/ui/Logo";
 
@@ -32,6 +33,7 @@ const DEFAULT_PREFS: SystemPreferences = {
 export function ConfigPreferenciasSistema() {
   const { user, updatePreferences } = useAuth();
   const { tenantPrimaryColor, updateTenantPrimaryColor } = useData();
+  const { t, setLanguage, setCurrency, ratesLoading, ratesStale } = useLocalization();
   const canEditBrandColor = !!(user?.isMaster || user?.isTenantAdmin);
   const [prefs, setPrefs] = useState<SystemPreferences>({
     ...DEFAULT_PREFS,
@@ -52,7 +54,7 @@ export function ConfigPreferenciasSistema() {
   const handleLanguageChange = (lang: string) => {
     const updated = { ...prefs, language: lang };
     persist(updated);
-    document.documentElement.lang = lang;
+    setLanguage(lang as "pt-BR" | "en-US" | "es-ES");
     const labels: Record<string, string> = {
       "pt-BR": "Português (Brasil)",
       "en-US": "English (United States)",
@@ -64,6 +66,7 @@ export function ConfigPreferenciasSistema() {
   const handleCurrencyChange = (curr: string) => {
     const updated = { ...prefs, currency: curr };
     persist(updated);
+    setCurrency(curr as "BRL" | "USD" | "EUR");
     const labels: Record<string, string> = {
       BRL: "Real Brasileiro (R$ - BRL)",
       USD: "Dólar Americano ($ - USD)",
@@ -102,17 +105,17 @@ export function ConfigPreferenciasSistema() {
     <div className="max-w-4xl space-y-6 animate-in fade-in duration-300 pb-12">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
-          Preferências do Sistema <Sliders className="w-5 h-5 text-[var(--color-primary-blue)]" />
+          {t("Preferências do Sistema")} <Sliders className="w-5 h-5 text-[var(--color-primary-blue)]" />
         </h1>
         <p className="text-sm text-[var(--color-text-muted)]">
-          Personalize a interface, modos de visualização, idioma, moeda e alertas visuais do S.P.Y..
+          {t("Personalize a interface, modos de visualização, idioma, moeda e alertas visuais do S.P.Y..")}
         </p>
       </div>
 
       {/* Theme Selector */}
       <Card className="p-6 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-4">
         <h3 className="text-sm font-bold text-[var(--color-text-primary)] flex items-center gap-2 pb-2 border-b border-[var(--color-border-subtle)]">
-          <Sun className="w-4 h-4 text-amber-500" /> Aparência & Tema
+          <Sun className="w-4 h-4 text-amber-500" /> {t("Aparência & Tema")}
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -120,13 +123,13 @@ export function ConfigPreferenciasSistema() {
             { id: "dark", label: "Modo Escuro (Dark)", icon: Moon, desc: "Tema padrão com alto contraste" },
             { id: "light", label: "Modo Claro (Light)", icon: Sun, desc: "Superfície clara para ambientes iluminados" },
             { id: "system", label: "Seguir Sistema", icon: Laptop, desc: "Alterna automaticamente com o SO" },
-          ].map((t) => {
-            const isSelected = prefs.theme === t.id;
+          ].map((opt) => {
+            const isSelected = prefs.theme === opt.id;
             return (
               <button
-                key={t.id}
+                key={opt.id}
                 type="button"
-                onClick={() => applyTheme(t.id as any)}
+                onClick={() => applyTheme(opt.id as any)}
                 className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-3 ${
                   isSelected
                     ? "bg-[var(--color-primary-blue)]/10 border-[var(--color-primary-blue)] text-[var(--color-primary-blue)] shadow-xs"
@@ -134,12 +137,12 @@ export function ConfigPreferenciasSistema() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <t.icon className={`w-5 h-5 ${isSelected ? "text-[var(--color-primary-blue)]" : "text-[var(--color-text-muted)]"}`} />
+                  <opt.icon className={`w-5 h-5 ${isSelected ? "text-[var(--color-primary-blue)]" : "text-[var(--color-text-muted)]"}`} />
                   {isSelected && <Check className="w-4 h-4 text-[var(--color-primary-blue)]" />}
                 </div>
                 <div>
-                  <p className="text-xs font-bold">{t.label}</p>
-                  <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{t.desc}</p>
+                  <p className="text-xs font-bold">{t(opt.label)}</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{t(opt.desc)}</p>
                 </div>
               </button>
             );
@@ -150,10 +153,10 @@ export function ConfigPreferenciasSistema() {
       {/* Brand Color */}
       <Card className="p-6 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-4">
         <h3 className="text-sm font-bold text-[var(--color-text-primary)] flex items-center gap-2 pb-2 border-b border-[var(--color-border-subtle)]">
-          <Palette className="w-4 h-4 text-[var(--color-primary-blue)]" /> Cor de marca
+          <Palette className="w-4 h-4 text-[var(--color-primary-blue)]" /> {t("Cor de marca")}
         </h3>
         <p className="text-xs text-[var(--color-text-muted)] -mt-2">
-          Cor de destaque do S.P.Y. para a sua empresa. Vale para todos os usuários deste tenant.
+          {t("Cor de destaque do S.P.Y. para a sua empresa. Vale para todos os usuários deste tenant.")}
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -187,7 +190,7 @@ export function ConfigPreferenciasSistema() {
 
         {!canEditBrandColor && (
           <p className="text-xs text-[var(--color-text-faint)]">
-            Só administradores da empresa podem alterar a cor de marca.
+            {t("Só administradores da empresa podem alterar a cor de marca.")}
           </p>
         )}
 
@@ -195,19 +198,19 @@ export function ConfigPreferenciasSistema() {
           <Logo variant="full" color={tenantPrimaryColor} size={40} />
         </div>
         <p className="text-[11px] text-[var(--color-text-faint)] -mt-2">
-          É assim que sua marca aparece no modo escuro — o brilho acompanha a cor escolhida.
+          {t("É assim que sua marca aparece no modo escuro — o brilho acompanha a cor escolhida.")}
         </p>
       </Card>
 
       {/* Regional & Formats */}
       <Card className="p-6 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-4">
         <h3 className="text-sm font-bold text-[var(--color-text-primary)] flex items-center gap-2 pb-2 border-b border-[var(--color-border-subtle)]">
-          <Globe className="w-4 h-4 text-[var(--color-primary-blue)]" /> Idioma & Moeda
+          <Globe className="w-4 h-4 text-[var(--color-primary-blue)]" /> {t("Idioma & Moeda")}
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1.5 block">Idioma da Plataforma</label>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1.5 block">{t("Idioma da Plataforma")}</label>
             <select
               value={prefs.language}
               onChange={(e) => handleLanguageChange(e.target.value)}
@@ -220,7 +223,7 @@ export function ConfigPreferenciasSistema() {
           </div>
 
           <div>
-            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1.5 block">Moeda Padrão</label>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1.5 block">{t("Moeda Padrão")}</label>
             <select
               value={prefs.currency}
               onChange={(e) => handleCurrencyChange(e.target.value)}
@@ -230,6 +233,13 @@ export function ConfigPreferenciasSistema() {
               <option value="USD">Dólar Americano ($ - USD)</option>
               <option value="EUR">Euro (€ - EUR)</option>
             </select>
+            <p className="text-[10px] text-[var(--color-text-faint)] mt-1.5 flex items-center gap-1">
+              {ratesLoading
+                ? t("Atualizando cotação...")
+                : ratesStale
+                ? t("Não foi possível atualizar a cotação agora — usando o último valor conhecido.")
+                : t("Conversão com cotação de câmbio em tempo real.")}
+            </p>
           </div>
         </div>
       </Card>
@@ -237,14 +247,14 @@ export function ConfigPreferenciasSistema() {
       {/* CRM & Workspace Experience */}
       <Card className="p-6 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-4">
         <h3 className="text-sm font-bold text-[var(--color-text-primary)] flex items-center gap-2 pb-2 border-b border-[var(--color-border-subtle)]">
-          <Columns3 className="w-4 h-4 text-[var(--color-primary-blue)]" /> Visualização & Alertas do CRM
+          <Columns3 className="w-4 h-4 text-[var(--color-primary-blue)]" /> {t("Visualização & Alertas do CRM")}
         </h3>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between p-3.5 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-[var(--radius-control)]">
             <div>
-              <p className="text-xs font-bold text-[var(--color-text-primary)]">Visualização Inicial do Pipeline</p>
-              <p className="text-[10px] text-[var(--color-text-muted)]">Escolha entre visão Kanban (colunas) ou Lista tabular ao abrir o CRM.</p>
+              <p className="text-xs font-bold text-[var(--color-text-primary)]">{t("Visualização Inicial do Pipeline")}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)]">{t("Escolha entre visão Kanban (colunas) ou Lista tabular ao abrir o CRM.")}</p>
             </div>
             <div className="flex gap-1.5 bg-[var(--color-surface-elevated)] p-1 rounded-lg border border-[var(--color-border-default)]">
               <button
@@ -259,15 +269,15 @@ export function ConfigPreferenciasSistema() {
                 onClick={() => persist({ ...prefs, defaultCrmView: "list" })}
                 className={`px-3 py-1 text-xs font-bold rounded cursor-pointer transition-all ${prefs.defaultCrmView === "list" ? "bg-[var(--color-primary-blue)] !text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"}`}
               >
-                Lista
+                {t("Lista")}
               </button>
             </div>
           </div>
 
           <div className="flex items-center justify-between p-3.5 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-[var(--radius-control)]">
             <div>
-              <p className="text-xs font-bold text-[var(--color-text-primary)]">Alertas Sonoros</p>
-              <p className="text-[10px] text-[var(--color-text-muted)]">Emitir som sutil ao receber novo lead ou notificação urgente.</p>
+              <p className="text-xs font-bold text-[var(--color-text-primary)]">{t("Alertas Sonoros")}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)]">{t("Emitir som sutil ao receber novo lead ou notificação urgente.")}</p>
             </div>
             <button
               type="button"
@@ -285,7 +295,7 @@ export function ConfigPreferenciasSistema() {
 
         <div className="flex justify-end pt-3">
           <Button onClick={handleSave} className="h-9 px-5 text-xs font-bold gap-1.5 shadow-xs">
-            <Save className="w-3.5 h-3.5" /> Salvar Preferências
+            <Save className="w-3.5 h-3.5" /> {t("Salvar Preferências")}
           </Button>
         </div>
       </Card>

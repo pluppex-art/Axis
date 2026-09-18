@@ -1,23 +1,12 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Building2, MapPin } from "lucide-react";
+import { Building2, MapPin, ChevronDown } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
-import { navSections, type NavReqCondition } from "./navData";
+import { navSections, conditionCheckers, type NavReqCondition } from "./navData";
 import { Logo } from "../ui/Logo";
-
-// Predicados para itens gated por `reqCondition` (não dá pra resolver
-// estaticamente em navData.ts porque dependem do usuário logado).
-//
-// NOTA: "master-or-gtech" ainda compara o nome do tenant — é um fix pontual
-// (match exato em vez de substring, que colidia com qualquer tenant cujo nome
-// contivesse "G-Tech", ex.: "G-Tech Consultoria"). O certo a prazo é uma
-// permissão real (ex.: users.is_platform_staff) em vez de string, mas isso é
-// uma decisão de modelagem de papel que ainda não foi tomada.
-const conditionCheckers: Record<NavReqCondition, (user: ReturnType<typeof useAuth>["user"]) => boolean> = {
-  "master-or-gtech": (user) => !!user?.isMaster || user?.tenantName?.trim().toLowerCase() === "g-tech master",
-  "master-or-partner": (user) => !!user?.isMaster || !!user?.partnerId,
-};
 
 interface SidebarProps {
   isSidebarCollapsed: boolean;
@@ -39,6 +28,11 @@ export function Sidebar({
     activeFilialId, switchFilial,
   } = useAuth();
   const { cargos, empresaFiliais, tenantPrimaryColor } = useData();
+  const { t } = useLocalization();
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const toggleSection = (title: string) => {
+    setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }));
+  };
 
   // Master vê e troca de cliente (tenant); admin do próprio tenant (ou master, dentro
   // do cliente ativo) vê e troca de filial daquele cliente.
@@ -160,16 +154,24 @@ export function Sidebar({
               return { ...section, items: visibleItems };
             })
             .filter(Boolean)
-            .map((section: any, idx) => (
+            .map((section: any, idx) => {
+              const isOpen = isSidebarCollapsed || !!openSections[section.title];
+
+              return (
               <div key={idx} className="space-y-1">
                 {!isSidebarCollapsed ? (
-                  <div className="px-2.5 text-[10px] font-black text-[var(--color-text-faint)] uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span>{section.title}</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(section.title)}
+                    className="w-full px-2.5 text-[10px] font-black text-[var(--color-text-faint)] uppercase tracking-wider mb-1.5 flex items-center justify-between cursor-pointer bg-transparent border-none hover:text-[var(--color-text-muted)] transition-colors"
+                  >
+                    <span>{t(section.title)}</span>
+                    <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  </button>
                 ) : (
                   <div className="h-2"></div>
                 )}
-                {section.items.map((item: any) => {
+                {isOpen && section.items.map((item: any) => {
                   const isActive = item.path ? location.pathname === item.path || (item.path !== '/app/dashboard' && item.path !== '/app' && location.pathname.startsWith(item.path)) : false;
 
                   const btnContent = (
@@ -183,7 +185,7 @@ export function Sidebar({
                     >
                       <item.icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "!text-white" : "text-[var(--color-text-faint)]"}`} />
                       {!isSidebarCollapsed && (
-                        <span className={`truncate ${isActive ? "!text-white" : ""}`}>{item.name}</span>
+                        <span className={`truncate ${isActive ? "!text-white" : ""}`}>{t(item.name)}</span>
                       )}
                     </button>
                   );
@@ -192,7 +194,7 @@ export function Sidebar({
                     return (
                       <div
                         key={item.name}
-                        title={isSidebarCollapsed ? item.name : undefined}
+                        title={isSidebarCollapsed ? t(item.name) : undefined}
                         className="cursor-pointer"
                         onClick={() => {
                           if (item.action === "sdr-webhooks") setIsSDRWebhookOpen(true);
@@ -208,7 +210,7 @@ export function Sidebar({
                     <Link
                       key={item.name}
                       to={item.path}
-                      title={isSidebarCollapsed ? item.name : undefined}
+                      title={isSidebarCollapsed ? t(item.name) : undefined}
                       onClick={() => setIsMobileSidebarOpen(false)}
                       className="block"
                     >
@@ -217,7 +219,8 @@ export function Sidebar({
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
         </div>
 
         {!isSidebarCollapsed && (
@@ -225,7 +228,7 @@ export function Sidebar({
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
               <span className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-wider">
-                Sistema Operacional 100%
+                {t("Sistema Operacional 100%")}
               </span>
             </div>
           </div>

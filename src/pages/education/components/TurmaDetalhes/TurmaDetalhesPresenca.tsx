@@ -107,7 +107,7 @@ export function TurmaDetalhesPresenca({
                     </div>
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <button className="p-2 text-slate-600 hover:text-white transition-colors">
+                    <button className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
                       <MoreVertical className="w-4 h-4" />
                     </button>
                   </td>

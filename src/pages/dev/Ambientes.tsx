@@ -96,7 +96,7 @@ export default function Ambientes() {
                     </span>
                     <button
                       onClick={() => handleRefresh(env.id)}
-                      className="text-slate-600 hover:text-white transition-colors"
+                      className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
                     >
                       <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                     </button>

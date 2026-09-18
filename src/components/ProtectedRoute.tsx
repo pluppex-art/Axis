@@ -2,7 +2,16 @@ import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
-export function ProtectedRoute({ children, requireMaster = false }: { children: React.ReactElement; requireMaster?: boolean }) {
+export function ProtectedRoute({
+  children,
+  requireMaster = false,
+  requirePartner = false,
+}: {
+  children: React.ReactElement;
+  requireMaster?: boolean;
+  /** G-Tech (master) ou organização parceira (ex.: Pluppex) — ver public.users.partner_id. */
+  requirePartner?: boolean;
+}) {
   const { user, authLoading } = useAuth();
   const location = useLocation();
 
@@ -22,6 +31,15 @@ export function ProtectedRoute({ children, requireMaster = false }: { children: 
   // mas rotas administrativas de plataforma (ex.: /app/admin) não deveriam nem
   // renderizar pra quem não é master — sem isso, a única barreira era a RLS.
   if (requireMaster && !user.isMaster) {
+    return <Navigate to="/app" replace />;
+  }
+
+  // Mesma defesa em profundidade para páginas de parceiros (ex.: /app/parceiros):
+  // só G-Tech (master) e organizações parceiras (partner_id preenchido, hoje só
+  // a Pluppex) devem sequer renderizar a tela — o resto já é barrado pela RLS
+  // (tenant_partners) e pela RPC platform_metrics_overview, mas sem essa guarda
+  // de rota qualquer usuário logado via qualquer tenant chegava a montar a página.
+  if (requirePartner && !user.isMaster && !user.partnerId) {
     return <Navigate to="/app" replace />;
   }
 

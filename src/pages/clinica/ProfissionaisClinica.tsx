@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { confirmDialog } from "../../components/ui/confirm-dialog";
 
 interface ProfissionalItem {
   id: string;
@@ -112,6 +113,11 @@ export default function ProfissionaisClinica() {
 
   const handleDelete = async (id: string) => {
     if (!supabase) return;
+    const profissional = profissionais.find(d => d.id === id);
+    if (!(await confirmDialog({
+      title: "Excluir profissional",
+      description: `Excluir "${profissional?.nome || "este profissional"}" do corpo clínico? Essa ação não pode ser desfeita.`,
+    }))) return;
     const { error } = await supabase.from("clinica_profissionais").delete().eq("id", id);
     if (error) { toast.error("Erro ao remover profissional."); return; }
     setProfissionais(prev => prev.filter(d => d.id !== id));

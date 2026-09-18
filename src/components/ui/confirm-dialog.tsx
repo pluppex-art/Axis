@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ConfirmModal } from "./modals/shared/ConfirmModal";
+import { useLocalization } from "../../contexts/LocalizationContext";
 
 interface ConfirmOptions {
   title?: string;
@@ -35,6 +36,7 @@ export function confirmDialog(options: ConfirmOptions = {}): Promise<boolean> {
 
 export function ConfirmDialogHost() {
   const [state, setState] = useState<ConfirmState | null>(null);
+  const { t } = useLocalization();
 
   useEffect(() => {
     listener = (next) => setState(next);
@@ -51,8 +53,8 @@ export function ConfirmDialogHost() {
       isOpen={!!state}
       onClose={() => close(false)}
       onConfirm={() => close(true)}
-      title={state?.title || "Confirmar exclusão"}
-      message={state?.description || "Essa ação não pode ser desfeita."}
+      title={state?.title || t("Confirmar exclusão")}
+      message={state?.description || t("Essa ação não pode ser desfeita.")}
       confirmText={state?.confirmText}
       cancelText={state?.cancelText}
     />

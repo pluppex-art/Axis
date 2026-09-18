@@ -25,9 +25,10 @@ export function NovoFormularioModal({ isOpen, onClose, onSave }: NovoFormularioM
   const [description, setDescription] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [source, setSource] = useState("");
+  const [layoutMode, setLayoutMode] = useState<"scroll" | "passo_a_passo">("passo_a_passo");
   const [loading, setLoading] = useState(false);
 
-  const reset = () => { setName(""); setDescription(""); setPreviewUrl(""); setSource(""); setLoading(false); };
+  const reset = () => { setName(""); setDescription(""); setPreviewUrl(""); setSource(""); setLayoutMode("passo_a_passo"); setLoading(false); };
   const handleClose = () => { reset(); onClose(); };
 
   const canSubmit = Boolean(name.trim() && previewUrl.trim() && source.trim());
@@ -98,6 +99,41 @@ export function NovoFormularioModal({ isOpen, onClose, onSave }: NovoFormularioM
           <label className={labelClass}>URL da Landing Page / Formulário *</label>
           <input type="url" value={previewUrl} onChange={(e) => setPreviewUrl(e.target.value)} placeholder="https://sua-pagina.com.br/inscricao" className={inputClass} required />
         </div>
+        <div>
+          <label className={labelClass}>Formato de Exibição do Formulário</label>
+          <div className="grid grid-cols-2 gap-2 mt-1.5">
+            <button
+              type="button"
+              onClick={() => setLayoutMode("scroll")}
+              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                layoutMode === "scroll"
+                  ? "bg-orange-500/15 border-orange-500 text-white font-bold ring-1 ring-orange-500/30"
+                  : "bg-[var(--color-surface)] border-white/10 text-slate-400 hover:text-white"
+              }`}
+            >
+              <span className="text-xs block font-black text-white">📜 Scroll Contínuo</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">
+                Estilo Google Forms — todas as perguntas na mesma página.
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLayoutMode("passo_a_passo")}
+              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                layoutMode === "passo_a_passo"
+                  ? "bg-orange-500/15 border-orange-500 text-white font-bold ring-1 ring-orange-500/30"
+                  : "bg-[var(--color-surface)] border-white/10 text-slate-400 hover:text-white"
+              }`}
+            >
+              <span className="text-xs block font-black text-white">🏃 Passo a Passo (Corridinha)</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">
+                Estilo Typeform — uma pergunta por vez, sequencial.
+              </span>
+            </button>
+          </div>
+        </div>
+
         <div>
           <label className={labelClass}>Source (identificador dos leads) *</label>
           <input type="text" value={source} onChange={(e) => setSource(e.target.value)} placeholder="Ex: landing_curso_vendas" className={inputClass} required />

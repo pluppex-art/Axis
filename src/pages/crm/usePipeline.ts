@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { supabase } from "../../lib/supabase";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import confetti from "canvas-confetti";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -36,16 +36,16 @@ export function usePipeline() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const { leads, updateLead, tasks, addTask, products, clienteBase, funis: dataFunis, colaboradores } = useData();
   const { user } = useAuth();
+  const { formatCurrency } = useLocalization();
 
   const [clientFilter, setClientFilter] = useState("Todos");
-  const [clientsList, setClientsList] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.from("clientes").select("name").order("name", { ascending: true }).then(({ data }) => {
-      if (data) setClientsList(data.map((c: any) => c.name).filter(Boolean));
-    });
-  }, []);
+  // `clienteBase` (useData) já vem escopado ao tenant ativo — um fetch próprio
+  // de "clientes" aqui não filtrava por tenant_id e vazava linhas de outros
+  // tenants pra contas de parceiro (has_tenant_access verdadeiro pra vários).
+  const clientsList = useMemo(
+    () => [...new Set((clienteBase as any[]).map((c: any) => c.name).filter(Boolean))].sort(),
+    [clienteBase]
+  );
 
   const [currentPipeline, setCurrentPipeline] = useState<"comercial" | "sdr">("comercial");
   const [selectedFunilId, setSelectedFunilId] = useState<string>("");
@@ -195,21 +195,26 @@ export function usePipeline() {
     (l.temperature === 'quente' || (l.scoreIA ?? 0) >= 80) && l.status !== 'Fechado' && l.status !== 'Perdido'
   ).length;
 
-  const totalValueSum = filteredItemsList.reduce((sum, item) => {
-    const ids: string[] = Array.isArray(item.productIds) ? item.productIds : [];
-    if (ids.length > 0) {
-      const productTotal = (products as any[]).reduce(
-        (s: number, p: any) => ids.includes(p.id) ? s + (Number(p.price) || 0) : s,
-        0
-      );
-      if (productTotal > 0) return sum + productTotal;
-    }
-    return sum + parseCurrencyBR(item.value ?? (item as any).valor);
-  }, 0);
+  // "Total de Ganhos" — soma só dos leads Fechados (mesmo filtro do card
+  // "Ganhos" ao lado, que conta a quantidade). Antes somava TODO o pipeline
+  // (aberto + ganho + perdido) sob o rótulo genérico "Valor Total", o que não
+  // batia com o conceito de "ganhos" e inflava o número com negócios ainda
+  // não fechados.
+  const totalValueSum = filteredItemsList
+    .filter((item: any) => item.status === 'Fechado')
+    .reduce((sum, item) => {
+      const ids: string[] = Array.isArray(item.productIds) ? item.productIds : [];
+      if (ids.length > 0) {
+        const productTotal = (products as any[]).reduce(
+          (s: number, p: any) => ids.includes(p.id) ? s + (Number(p.price) || 0) : s,
+          0
+        );
+        if (productTotal > 0) return sum + productTotal;
+      }
+      return sum + parseCurrencyBR(item.value ?? (item as any).valor);
+    }, 0);
 
-  const formattedTotalValue = new Intl.NumberFormat("pt-BR", {
-    style: "currency", currency: "BRL", maximumFractionDigits: 0,
-  }).format(totalValueSum);
+  const formattedTotalValue = formatCurrency(totalValueSum);
 
   const totalLeadsCount = filteredItemsList.length;
   const lastStageId = activePipelineStages.length > 0

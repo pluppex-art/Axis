@@ -1,16 +1,20 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { 
   Search, Command, LayoutDashboard, Users, 
   FileText, Zap, Settings, BarChart2, 
-  MessageSquare, Briefcase, Plus, Terminal
+  MessageSquare, Briefcase, Plus, Terminal,
+  GraduationCap
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router-dom";
+import { useLocalization } from "../contexts/LocalizationContext";
 
 export function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
+  const { t } = useLocalization();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -49,14 +53,14 @@ export function CommandPalette() {
         className="flex items-center gap-2.5 w-full sm:w-[28rem] px-3.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-500 hover:text-white hover:bg-white/10 transition-all text-sm font-medium"
       >
         <Search className="w-4 h-4 shrink-0" />
-        <span className="hidden sm:inline">Buscar...</span>
+        <span className="hidden sm:inline">{t("Buscar...")}</span>
         <kbd className="hidden sm:flex items-center gap-1 ml-auto px-1.5 py-0.5 rounded border border-white/10 bg-white/5 font-mono text-xs">
           <Command className="w-3 h-3" /> K
         </kbd>
       </button>
 
       <AnimatePresence>
-        {isOpen && (
+        {isOpen && createPortal(
           <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] px-4">
             <motion.div 
               initial={{ opacity: 0 }}
@@ -76,7 +80,7 @@ export function CommandPalette() {
                 <Search className="w-5 h-5 text-slate-500" />
                 <input 
                   autoFocus
-                  placeholder="O que você deseja fazer hoje?"
+                  placeholder={t("O que você deseja fazer hoje?")}
                   className="bg-transparent border-none text-white outline-none flex-1 font-medium text-lg placeholder:text-slate-600"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -92,7 +96,7 @@ export function CommandPalette() {
                     {Array.from(new Set(ACTIONS.map(a => a.category))).map(category => (
                       <div key={category} className="space-y-1">
                         <div className="px-3 py-1.5 text-[10px] font-black text-slate-600 uppercase tracking-[0.2em]">
-                          {category}
+                          {t(category)}
                         </div>
                         {ACTIONS.filter(a => a.category === category).map(action => (
                           <button
@@ -103,7 +107,7 @@ export function CommandPalette() {
                             <div className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-slate-500 group-hover:text-blue-500 group-hover:border-blue-500/20 transition-all">
                               <action.icon className="w-4 h-4" />
                             </div>
-                            <span className="text-sm font-bold text-slate-400 group-hover:text-white transition-colors">{action.name}</span>
+                            <span className="text-sm font-bold text-slate-400 group-hover:text-white transition-colors">{t(action.name)}</span>
                             <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
                               <Plus className="w-4 h-4 text-blue-500" />
                             </div>
@@ -113,9 +117,8 @@ export function CommandPalette() {
                     ))}
                   </div>
                 ) : (
-                  <div className="py-12 text-center">
-                    <Terminal className="w-8 h-8 text-slate-700 mx-auto mb-3" />
-                    <p className="text-sm text-slate-500 font-medium italic">Nenhum comando encontrado para "{search}"</p>
+                  <div className="p-8 text-center">
+                    <p className="text-sm text-slate-500 font-medium italic">{t('Nenhum comando encontrado para "{search}"').replace("{search}", search)}</p>
                   </div>
                 )}
               </div>
@@ -123,10 +126,10 @@ export function CommandPalette() {
               <div className="p-4 border-t border-white/5 bg-white/[0.02] flex items-center justify-between">
                 <div className="flex gap-4">
                   <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                    <span className="bg-white/10 px-1 rounded text-white">ESC</span> Fechar
+                    <span className="bg-white/10 px-1 rounded text-white">ESC</span> {t("Fechar")}
                   </div>
                   <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                    <span className="bg-white/10 px-1 rounded text-white">ENTER</span> Selecionar
+                    <span className="bg-white/10 px-1 rounded text-white">ENTER</span> {t("Selecionar")}
                   </div>
                 </div>
                 <div className="text-[10px] text-slate-600 font-bold italic">
@@ -134,12 +137,10 @@ export function CommandPalette() {
                 </div>
               </div>
             </motion.div>
-          </div>
+          </div>,
+          document.body
         )}
       </AnimatePresence>
     </>
   );
 }
-
-// Fixed missing import for graduation cap in the filter map above if needed, but graduation cap isn't in lucide-react list above.
-import { GraduationCap } from "lucide-react";

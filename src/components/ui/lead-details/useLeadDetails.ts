@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useData } from "../../../contexts/DataContext";
+import { useLocalization } from "../../../contexts/LocalizationContext";
 import { supabase } from "../../../lib/supabase";
 import { toast } from "sonner";
 import { calculateLeadScore } from "../../../lib/leadScore";
@@ -27,7 +28,8 @@ function buildStages(funis: any[], isSDR: boolean) {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useLeadDetails(lead: any, onClose: () => void) {
-  const { leadActivities, addLeadActivity, updateLead, deleteLead, customLeadFields, products, addProduct, turmas, addTurma, funis, students, addStudent } = useData();
+  const { leadActivities, addLeadActivity, updateLead, deleteLead, customLeadFields, products, addProduct, turmas, addTurma, funis, students, addStudent, proposals } = useData();
+  const { formatCurrency } = useLocalization();
 
   // ── Exclusão ─────────────────────────────────────────────────────────────────
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
@@ -118,12 +120,29 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     [linkedProductIds, availableProducts, productQuantities]
   );
 
-  // Sincroniza o campo value com o total dos produtos vinculados (view e edição)
+  // Proposta comercial vinculada a este lead (proposals.lead_id) — usada como
+  // fallback de valor quando o lead ainda não tem `productIds` preenchido
+  // (ex.: a proposta foi criada/vinculada por um fluxo que só grava o vínculo
+  // do lado da proposta, sem sincronizar de volta o array de produtos do lead).
+  // Mesma lógica de "proposta mais recente vinculada" usada em ProductsSection.
+  const linkedProposal = useMemo(() => {
+    if (!lead?.id) return null;
+    const linked = (proposals || []).filter((p: any) => p.lead_id === lead.id);
+    if (linked.length === 0) return null;
+    return [...linked].sort((a: any, b: any) =>
+      new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    )[0];
+  }, [proposals, lead?.id]);
+
+  // Sincroniza o campo value com o total dos produtos vinculados (view e edição);
+  // se não há productIds mas existe proposta vinculada, usa o valor dela.
   useEffect(() => {
     if (linkedProductIds.length > 0) {
-      setValue(`R$ ${estimatedSum.toLocaleString("pt-BR")}`);
+      setValue(formatCurrency(estimatedSum));
+    } else if (linkedProposal?.valor && Number(linkedProposal.valor) > 0) {
+      setValue(formatCurrency(Number(linkedProposal.valor)));
     }
-  }, [linkedProductIds, estimatedSum]);
+  }, [linkedProductIds, estimatedSum, linkedProposal, formatCurrency]);
 
   // ── Estágios do funil ─────────────────────────────────────────────────────────
   // Funis vêm do Supabase (crm_funis, via DataContext) — nada de localStorage.
@@ -144,7 +163,10 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     setSeller(lead.seller || "");
     setPriority(lead.priority || "Média");
     setCustomFieldsState(lead.customFields || {});
-    setLinkedProductIds(Array.isArray(lead.productIds) ? lead.productIds : []);
+    // Se a proposta vinculada já foi Aceita, os produtos pertencem à proposta fechada
+    // e não devem ficar ativos no carrinho de nova proposta do Mini PDV.
+    const isAccepted = linkedProposal?.status === "Aceita";
+    setLinkedProductIds(isAccepted ? [] : (Array.isArray(lead.productIds) ? lead.productIds : []));
     setCustomTags(Array.isArray(lead.customFields?.tags) ? lead.customFields.tags : []);
 
     // Calcula score dinâmico considerando a etapa e as notas do cliente
@@ -163,7 +185,14 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     setScore(effectiveScore);
     setTemperature(derivedTemp);
     setProbability(effectiveScore >= 80 ? 85 : effectiveScore >= 70 ? 70 : effectiveScore >= 40 ? 45 : 20);
-  }, [lead]);
+  }, [lead, linkedProposal?.status]);
+
+  // Garante que propostas já aceitas não deixem produtos pendentes no carrinho do PDV
+  useEffect(() => {
+    if (linkedProposal?.status === "Aceita") {
+      setLinkedProductIds([]);
+    }
+  }, [linkedProposal?.status]);
 
   // Reseta stageId e modo de edição quando muda de lead
   useEffect(() => {
@@ -384,6 +413,9 @@ export function useLeadDetails(lead: any, onClose: () => void) {
     contractMonths?: number;
     hasImplementation?: boolean;
     implementationFee?: number;
+    currentStock?: number;
+    stockMin?: number;
+    stockMax?: number;
   }) => {
     const sku = data.sku?.trim() || `PROD-${Math.floor(1000 + Math.random() * 9000)}`;
     const priceNum = Number(data.price) || 0;
@@ -402,9 +434,9 @@ export function useLeadDetails(lead: any, onClose: () => void) {
       margin: marginRatio,
       commission: commNum,
       active: true,
-      stockMin: 1,
-      stockMax: 100,
-      currentStock: 10,
+      stockMin: data.stockMin !== undefined ? data.stockMin : 1,
+      stockMax: data.stockMax !== undefined ? data.stockMax : 100,
+      currentStock: data.currentStock !== undefined ? data.currentStock : 10,
       description: data.description || "",
       provider: seller || "Interno",
       tags: ["crm", "lead"],
@@ -442,7 +474,7 @@ export function useLeadDetails(lead: any, onClose: () => void) {
       {
         id: Date.now().toString(),
         author: seller || "Sistema",
-        desc: `Cadastrou e vinculou produto '${newProd.name}' (R$ ${priceNum.toLocaleString("pt-BR")})`,
+        desc: `Cadastrou e vinculou produto '${newProd.name}' (${formatCurrency(priceNum)})`,
         time: "Agora",
       },
       ...prev,

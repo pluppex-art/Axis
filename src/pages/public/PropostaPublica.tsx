@@ -148,7 +148,8 @@ export default function PropostaPublica() {
         product_name: i.productName,
         quantidade: i.quantidade,
         preco_unitario: i.precoUnitario,
-      })) || []
+      })) || [],
+      { logoUrl: proposta.empresaDados?.logoUrl, tenantName }
     );
     toast.success("PDF do documento gerado com sucesso!");
   };
@@ -159,12 +160,18 @@ export default function PropostaPublica() {
       <header className="sticky top-0 z-30 backdrop-blur-md border-b border-[var(--color-border-default)] bg-[var(--color-surface-elevated)]/90 shadow-xs px-4 sm:px-8 py-3.5">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md shrink-0"
-              style={{ backgroundColor: brandColor }}
-            >
-              {tenantName.charAt(0).toUpperCase()}
-            </div>
+            {proposta.empresaDados?.logoUrl ? (
+              <div className="w-9 h-9 rounded-xl bg-white border border-[var(--color-border-default)] flex items-center justify-center shadow-md shrink-0 overflow-hidden">
+                <img src={proposta.empresaDados.logoUrl} alt={tenantName} className="w-full h-full object-contain p-1" />
+              </div>
+            ) : (
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md shrink-0"
+                style={{ backgroundColor: brandColor }}
+              >
+                {tenantName.charAt(0).toUpperCase()}
+              </div>
+            )}
             <div>
               <span className="text-xs font-black tracking-wider uppercase block" style={{ color: brandColor }}>
                 {tenantName}
