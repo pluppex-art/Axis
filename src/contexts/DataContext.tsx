@@ -20,6 +20,7 @@ import {
 } from './dataMocks';
 import { DataContext, DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao, Indicacao, AuroraAgent, useData } from './DataContextTypes';
 import { apiFetch } from "../lib/apiClient";
+import { isDateLocked } from "../pages/finance/lib/financeEngine";
 import { parseCurrencyBR } from "../lib/utils";
 import { useLocalization } from "./LocalizationContext";
 
@@ -500,6 +501,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [empresaFiliais, setEmpresaFiliais] = useState<any[]>([]);
   const [nichos, setNichos] = useState<any[]>([]);
   const [financeCategories, setFinanceCategories] = useState<any[]>([]);
+  const [financeBankAccounts, setFinanceBankAccounts] = useState<any[]>([]);
+  const [financeTransfers, setFinanceTransfers] = useState<any[]>([]);
+  const [financeCentrosCusto, setFinanceCentrosCusto] = useState<any[]>([]);
+  const [financeAttachments, setFinanceAttachments] = useState<any[]>([]);
+  const [financePeriodLocks, setFinancePeriodLocks] = useState<any[]>([]);
+  const [financeAuditLog, setFinanceAuditLog] = useState<any[]>([]);
   const [financeCommissionEntries, setFinanceCommissionEntries] = useState<any[]>([]);
   const [scheduledExports, setScheduledExports] = useState<any[]>([]);
   const [educationContent, setEducationContent] = useState<any[]>([]);
@@ -597,6 +604,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'empresa_filiais' }, () => fetchTableData('empresa_filiais', setEmpresaFiliais))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'nichos' }, () => fetchNichos())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_categories' }, () => fetchTableData('finance_categories', setFinanceCategories))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_bank_accounts' }, () => fetchTableData('finance_bank_accounts', setFinanceBankAccounts))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transfers' }, () => fetchTableData('finance_transfers', setFinanceTransfers))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_centros_custo' }, () => fetchTableData('finance_centros_custo', setFinanceCentrosCusto))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_attachments' }, () => fetchTableData('finance_attachments', setFinanceAttachments))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_period_locks' }, () => fetchTableData('finance_period_locks', setFinancePeriodLocks))
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'finance_audit_log' }, () => fetchTableData('finance_audit_log', setFinanceAuditLog))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_commission_entries' }, () => fetchTableData('finance_commission_entries', setFinanceCommissionEntries))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_exports' }, () => fetchTableData('scheduled_exports', setScheduledExports))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'education_content' }, () => fetchTableData('education_content', setEducationContent))
@@ -627,7 +640,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               productsRes, proposalsRes, proposalItemsRes, turmasRes, studentsRes, colabRes, squadMetasRes, certRes, cargosRes,
               clienteBaseRes, reunioesRes, financialGoalsRes, funisRes, filiaisRes,
               financeCategoriesRes, scheduledExportsRes, educationContentRes,
-              marketingFormsRes, nichosRes, financeCommissionEntriesRes, indicacoesRes, mktAutoRes, auroraAgentsRes
+              marketingFormsRes, nichosRes, financeCommissionEntriesRes, indicacoesRes, mktAutoRes, auroraAgentsRes,
+              financeBankAccountsRes, financeTransfersRes, financePeriodLocksRes, financeAuditLogRes, financeCentrosCustoRes, financeAttachmentsRes
             ] = await Promise.all([
               supabase.from('leads').select('*').eq('tenant_id', tenantId),
               supabase.from('tasks').select('*').eq('tenant_id', tenantId),
@@ -669,6 +683,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               supabase.from('indicacoes').select('*').eq('tenant_id', tenantId),
               supabase.from('marketing_automations').select('*').eq('tenant_id', tenantId),
               supabase.from('aurora_agents').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_bank_accounts').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_transfers').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_period_locks').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500),
+              supabase.from('finance_centros_custo').select('*').eq('tenant_id', tenantId),
+              supabase.from('finance_attachments').select('*').eq('tenant_id', tenantId),
             ]);
 
             if (!leadsRes.error && leadsRes.data && leadsRes.data.length > 0) {
@@ -707,6 +727,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             if (!filiaisRes.error && filiaisRes.data) setEmpresaFiliais(filiaisRes.data);
             if (!nichosRes.error && nichosRes.data) setNichos(nichosRes.data);
             if (!financeCategoriesRes.error && financeCategoriesRes.data) setFinanceCategories(financeCategoriesRes.data);
+            if (!financeBankAccountsRes.error && financeBankAccountsRes.data) setFinanceBankAccounts(financeBankAccountsRes.data);
+            if (!financeTransfersRes.error && financeTransfersRes.data) setFinanceTransfers(financeTransfersRes.data);
+            if (!financePeriodLocksRes.error && financePeriodLocksRes.data) setFinancePeriodLocks(financePeriodLocksRes.data);
+            if (!financeAuditLogRes.error && financeAuditLogRes.data) setFinanceAuditLog(financeAuditLogRes.data);
+            if (!financeCentrosCustoRes.error && financeCentrosCustoRes.data) setFinanceCentrosCusto(financeCentrosCustoRes.data);
+            if (!financeAttachmentsRes.error && financeAttachmentsRes.data) setFinanceAttachments(financeAttachmentsRes.data);
             if (!financeCommissionEntriesRes.error && financeCommissionEntriesRes.data) setFinanceCommissionEntries(financeCommissionEntriesRes.data);
             if (!indicacoesRes.error && indicacoesRes.data) setIndicacoes(indicacoesRes.data as Indicacao[]);
             if (!mktAutoRes.error && mktAutoRes.data) setMarketingAutomations(mktAutoRes.data);
@@ -1029,8 +1055,65 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => { triggerScoreRecalculation(newLead.id, [newLead]); }, 400);
   };
 
+  // Ao ganhar um lead (status -> "Fechado"), cria (ou vincula, se já existir por
+  // e-mail/CNPJ) o registro correspondente na Base de Clientes, evitando duplicar
+  // clientes quando mais de um lead da mesma empresa fecha negócio.
+  const createClientFromWonLead = async (lead: Lead) => {
+    if (!supabase || !tenantId || lead.clientId) return;
+    try {
+      const documento = lead.cnpj || null;
+      let existing: any = null;
+      if (documento) {
+        const { data } = await supabase.from('clientes').select('id, name').eq('tenant_id', tenantId).eq('documento', documento).maybeSingle();
+        existing = data;
+      } else if (lead.email) {
+        const { data } = await supabase.from('clientes').select('id, name').eq('tenant_id', tenantId).eq('email', lead.email).maybeSingle();
+        existing = data;
+      }
+
+      let clientId = existing?.id;
+      let clientName = existing?.name;
+
+      if (!existing) {
+        const newClient = {
+          name: lead.company || lead.name,
+          industry: "Tecnologia",
+          city: "São Paulo",
+          state: "SP",
+          phone: lead.phone || "(11) 99999-9999",
+          email: lead.email || "contato@empresa.com",
+          documento,
+          status: "Ativo",
+          tenant_id: tenantId,
+        };
+        const { data: inserted, error } = await supabase.from('clientes').insert(newClient).select().maybeSingle();
+        if (error) { console.error("Erro ao criar cliente a partir do lead ganho:", error.message); return; }
+        if (inserted) {
+          clientId = inserted.id;
+          clientName = inserted.name;
+          setClienteBase(prev => [inserted, ...prev]);
+        }
+      }
+
+      if (clientId) {
+        updateLead(lead.id, { clientId, clientName });
+        addNotification({
+          title: "Novo Cliente na Base",
+          desc: `${clientName} foi adicionado à Base de Clientes a partir do lead ganho "${lead.name}".`,
+          link: "/app/crm/clientes",
+          type: "success",
+          category: "CRM & Vendas",
+        });
+        toast.success(existing ? "Lead vinculado a um cliente já existente na base." : "Cliente adicionado à Base de Clientes!");
+      }
+    } catch (err) {
+      console.error("Falha ao converter lead ganho em cliente:", err);
+    }
+  };
+
   const updateLead = async (id: string, updates: Partial<Lead>) => {
     let hasStatusOrStageChange = false;
+    let becameWon = false;
     // Capturado dentro do updater para repassar pro recálculo de score abaixo —
     // sem isso, o setTimeout usava a variável `leads` do closure desta render
     // (o estado ANTES deste update), e reescrevia o stageId antigo no Supabase
@@ -1064,6 +1147,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             });
           }
           if (updates.status === 'Fechado' && l.status !== 'Fechado') {
+            becameWon = true;
             addNotification({
               title: "Automação: E-mail de Boas Vindas",
               desc: `Boas vindas enviadas para ${updatedLead.name} por ter se tornado cliente!`,
@@ -1104,6 +1188,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
     if (hasStatusOrStageChange) {
       setTimeout(() => { triggerScoreRecalculation(id, mergedLead ? [mergedLead] : undefined); }, 400);
+    }
+    if (becameWon && mergedLead) {
+      createClientFromWonLead(mergedLead);
     }
   };
 
@@ -1615,6 +1702,58 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const empresaFilialCrud = createCrudHelper('empresa_filiais', setEmpresaFiliais);
   const nichoCrud = createCrudHelper('nichos', setNichos);
   const financeCategoryCrud = createCrudHelper('finance_categories', setFinanceCategories);
+  const financeBankAccountCrud = createCrudHelper('finance_bank_accounts', setFinanceBankAccounts);
+  const financeTransferCrud = createCrudHelper('finance_transfers', setFinanceTransfers);
+  const financePeriodLockCrud = createCrudHelper('finance_period_locks', setFinancePeriodLocks);
+  const financeCentroCustoCrud = createCrudHelper('finance_centros_custo', setFinanceCentrosCusto);
+  const financeAttachmentCrud = createCrudHelper('finance_attachments', setFinanceAttachments);
+  const clienteBaseCrud = createCrudHelper('clientes', setClienteBase);
+
+  // Diff campo a campo pro log de auditoria — só entram os campos que de
+  // fato mudaram, e nunca os de controle interno (id/tenant/filial/created_at).
+  const buildFinanceAuditDiff = (before: any, after: any): Record<string, { old: any; new: any }> => {
+    const diff: Record<string, { old: any; new: any }> = {};
+    const ignorar = new Set(['id', 'tenant_id', 'filial_id', 'created_at']);
+    const chaves = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+    for (const k of chaves) {
+      if (ignorar.has(k)) continue;
+      const a = before?.[k] ?? null, b = after?.[k] ?? null;
+      if (JSON.stringify(a) !== JSON.stringify(b)) diff[k] = { old: a, new: b };
+    }
+    return diff;
+  };
+
+  const writeFinanceAuditLog = async (params: { tipo_acao: 'CRIACAO' | 'ATUALIZACAO' | 'EXCLUSAO'; descricao_alvo: string; diff: Record<string, { old: any; new: any }> }) => {
+    if (!supabase || !tenantId || Object.keys(params.diff).length === 0 && params.tipo_acao === 'ATUALIZACAO') return;
+    const row = {
+      tenant_id: tenantId,
+      usuario_id: user?.id || null,
+      usuario_nome: (user as any)?.name || null,
+      tipo_item: 'TRANSACAO' as const,
+      tipo_acao: params.tipo_acao,
+      descricao_alvo: params.descricao_alvo,
+      diff: params.diff,
+    };
+    const { data, error } = await supabase.from('finance_audit_log').insert(row).select().single();
+    if (error) { console.error('[Supabase] finance_audit_log insert error:', error.message); return; }
+    if (data) setFinanceAuditLog(prev => [data, ...prev]);
+  };
+
+  // Transação paga dentro de um período bloqueado é imutável — pendente no
+  // mesmo intervalo continua livre (spec §9.1).
+  const checkFinanceEntryLock = (entry: { status?: string; date?: string } | undefined): boolean => {
+    if (!entry || entry.status !== 'Pago') return false;
+    return isDateLocked(entry.date, financePeriodLocks as any[]);
+  };
+
+  // "Definir como principal" precisa desmarcar a conta principal anterior
+  // primeiro — o índice único parcial no banco (uma só is_principal=true por
+  // tenant) rejeita duas contas principais ao mesmo tempo.
+  const setContaPrincipal = async (id: string) => {
+    const atual = financeBankAccounts.find((a: any) => a.is_principal);
+    if (atual && atual.id !== id) await financeBankAccountCrud.update(atual.id, { is_principal: false });
+    await financeBankAccountCrud.update(id, { is_principal: true });
+  };
   const financeCommissionEntryCrud = createCrudHelper('finance_commission_entries', setFinanceCommissionEntries);
   const scheduledExportCrud = createCrudHelper('scheduled_exports', setScheduledExports);
   const educationContentCrud = createCrudHelper('education_content', setEducationContent);
@@ -1622,6 +1761,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const indicacaoCrud = createCrudHelper('indicacoes', setIndicacoes as any);
 
   const addFinanceEntry = async (entry: Omit<FinanceEntry, 'id'>, options: { silent?: boolean } = {}) => {
+    if (checkFinanceEntryLock(entry)) {
+      toast.error("Este período está bloqueado para fechamento — não é possível lançar transações pagas nessa data.");
+      return;
+    }
     const newEntry: any = { ...entry, id: crypto.randomUUID() };
     if (tenantId) newEntry.tenant_id = tenantId;
     newEntry.filial_id = activeFilialId;
@@ -1634,6 +1777,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     }
+    writeFinanceAuditLog({ tipo_acao: 'CRIACAO', descricao_alvo: newEntry.description || 'Lançamento financeiro', diff: buildFinanceAuditDiff(null, newEntry) });
     if (!options.silent) toast.success(`${entry.type === 'Pagar' ? 'Despesa' : 'Receita'} registrada!`);
   };
 
@@ -1795,6 +1939,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [proposals, contracts]);
 
   const deleteFinanceEntry = async (id: string) => {
+    const before = financeEntries.find(f => f.id === id);
+    if (checkFinanceEntryLock(before)) {
+      toast.error("Este lançamento está pago dentro de um período bloqueado — não pode ser excluído.");
+      return;
+    }
     setFinanceEntries(prev => prev.filter(f => f.id !== id));
     if (supabase) {
       const { error } = await supabase.from('finance_entries').delete().eq('id', id);
@@ -1804,18 +1953,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     }
+    if (before) writeFinanceAuditLog({ tipo_acao: 'EXCLUSAO', descricao_alvo: before.description || 'Lançamento financeiro', diff: buildFinanceAuditDiff(before, null) });
     toast.info('Lançamento financeiro removido.');
   };
 
   const updateFinanceEntry = async (id: string, updates: Partial<FinanceEntry>) => {
+    const before = financeEntries.find(f => f.id === id);
+    if (checkFinanceEntryLock(before)) {
+      toast.error("Este lançamento está pago dentro de um período bloqueado — não pode ser editado.");
+      return;
+    }
     setFinanceEntries(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
     if (supabase) {
       const { error } = await supabase.from('finance_entries').update(updates).eq('id', id);
       if (error) {
         console.error("Supabase update finance_entries failed:", error.message);
         toast.error(`Erro ao atualizar lançamento: ${error.message}`);
+        return;
       }
     }
+    if (before) writeFinanceAuditLog({ tipo_acao: 'ATUALIZACAO', descricao_alvo: before.description || 'Lançamento financeiro', diff: buildFinanceAuditDiff(before, { ...before, ...updates }) });
   };
 
   const addAppointment = async (apt: Omit<Appointment, 'id'>) => {
@@ -1916,6 +2073,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addFinanceCategory: financeCategoryCrud.add,
       updateFinanceCategory: financeCategoryCrud.update,
       deleteFinanceCategory: financeCategoryCrud.del,
+      financeBankAccounts,
+      addFinanceBankAccount: financeBankAccountCrud.add,
+      updateFinanceBankAccount: financeBankAccountCrud.update,
+      deleteFinanceBankAccount: financeBankAccountCrud.del,
+      setContaPrincipal,
+      financeTransfers,
+      addFinanceTransfer: financeTransferCrud.add,
+      updateFinanceTransfer: financeTransferCrud.update,
+      deleteFinanceTransfer: financeTransferCrud.del,
+      financePeriodLocks,
+      addFinancePeriodLock: financePeriodLockCrud.add,
+      deleteFinancePeriodLock: financePeriodLockCrud.del,
+      financeAuditLog,
+      financeCentrosCusto,
+      addFinanceCentroCusto: financeCentroCustoCrud.add,
+      updateFinanceCentroCusto: financeCentroCustoCrud.update,
+      deleteFinanceCentroCusto: financeCentroCustoCrud.del,
+      financeAttachments,
+      addFinanceAttachment: financeAttachmentCrud.add,
+      deleteFinanceAttachment: financeAttachmentCrud.del,
+      addClienteBase: clienteBaseCrud.add,
+      updateClienteBase: clienteBaseCrud.update,
+      deleteClienteBase: clienteBaseCrud.del,
       financeCommissionEntries,
       addFinanceCommissionEntry: financeCommissionEntryCrud.add,
       updateFinanceCommissionEntry: financeCommissionEntryCrud.update,

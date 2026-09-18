@@ -41,10 +41,23 @@ export interface FinanceEntry {
   type: 'Pagar' | 'Receber';
   date: string;
   is_recurring?: boolean;
-  recurring_frequency?: 'semanal' | 'mensal' | 'anual' | null;
+  recurring_frequency?: 'semanal' | 'quinzenal' | 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual' | null;
   /** Liga todas as ocorrências geradas pela mesma recorrência — útil pra
    * identificar/gerenciar o grupo depois (ex.: cancelar as futuras). */
   recurring_group_id?: string | null;
+  /** Vínculo real com finance_categories — `category` (nome) continua
+   * gravado por compatibilidade/exibição, mas quem define a linha do DRE é
+   * este id. */
+  category_id?: string | null;
+  centro_custo_id?: string | null;
+  tags?: string[];
+  competencia_date?: string | null;
+  conta_bancaria_id?: string | null;
+  numero_documento?: string | null;
+  /** Vínculo opcional com um Contato completo (tabela `clientes`, reaproveitada
+   * como Cliente/Fornecedor/Funcionário) — `counterparty` (texto livre)
+   * continua existindo pra quando não vale a pena cadastrar um contato completo. */
+  contato_id?: string | null;
   /** Texto livre com detalhes/observações — separado do `description` (nome
    * curto) porque nem todo lançamento precisa de um texto longo. */
   notes?: string | null;
@@ -58,6 +71,9 @@ export interface FinanceEntry {
   installment_group_id?: string | null;
   installment_number?: number | null;
   installment_total?: number | null;
+  /** Rateio ("Detalhar valor"): liga as N linhas geradas ao dividir um
+   * lançamento — cada divisão é um finance_entries independente. */
+  division_group_id?: string | null;
 }
 
 export type Appointment = {
@@ -198,9 +214,34 @@ export interface DataContextType {
   updateNicho: (id: string, updates: any) => Promise<void>;
   deleteNicho: (id: string) => Promise<boolean>;
   financeCategories: any[];
-  addFinanceCategory: (category: any) => Promise<void>;
+  // Retorna a categoria criada (com id) — o formulário de lançamento precisa
+  // do id pra já vincular a categoria recém-criada ao lançamento sendo salvo.
+  addFinanceCategory: (category: any) => Promise<any>;
   updateFinanceCategory: (id: string, updates: any) => Promise<void>;
   deleteFinanceCategory: (id: string) => Promise<boolean>;
+  financeBankAccounts: any[];
+  addFinanceBankAccount: (conta: any) => Promise<any>;
+  updateFinanceBankAccount: (id: string, updates: any) => Promise<void>;
+  deleteFinanceBankAccount: (id: string) => Promise<boolean>;
+  setContaPrincipal: (id: string) => Promise<void>;
+  financeTransfers: any[];
+  addFinanceTransfer: (transferencia: any) => Promise<any>;
+  updateFinanceTransfer: (id: string, updates: any) => Promise<void>;
+  deleteFinanceTransfer: (id: string) => Promise<boolean>;
+  financePeriodLocks: any[];
+  addFinancePeriodLock: (lock: any) => Promise<any>;
+  deleteFinancePeriodLock: (id: string) => Promise<boolean>;
+  financeAuditLog: any[];
+  financeCentrosCusto: any[];
+  addFinanceCentroCusto: (centro: any) => Promise<any>;
+  updateFinanceCentroCusto: (id: string, updates: any) => Promise<void>;
+  deleteFinanceCentroCusto: (id: string) => Promise<boolean>;
+  financeAttachments: any[];
+  addFinanceAttachment: (anexo: any) => Promise<any>;
+  deleteFinanceAttachment: (id: string) => Promise<boolean>;
+  addClienteBase: (cliente: any) => Promise<any>;
+  updateClienteBase: (id: string, updates: any) => Promise<void>;
+  deleteClienteBase: (id: string) => Promise<boolean>;
   financeCommissionEntries: any[];
   addFinanceCommissionEntry: (entry: any) => Promise<void>;
   updateFinanceCommissionEntry: (id: string, updates: any) => Promise<void>;

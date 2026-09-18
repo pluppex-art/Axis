@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "../../components/ui/dropdown-menu";
-import { Printer, Download, Calendar, Check, Inbox, Wallet, Scale, Repeat2, TrendingUp, TrendingDown, AlertTriangle, Waves } from "lucide-react";
+import { Printer, Download, Calendar, Check, Inbox, Wallet, Scale, Repeat2, TrendingUp, TrendingDown, AlertTriangle, Waves, Landmark } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
 import { PageContainer } from "../../components/PageContainer";
 import { FinanceiroKPIs, type FinanceiroKpiCard } from "./components/FinanceiroVisaoGeral/FinanceiroKPIs";
@@ -9,10 +9,15 @@ import { FinanceiroAlertas, type FinanceiroAlertaItem } from "./components/Finan
 import { FinanceiroCashflowChart } from "./components/FinanceiroVisaoGeral/FinanceiroCashflowChart";
 import { FinanceiroBottomPanels } from "./components/FinanceiroVisaoGeral/FinanceiroBottomPanels";
 import { FinanceiroProjecaoReceita } from "./components/FinanceiroVisaoGeral/FinanceiroProjecaoReceita";
+import { FinanceiroPrevistoRealizado } from "./components/FinanceiroVisaoGeral/FinanceiroPrevistoRealizado";
+import { FinanceiroComparativoMes } from "./components/FinanceiroVisaoGeral/FinanceiroComparativoMes";
+import { FinanceiroAgendaMes } from "./components/FinanceiroVisaoGeral/FinanceiroAgendaMes";
+import { FinanceiroAnexosResumo } from "./components/FinanceiroVisaoGeral/FinanceiroAnexosResumo";
 import { downloadCsv } from "../../lib/csvExport";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { getMRR, getActiveCustomers, getChurnRate, getRevenueProjection } from "../../lib/revenueMetrics";
 import { parseEntryDate } from "./lib/financeDates";
+import { saldoDaConta, transferenciasDaConta, previstoRealizado, comparativoMesAnterior, categoriesById, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
@@ -51,7 +56,7 @@ function pctChange(curr: number, prev: number): number | null {
 }
 
 export default function FinanceiroVisaoGeral() {
-  const { financeEntries, contracts, leads } = useData();
+  const { financeEntries, contracts, leads, financeBankAccounts, financeTransfers, financeCategories, financeAttachments } = useData();
   const { formatCurrency } = useLocalization();
   const [ciclo, setCiclo] = useState<Ciclo>("mes");
 
@@ -121,7 +126,18 @@ export default function FinanceiroVisaoGeral() {
     // card de MRR fica sem delta (deltaPct: null) até essa série existir.
     const mrrAtual = getMRR(contracts);
 
+    // Saldo real de caixa: soma o saldo de cada conta bancária ativa (saldo
+    // inicial + pagos). Sem contas cadastradas o card mostra R$ 0 — nunca um
+    // saldo inventado.
+    const contasAtivas = (financeBankAccounts as any[]).filter(c => !c.arquivada);
+    const saldoTotalContas = contasAtivas.reduce((soma, conta) => {
+      const entriesDaConta = (financeEntries as FinanceEntryLike[]).filter((e: any) => e.conta_bancaria_id === conta.id);
+      const { recebidas, enviadas } = transferenciasDaConta(financeTransfers as any[], conta.id);
+      return soma + saldoDaConta({ saldoInicial: conta.saldo_inicial, sinalSaldoInicial: conta.sinal_saldo_inicial, entriesDaConta, transferenciasRecebidasPagas: recebidas, transferenciasEnviadasPagas: enviadas });
+    }, 0);
+
     return [
+      { label: "Saldo em Contas", value: saldoTotalContas, format: "currency", count: contasAtivas.length || undefined, deltaPct: null, deltaGoodWhenUp: null, danger: saldoTotalContas < 0, icon: Landmark, href: "/app/financeiro/bancos" },
       { label: "Receitas do Mês", value: receitaMes, format: "currency", deltaPct: pctChange(receitaMes, receitaMesAnt), deltaGoodWhenUp: true, icon: Inbox, href: "/app/financeiro/receitas" },
       { label: "Despesas do Mês", value: despesaMes, format: "currency", deltaPct: pctChange(despesaMes, despesaMesAnt), deltaGoodWhenUp: false, icon: TrendingDown, href: "/app/financeiro/despesas" },
       { label: "Resultado do Mês", value: resultadoMes, format: "currency", deltaPct: pctChange(resultadoMes, resultadoMesAnt), deltaGoodWhenUp: true, danger: resultadoMes < 0, icon: Scale, href: "/app/financeiro/transacoes" },
@@ -131,7 +147,15 @@ export default function FinanceiroVisaoGeral() {
       { label: "Vencido (Inadimplência)", value: vencidoReceber.reduce((s, f) => s + f.value, 0), format: "currency", count: vencidoReceber.length, deltaPct: null, deltaGoodWhenUp: null, danger: vencidoReceber.length > 0, icon: AlertTriangle, href: "/app/financeiro/inadimplencia" },
       { label: "Fluxo Projetado (30d)", value: fluxoProjetado30, format: "currency", deltaPct: null, deltaGoodWhenUp: null, danger: fluxoProjetado30 < 0, icon: Waves, href: "/app/financeiro/projecao" },
     ];
-  }, [financeEntries, contracts]);
+  }, [financeEntries, contracts, financeBankAccounts, financeTransfers]);
+
+  // Previsto × Realizado e Comparativo com mês anterior vêm direto do motor
+  // de cálculo central — nunca recalculados aqui, pra não divergir do que a
+  // tela de DRE/Projeção mostra pro mesmo período.
+  const catMap = useMemo(() => categoriesById(financeCategories as FinanceCategoryLike[]), [financeCategories]);
+  const previstoRealizadoRecebimentos = useMemo(() => previstoRealizado(financeEntries as FinanceEntryLike[], "Receber", new Date()), [financeEntries]);
+  const previstoRealizadoDespesas = useMemo(() => previstoRealizado(financeEntries as FinanceEntryLike[], "Pagar", new Date()), [financeEntries]);
+  const comparativoLinhas = useMemo(() => comparativoMesAnterior(financeEntries as FinanceEntryLike[], catMap, new Date()), [financeEntries, catMap]);
 
   const alertasResumo = useMemo(() => {
     const now = new Date();
@@ -251,7 +275,20 @@ export default function FinanceiroVisaoGeral() {
       <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
         <FinanceiroKPIs cards={kpiCards} />
         <FinanceiroAlertas {...alertasResumo} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <FinanceiroPrevistoRealizado recebimentos={previstoRealizadoRecebimentos} despesas={previstoRealizadoDespesas} />
+          <FinanceiroComparativoMes linhas={comparativoLinhas} />
+        </div>
         <FinanceiroCashflowChart chartData={chartData} liquidez={liquidez} burnRate={burnRate} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <FinanceiroAgendaMes />
+          </div>
+          <FinanceiroAnexosResumo
+            totalArquivos={(financeAttachments as any[]).length}
+            totalBytes={(financeAttachments as any[]).reduce((s, a) => s + (a.tamanho_bytes || 0), 0)}
+          />
+        </div>
         <FinanceiroProjecaoReceita mrr={mrr} receitaAvulsa={receitaAvulsa} clientesAtivos={clientesAtivos} churnRate={churnRate} projection={revenueProjection} />
         <FinanceiroBottomPanels upcomingEntries={upcomingEntries} {...operationalInsights} />
       </div>

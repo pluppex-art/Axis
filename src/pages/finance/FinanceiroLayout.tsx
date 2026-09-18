@@ -14,7 +14,6 @@ import {
   Target,
   FolderTree,
   Users,
-  Truck,
   PieChart,
   Handshake,
   BarChart3,
@@ -22,6 +21,8 @@ import {
   LineChart,
   Receipt,
   AlertTriangle,
+  Search,
+  Upload,
 } from "lucide-react";
 import { SectionSidebar, type SectionNavGroup } from "../../components/layout/SectionSidebar";
 
@@ -31,6 +32,7 @@ const groups: SectionNavGroup[] = [
     icon: LayoutDashboard,
     items: [
       { title: "Painel Financeiro", path: "/app/financeiro/dashboard", icon: LayoutDashboard },
+      { title: "Busca Financeira", path: "/app/financeiro/busca", icon: Search },
     ],
   },
   {
@@ -59,8 +61,8 @@ const groups: SectionNavGroup[] = [
     items: [
       { title: "Fluxo de Caixa", path: "/app/financeiro/fluxo-caixa", icon: Waves },
       { title: "Conciliação Bancária", path: "/app/financeiro/conciliacao", icon: RefreshCw },
-      { title: "Contas Bancárias & Cartões", path: "/app/financeiro/bancos", icon: CreditCard, soon: true },
-      { title: "Transferências entre Contas", path: "/app/financeiro/transferencias", icon: Repeat, soon: true },
+      { title: "Contas Bancárias", path: "/app/financeiro/bancos", icon: CreditCard },
+      { title: "Transferências entre Contas", path: "/app/financeiro/transferencias", icon: Repeat },
     ],
   },
   {
@@ -70,8 +72,7 @@ const groups: SectionNavGroup[] = [
       { title: "Centros de Custo", path: "/app/financeiro/centros-custo", icon: Target },
       { title: "Plano de Contas", path: "/app/financeiro/plano-contas", icon: FolderTree, soon: true },
       { title: "Orçamentos", path: "/app/financeiro/orcamentos", icon: Target, soon: true },
-      { title: "Clientes", path: "/app/crm/clientes", icon: Users },
-      { title: "Fornecedores", path: "/app/financeiro/fornecedores", icon: Truck, soon: true },
+      { title: "Contatos (Clientes & Fornecedores)", path: "/app/financeiro/contatos", icon: Users },
     ],
   },
   {
@@ -83,6 +84,13 @@ const groups: SectionNavGroup[] = [
       { title: "MRR & Receita Recorrente", path: "/app/financeiro/mrr", icon: Repeat2 },
       { title: "Projeção de Caixa", path: "/app/financeiro/projecao", icon: LineChart },
       { title: "Indicações & Parcerias", path: "/app/financeiro/indicacoes", icon: Handshake },
+    ],
+  },
+  {
+    title: "Importação",
+    icon: Upload,
+    items: [
+      { title: "Importar Movimentações", path: "/app/financeiro/importar", icon: Upload },
     ],
   },
 ];

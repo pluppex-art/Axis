@@ -12,18 +12,38 @@ import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { downloadCsv } from "../../lib/csvExport";
 import { useLocalization } from "../../contexts/LocalizationContext";
+import { RateioModal, type RateioDivisao } from "./components/RateioModal";
+import { FinanceiroAnexosTab } from "./components/FinanceiroAnexosTab";
+import { parseEntryDate } from "./lib/financeDates";
 
-type Frequencia = "semanal" | "mensal" | "anual";
+type Frequencia = "semanal" | "quinzenal" | "mensal" | "bimestral" | "trimestral" | "semestral" | "anual";
 type RepeatMode = "none" | "recorrente" | "parcelado";
 
 const PAYMENT_METHODS = ["Pix", "Boleto", "Cartão de Crédito", "Cartão de Débito", "Transferência/TED", "Dinheiro", "Cheque", "Outro"];
 
+const parseTags = (raw: string): string[] => raw.split(",").map(t => t.trim()).filter(Boolean);
+
+// Meses curtos: 31/01 + 1 mês precisa cair em 28/02 (ou 29 em ano bissexto),
+// não "estourar" pro dia 3 de março. `setMonth` sozinho soma o overflow do
+// dia no mês seguinte em vez de truncar — por isso soma o mês num dia fixo
+// (1) e só depois recoloca o dia, limitado ao último dia do mês de destino.
+function addMonthsClamped(date: Date, n: number): Date {
+  const day = date.getDate();
+  const firstOfTargetMonth = new Date(date.getFullYear(), date.getMonth() + n, 1);
+  const lastDayOfTargetMonth = new Date(firstOfTargetMonth.getFullYear(), firstOfTargetMonth.getMonth() + 1, 0).getDate();
+  firstOfTargetMonth.setDate(Math.min(day, lastDayOfTargetMonth));
+  return firstOfTargetMonth;
+}
+
 function addPeriodo(date: Date, freq: Frequencia, n: number): Date {
   const d = new Date(date);
-  if (freq === "semanal") d.setDate(d.getDate() + 7 * n);
-  else if (freq === "anual") d.setFullYear(d.getFullYear() + n);
-  else d.setMonth(d.getMonth() + n);
-  return d;
+  if (freq === "semanal") { d.setDate(d.getDate() + 7 * n); return d; }
+  if (freq === "quinzenal") { d.setDate(d.getDate() + 15 * n); return d; }
+  if (freq === "bimestral") return addMonthsClamped(d, 2 * n);
+  if (freq === "trimestral") return addMonthsClamped(d, 3 * n);
+  if (freq === "semestral") return addMonthsClamped(d, 6 * n);
+  if (freq === "anual") return addMonthsClamped(d, 12 * n);
+  return addMonthsClamped(d, n); // mensal
 }
 
 // Divide o valor total em N parcelas sem perder centavos por arredondamento —
@@ -41,17 +61,65 @@ interface GenericProps {
   title: string;
   desc: string;
   type: 'Pagar' | 'Receber';
+  /** Quando definido, a lista só mostra lançamentos nesse status — usado
+   * para separar Receitas/Despesas (só o que já foi realizado) de Contas a
+   * Receber/Pagar (pipeline completo, qualquer status). Sem isso as duas
+   * telas mostravam exatamente os mesmos dados. */
+  statusFilter?: 'Pago';
+  /** Status inicial de um lançamento único criado por aqui (parcelas e
+   * recorrências futuras continuam sempre "A Vencer", nunca já realizadas). */
+  defaultStatus?: 'Pago' | 'A Vencer';
 }
 
-export default function GenericFinanceiroList({ title, desc, type }: GenericProps) {
-  const { financeEntries, addFinanceEntry, deleteFinanceEntry, updateFinanceEntry } = useData();
+export default function GenericFinanceiroList({ title, desc, type, statusFilter, defaultStatus }: GenericProps) {
+  const { financeEntries, addFinanceEntry, deleteFinanceEntry, updateFinanceEntry, financeCategories, addFinanceCategory, financeBankAccounts, financeCentrosCusto, clienteBase } = useData();
   const { formatCurrency } = useLocalization();
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Categoria é vinculada de verdade (category_id → finance_categories), não
+  // mais texto livre — sem isso o DRE não sabe em qual linha somar o
+  // lançamento. Filtra pelo tipo do lançamento (receita só oferece
+  // categorias de Receita).
+  const categoriasDoTipo = useMemo(
+    () => (financeCategories as any[]).filter(c => c.tipo === (type === "Receber" ? "Receita" : "Despesa")),
+    [financeCategories, type]
+  );
+  const contasAtivas = useMemo(() => (financeBankAccounts as any[]).filter(c => !c.arquivada), [financeBankAccounts]);
+  const contaPrincipalId = useMemo(() => contasAtivas.find(c => c.is_principal)?.id || "", [contasAtivas]);
+
+  // Sugestão de contatos já cadastrados (Clientes pra receita, Fornecedores
+  // pra despesa) via <datalist> — mantém o campo livre (nem todo lançamento
+  // precisa de ficha completa) mas liga contato_id quando o nome bate exato.
+  const tipoContato = type === "Receber" ? "CLIENTE" : "FORNECEDOR";
+  const contatosSugeridos = useMemo(
+    () => (clienteBase as any[]).filter(c => c.tipos?.includes(tipoContato)),
+    [clienteBase, tipoContato]
+  );
+  const resolverContatoId = (nome: string): string | null => contatosSugeridos.find(c => c.name?.toLowerCase() === nome.trim().toLowerCase())?.id || null;
+  const [showNovaCategoria, setShowNovaCategoria] = useState(false);
+  const [novaCategoriaNome, setNovaCategoriaNome] = useState("");
+  const [novaCategoriaSubtipo, setNovaCategoriaSubtipo] = useState<"DESPESA_FIXA" | "DESPESA_VARIAVEL" | "PESSOAS" | "IMPOSTOS">("DESPESA_VARIAVEL");
+
+  const handleCriarCategoria = async (): Promise<string | null> => {
+    const nome = novaCategoriaNome.trim();
+    if (!nome) return null;
+    const created = await addFinanceCategory({
+      nome,
+      tipo: type === "Receber" ? "Receita" : "Despesa",
+      subtipo: type === "Receber" ? null : novaCategoriaSubtipo,
+    });
+    setShowNovaCategoria(false);
+    setNovaCategoriaNome("");
+    return created?.id ?? null;
+  };
 
   // New entry form
   const [newDesc, setNewDesc] = useState("");
   const [newNotes, setNewNotes] = useState("");
-  const [newCategory, setNewCategory] = useState("");
+  const [newCategoryId, setNewCategoryId] = useState("");
+  const [newContaBancariaId, setNewContaBancariaId] = useState("");
+  const [newCentroCustoId, setNewCentroCustoId] = useState("");
+  const [newTags, setNewTags] = useState("");
   const [newCounterparty, setNewCounterparty] = useState("");
   const [newPaymentMethod, setNewPaymentMethod] = useState("");
   const [newValue, setNewValue] = useState("");
@@ -65,7 +133,10 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
   const [editingItem, setEditingItem] = useState<(typeof financeEntries)[number] | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [editNotes, setEditNotes] = useState("");
-  const [editCategory, setEditCategory] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState("");
+  const [editContaBancariaId, setEditContaBancariaId] = useState("");
+  const [editCentroCustoId, setEditCentroCustoId] = useState("");
+  const [editTags, setEditTags] = useState("");
   const [editCounterparty, setEditCounterparty] = useState("");
   const [editPaymentMethod, setEditPaymentMethod] = useState("");
   const [editValue, setEditValue] = useState("");
@@ -73,19 +144,53 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
   const [editStatus, setEditStatus] = useState<"Pago" | "A Vencer" | "Atrasado">("A Vencer");
   const [editIsRecurring, setEditIsRecurring] = useState(false);
   const [editFrequency, setEditFrequency] = useState<Frequencia>("mensal");
+  const [rateioOpen, setRateioOpen] = useState(false);
+  const [editModalTab, setEditModalTab] = useState<"detalhes" | "arquivos">("detalhes");
+
+  // Confirma o rateio: apaga o lançamento original e cria uma linha por
+  // divisão, todas compartilhando division_group_id — mesma convenção já
+  // usada pelo parcelamento (installment_group_id), nenhuma soma do sistema
+  // precisa aprender a "pular" o pai porque ele deixa de existir.
+  const handleConfirmRateio = async (divisoes: RateioDivisao[]) => {
+    if (!editingItem) return;
+    const groupId = crypto.randomUUID();
+    const parentId = editingItem.id;
+    await Promise.all(divisoes.map((d, i) => {
+      const categoria = categoriasDoTipo.find(c => c.id === d.categoryId);
+      return addFinanceEntry({
+        description: d.description || "Sem descrição",
+        category: categoria?.nome || "Geral",
+        category_id: d.categoryId,
+        counterparty: d.counterparty || null,
+        value: parseFloat(d.valor) || 0,
+        date: d.date ? new Date(d.date + "T12:00:00").toLocaleDateString("pt-BR") : editingItem.date,
+        status: d.pago ? "Pago" : "A Vencer",
+        type,
+        division_group_id: groupId,
+      }, { silent: i > 0 });
+    }));
+    await deleteFinanceEntry(parentId);
+    setEditingItem(null);
+    toast.success(`Lançamento dividido em ${divisoes.length} linhas.`);
+  };
 
   const data = useMemo(() => {
-    return financeEntries.filter(f => f.type === type);
-  }, [financeEntries, type]);
+    return financeEntries.filter(f => f.type === type && (!statusFilter || f.status === statusFilter));
+  }, [financeEntries, type, statusFilter]);
 
   const totalValue = useMemo(() => {
     return data.reduce((acc, item) => acc + item.value, 0);
   }, [data]);
 
+  const [formErrors, setFormErrors] = useState<{ desc?: string; value?: string; category?: string }>({});
+
   const resetAddForm = () => {
     setNewDesc("");
     setNewNotes("");
-    setNewCategory("");
+    setNewCategoryId("");
+    setNewContaBancariaId(contaPrincipalId);
+    setNewCentroCustoId("");
+    setNewTags("");
     setNewCounterparty("");
     setNewPaymentMethod("");
     setNewValue("");
@@ -94,19 +199,41 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
     setNewFrequency("mensal");
     setNewOcorrencias("12");
     setNewParcelas("2");
+    setFormErrors({});
+    setShowNovaCategoria(false);
+    setNovaCategoriaNome("");
   };
 
-  const handleAdd = (e: React.FormEvent) => {
+  // Descrição, valor > 0 e categoria são obrigatórios — sem isso o
+  // formulário salvava lançamentos vazios (sem descrição, categoria ou
+  // valor) que só poluíam a base. Cada campo mostra seu próprio erro.
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDesc || !newValue) return;
-
-    const baseDate = newDate ? new Date(newDate + "T12:00:00") : new Date();
     const totalValor = parseFloat(newValue) || 0;
+    let categoryId = newCategoryId;
+    if (showNovaCategoria && novaCategoriaNome.trim()) {
+      categoryId = (await handleCriarCategoria()) || "";
+    }
+
+    const errors: typeof formErrors = {};
+    if (!newDesc.trim()) errors.desc = "Informe a descrição do lançamento.";
+    if (totalValor <= 0) errors.value = "Informe um valor maior que zero.";
+    if (!categoryId) errors.category = "Selecione ou crie uma categoria.";
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    const categoriaSelecionada = categoriasDoTipo.find(c => c.id === categoryId);
+    const baseDate = newDate ? new Date(newDate + "T12:00:00") : new Date();
     const baseFields = {
       description: newDesc,
       notes: newNotes || null,
-      category: newCategory || "Geral",
+      category: categoriaSelecionada?.nome || "Geral",
+      category_id: categoryId,
+      conta_bancaria_id: newContaBancariaId || null,
+      centro_custo_id: newCentroCustoId || null,
+      tags: parseTags(newTags),
       counterparty: newCounterparty || null,
+      contato_id: newCounterparty ? resolverContatoId(newCounterparty) : null,
       payment_method: newPaymentMethod || null,
       status: "A Vencer" as const,
       type: type,
@@ -153,6 +280,7 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
     } else {
       addFinanceEntry({
         ...baseFields,
+        status: defaultStatus ?? baseFields.status,
         value: totalValor,
         date: baseDate.toLocaleDateString("pt-BR"),
       });
@@ -181,9 +309,13 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
 
   const openEdit = (item: (typeof data)[number]) => {
     setEditingItem(item);
+    setEditModalTab("detalhes");
     setEditDesc(item.description);
     setEditNotes(item.notes || "");
-    setEditCategory(item.category);
+    setEditCategoryId((item as any).category_id || "");
+    setEditContaBancariaId((item as any).conta_bancaria_id || "");
+    setEditCentroCustoId((item as any).centro_custo_id || "");
+    setEditTags(Array.isArray((item as any).tags) ? (item as any).tags.join(", ") : "");
     setEditCounterparty(item.counterparty || "");
     setEditPaymentMethod(item.payment_method || "");
     setEditValue(String(item.value));
@@ -195,7 +327,10 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingItem || !editDesc || !editValue) return;
+    if (!editingItem || !editDesc.trim() || !(parseFloat(editValue) > 0) || !editCategoryId) {
+      toast.error("Preencha descrição, valor e categoria antes de salvar.");
+      return;
+    }
 
     const statusChanged = editStatus !== editingItem.status;
     if (statusChanged && !(await confirmDialog({
@@ -206,11 +341,17 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
       return;
     }
 
+    const categoriaSelecionada = categoriasDoTipo.find(c => c.id === editCategoryId);
     updateFinanceEntry(editingItem.id, {
       description: editDesc,
       notes: editNotes || null,
-      category: editCategory || "Geral",
+      category: categoriaSelecionada?.nome || "Geral",
+      category_id: editCategoryId,
+      conta_bancaria_id: editContaBancariaId || null,
+      centro_custo_id: editCentroCustoId || null,
+      tags: parseTags(editTags),
       counterparty: editCounterparty || null,
+      contato_id: editCounterparty ? resolverContatoId(editCounterparty) : null,
       payment_method: editPaymentMethod || null,
       value: parseFloat(editValue),
       date: editDate,
@@ -254,6 +395,13 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
         </span>
       );
     }
+    if ((item as any).division_group_id) {
+      return (
+        <span title="Parte de um lançamento detalhado (rateio)" className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25">
+          <Layers className="w-2.5 h-2.5" /> Rateio
+        </span>
+      );
+    }
     return null;
   };
 
@@ -266,7 +414,7 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
         </div>
         <div className="flex items-center gap-2">
           <Button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setNewContaBancariaId(contaPrincipalId); setIsModalOpen(true); }}
             className="h-9 px-4 text-xs font-bold gap-1.5 shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" /> Novo Lançamento
@@ -449,9 +597,10 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
               required
               placeholder="Ex: Servidor AWS, Licença de Software, Fatura..."
               value={newDesc}
-              onChange={(e) => setNewDesc(e.target.value)}
-              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              onChange={(e) => { setNewDesc(e.target.value); setFormErrors(prev => ({ ...prev, desc: undefined })); }}
+              className={`w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] ${formErrors.desc ? "border-rose-500" : "border-[var(--color-border-default)]"}`}
             />
+            {formErrors.desc && <p className="text-[10px] text-rose-500 mt-1">{formErrors.desc}</p>}
           </div>
 
           <div>
@@ -467,24 +616,62 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Categoria Financeira</label>
-              <input
-                type="text"
-                placeholder="Ex: Infraestrutura, Marketing..."
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
-              />
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Categoria Financeira *</label>
+              {!showNovaCategoria ? (
+                <select
+                  required
+                  value={newCategoryId}
+                  onChange={(e) => {
+                    if (e.target.value === "__nova__") { setShowNovaCategoria(true); return; }
+                    setNewCategoryId(e.target.value);
+                    setFormErrors(prev => ({ ...prev, category: undefined }));
+                  }}
+                  className={`w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer ${formErrors.category ? "border-rose-500" : "border-[var(--color-border-default)]"}`}
+                >
+                  <option value="">Selecione...</option>
+                  {categoriasDoTipo.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  <option value="__nova__">+ Criar nova categoria...</option>
+                </select>
+              ) : (
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Nome da categoria"
+                    value={novaCategoriaNome}
+                    onChange={(e) => setNovaCategoriaNome(e.target.value)}
+                    className="flex-1 min-w-0 bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+                  />
+                  <button type="button" onClick={() => setShowNovaCategoria(false)} className="text-xs text-[var(--color-text-faint)] hover:text-[var(--color-text-primary)] px-1">✕</button>
+                </div>
+              )}
+              {type === 'Pagar' && showNovaCategoria && (
+                <select
+                  value={novaCategoriaSubtipo}
+                  onChange={(e) => setNovaCategoriaSubtipo(e.target.value as typeof novaCategoriaSubtipo)}
+                  className="w-full mt-1.5 bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-1.5 text-[11px] focus:outline-none cursor-pointer"
+                >
+                  <option value="DESPESA_FIXA">Despesa Fixa</option>
+                  <option value="DESPESA_VARIAVEL">Despesa Variável</option>
+                  <option value="PESSOAS">Pessoas</option>
+                  <option value="IMPOSTOS">Impostos</option>
+                </select>
+              )}
+              {formErrors.category && <p className="text-[10px] text-rose-500 mt-1">{formErrors.category}</p>}
             </div>
             <div>
               <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">{type === 'Pagar' ? 'Fornecedor' : 'Cliente'}</label>
               <input
                 type="text"
+                list="contatos-sugeridos-new"
                 placeholder={type === 'Pagar' ? 'Ex: AWS, Fornecedor X' : 'Ex: Nome do cliente'}
                 value={newCounterparty}
                 onChange={(e) => setNewCounterparty(e.target.value)}
                 className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
               />
+              <datalist id="contatos-sugeridos-new">
+                {contatosSugeridos.map((c: any) => <option key={c.id} value={c.name} />)}
+              </datalist>
             </div>
           </div>
 
@@ -500,6 +687,42 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
             </select>
           </div>
 
+          <div>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Conta Bancária</label>
+            <select
+              value={newContaBancariaId}
+              onChange={(e) => setNewContaBancariaId(e.target.value)}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+            >
+              <option value="">Não vinculada</option>
+              {contasAtivas.map((c: any) => <option key={c.id} value={c.id}>{c.nome}{c.is_principal ? " (Principal)" : ""}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Centro de Custo</label>
+              <select
+                value={newCentroCustoId}
+                onChange={(e) => setNewCentroCustoId(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+              >
+                <option value="">Não informado</option>
+                {(financeCentrosCusto as any[]).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Tags</label>
+              <input
+                type="text"
+                placeholder="separadas por vírgula"
+                value={newTags}
+                onChange={(e) => setNewTags(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">
@@ -511,9 +734,10 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                 step="0.01"
                 placeholder="0,00"
                 value={newValue}
-                onChange={(e) => setNewValue(e.target.value)}
-                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] font-mono"
+                onChange={(e) => { setNewValue(e.target.value); setFormErrors(prev => ({ ...prev, value: undefined })); }}
+                className={`w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] font-mono ${formErrors.value ? "border-rose-500" : "border-[var(--color-border-default)]"}`}
               />
+              {formErrors.value && <p className="text-[10px] text-rose-500 mt-1">{formErrors.value}</p>}
             </div>
 
             <div>
@@ -565,7 +789,11 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                     className="w-full bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
                   >
                     <option value="semanal">Semanal</option>
+                    <option value="quinzenal">Quinzenal</option>
                     <option value="mensal">Mensal</option>
+                    <option value="bimestral">Bimestral</option>
+                    <option value="trimestral">Trimestral</option>
+                    <option value="semestral">Semestral</option>
                     <option value="anual">Anual</option>
                   </select>
                 </div>
@@ -604,7 +832,11 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                     className="w-full bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
                   >
                     <option value="semanal">Semanal</option>
+                    <option value="quinzenal">Quinzenal</option>
                     <option value="mensal">Mensal</option>
+                    <option value="bimestral">Bimestral</option>
+                    <option value="trimestral">Trimestral</option>
+                    <option value="semestral">Semestral</option>
                     <option value="anual">Anual</option>
                   </select>
                 </div>
@@ -647,6 +879,22 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
         description="Atualize os dados e o status deste lançamento financeiro."
         maxWidth="max-w-lg"
       >
+        <div className="flex items-center gap-1 bg-[var(--color-surface-sunken)] p-1 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)] w-fit mb-4">
+          {([{ id: "detalhes", label: "Detalhes" }, { id: "arquivos", label: "Arquivos" }] as const).map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setEditModalTab(t.id)}
+              className={`px-3 h-7 rounded text-xs font-medium transition-colors cursor-pointer ${editModalTab === t.id ? "bg-[var(--color-primary-blue)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {editModalTab === "arquivos" && editingItem ? (
+          <FinanceiroAnexosTab transacaoId={editingItem.id} />
+        ) : (
         <form onSubmit={handleSaveEdit} className="space-y-4">
           {editingItem?.recurring_group_id && (
             <div className="inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25">
@@ -681,22 +929,29 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Categoria Financeira</label>
-              <input
-                type="text"
-                value={editCategory}
-                onChange={(e) => setEditCategory(e.target.value)}
-                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
-              />
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Categoria Financeira *</label>
+              <select
+                required
+                value={editCategoryId}
+                onChange={(e) => setEditCategoryId(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+              >
+                <option value="">Selecione...</option>
+                {categoriasDoTipo.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
             </div>
             <div>
               <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">{type === 'Pagar' ? 'Fornecedor' : 'Cliente'}</label>
               <input
                 type="text"
+                list="contatos-sugeridos-edit"
                 value={editCounterparty}
                 onChange={(e) => setEditCounterparty(e.target.value)}
                 className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
               />
+              <datalist id="contatos-sugeridos-edit">
+                {contatosSugeridos.map((c: any) => <option key={c.id} value={c.name} />)}
+              </datalist>
             </div>
           </div>
 
@@ -712,6 +967,42 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
             </select>
           </div>
 
+          <div>
+            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Conta Bancária</label>
+            <select
+              value={editContaBancariaId}
+              onChange={(e) => setEditContaBancariaId(e.target.value)}
+              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+            >
+              <option value="">Não vinculada</option>
+              {contasAtivas.map((c: any) => <option key={c.id} value={c.id}>{c.nome}{c.is_principal ? " (Principal)" : ""}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Centro de Custo</label>
+              <select
+                value={editCentroCustoId}
+                onChange={(e) => setEditCentroCustoId(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+              >
+                <option value="">Não informado</option>
+                {(financeCentrosCusto as any[]).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Tags</label>
+              <input
+                type="text"
+                placeholder="separadas por vírgula"
+                value={editTags}
+                onChange={(e) => setEditTags(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Valor (R$) *</label>
@@ -723,6 +1014,16 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                 onChange={(e) => setEditValue(e.target.value)}
                 className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] font-mono"
               />
+              {!editingItem?.division_group_id && (
+                <button
+                  type="button"
+                  disabled={!(parseFloat(editValue) > 0)}
+                  onClick={() => setRateioOpen(true)}
+                  className="text-[10px] font-semibold text-[var(--color-primary-blue)] hover:underline mt-1 disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
+                >
+                  Detalhar valor (dividir em várias linhas)
+                </button>
+              )}
             </div>
 
             <div>
@@ -757,7 +1058,11 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
                   className="w-full bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
                 >
                   <option value="semanal">Semanal</option>
+                  <option value="quinzenal">Quinzenal</option>
                   <option value="mensal">Mensal</option>
+                  <option value="bimestral">Bimestral</option>
+                  <option value="trimestral">Trimestral</option>
+                  <option value="semestral">Semestral</option>
                   <option value="anual">Anual</option>
                 </select>
               </div>
@@ -799,7 +1104,23 @@ export default function GenericFinanceiroList({ title, desc, type }: GenericProp
             </Button>
           </div>
         </form>
+        )}
       </Modal>
+
+      <RateioModal
+        isOpen={rateioOpen}
+        onClose={() => setRateioOpen(false)}
+        parent={editingItem ? {
+          id: editingItem.id,
+          description: editingItem.description,
+          date: (() => { const d = parseEntryDate(editingItem.date); return d ? d.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10); })(),
+          value: parseFloat(editValue) || editingItem.value,
+          type,
+          category_id: editCategoryId,
+        } : null}
+        categoriasDoTipo={categoriasDoTipo}
+        onConfirm={handleConfirmRateio}
+      />
     </div>
   );
 }
