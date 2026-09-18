@@ -8,6 +8,7 @@ import { Modal } from "../../../components/ui/modal";
 import { Button } from "../../../components/ui/button";
 import { createTenantAdmin } from "../../../lib/supabase";
 import { BRAND_COLORS } from "../../../lib/theme";
+import { SPY_PLANS, DEFAULT_SPY_PLAN } from "../../../lib/plans";
 import { toast } from "sonner";
 
 interface NovoTenantModalProps {
@@ -26,13 +27,6 @@ const NICHES = [
   "Varejo",
   "Concessionária",
   "Parceira Geral",
-];
-
-const PLANS = [
-  { value: "Starter", label: "Starter", price: "R$ 497/mês" },
-  { value: "Professional", label: "Professional", price: "R$ 997/mês" },
-  { value: "Enterprise", label: "Enterprise", price: "R$ 2.497/mês" },
-  { value: "Custom", label: "Customizado", price: "Sob medida" },
 ];
 
 const MODULES: { id: string; label: string; icon: LucideIcon }[] = [
@@ -88,7 +82,7 @@ const inputClass = "w-full bg-[var(--color-surface-sunken)] border border-[var(-
 export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalProps) {
   const [name, setName] = useState("");
   const [niche, setNiche] = useState(DEFAULT_NICHE);
-  const [plan, setPlan] = useState("Professional");
+  const [plan, setPlan] = useState(DEFAULT_SPY_PLAN);
   const [primaryColor, setPrimaryColor] = useState(DEFAULT_COLOR);
   const [modules, setModules] = useState<Record<string, boolean>>(() => buildModulesState(DEFAULT_MODULES_BY_NICHE[DEFAULT_NICHE]));
   const [adminEmail, setAdminEmail] = useState("");
@@ -102,7 +96,7 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
   const reset = () => {
     setName("");
     setNiche(DEFAULT_NICHE);
-    setPlan("Professional");
+    setPlan(DEFAULT_SPY_PLAN);
     setPrimaryColor(DEFAULT_COLOR);
     setModules(buildModulesState(DEFAULT_MODULES_BY_NICHE[DEFAULT_NICHE]));
     setAdminEmail("");
@@ -245,8 +239,8 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
                 onChange={e => setPlan(e.target.value)}
                 className={`${inputClass} cursor-pointer font-bold`}
               >
-                {PLANS.map(p => (
-                  <option key={p.value} value={p.value}>{p.label} ({p.price})</option>
+                {SPY_PLANS.map(p => (
+                  <option key={p.value} value={p.value}>S.P.Y. {p.label} ({p.price})</option>
                 ))}
               </select>
             </div>
