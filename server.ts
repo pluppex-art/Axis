@@ -371,24 +371,78 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
 
   if (!name) { logApiKeyUsage(req, 400); return res.status(400).json({ error: "O campo 'name' é obrigatório." }); }
   if (!email && !phone) { logApiKeyUsage(req, 400); return res.status(400).json({ error: "Informe ao menos 'email' ou 'phone'." }); }
+  if (!supabaseService) { logApiKeyUsage(req, 503); return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." }); }
 
-  const id = randomUUID();
+  const tenantId = (req as any).tenantId;
   const now = new Date().toISOString().split("T")[0];
   const rawValue = typeof value === "string"
     ? parseFloat(value.replace(/[^\d.,]/g, "").replace(",", ".")) || 0
     : (value ?? 0);
+  const normalizedPhone = phone ? String(phone).replace(/\D/g, "") : "";
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : "";
+
+  // Dedup por tenant, por telefone/e-mail — evita criar um lead novo a cada chamada
+  // pro mesmo contato (ex.: integrações que reportam um evento por cliente, como
+  // reservas recorrentes de um sistema de agendamento). Duas queries com .eq()
+  // (parametrizadas pelo supabase-js) em vez de um único .or() com string
+  // concatenada — phone/email vêm de fora via x-api-key (sem sessão de usuário), e
+  // um .or() interpolado permitiria injetar filtros extra na sintaxe do PostgREST
+  // (valor contendo vírgula/parênteses).
+  let existing: any = null;
+  if (normalizedPhone) {
+    const { data } = await supabaseService.from("leads").select("id, customFields")
+      .eq("tenant_id", tenantId).eq("phone", normalizedPhone).limit(1).maybeSingle();
+    existing = data;
+  }
+  if (!existing && normalizedEmail) {
+    const { data } = await supabaseService.from("leads").select("id, customFields")
+      .eq("tenant_id", tenantId).eq("email", normalizedEmail).limit(1).maybeSingle();
+    existing = data;
+  }
+
+  // customFields.reservation (se vier) é acumulado num histórico, deduplicado por
+  // id e limitado às últimas 30 entradas — assim tanto uma chamada avulsa quanto
+  // uma migração em massa (uma chamada por reserva, em ordem cronológica) resultam
+  // no mesmo lead único por contato com o histórico completo.
+  const prevCustomFields = existing?.customFields || {};
+  const prevHistory = Array.isArray(prevCustomFields.reservationsHistory) ? prevCustomFields.reservationsHistory : [];
+  const incomingReservation = customFields?.reservation;
+  const mergedHistory = incomingReservation
+    ? [...prevHistory.filter((h: any) => h?.id !== incomingReservation.id), incomingReservation].slice(-30)
+    : prevHistory;
+  const mergedCustomFields = {
+    ...prevCustomFields,
+    ...customFields,
+    reservationsHistory: mergedHistory,
+    totalReservations: mergedHistory.length,
+  };
+
+  if (existing) {
+    const { data, error } = await supabaseService.from("leads").update({
+      name, company, email: normalizedEmail, phone: normalizedPhone, cnpj,
+      value: rawValue, status, priority, source,
+      customFields: mergedCustomFields, tenantName,
+      updated_at: new Date().toISOString(),
+    }).eq("id", existing.id).select().maybeSingle();
+    if (error) {
+      console.error("[API v1] Erro ao atualizar lead:", error.message);
+      logApiKeyUsage(req, 500);
+      return res.status(500).json({ error: "Falha ao atualizar lead no banco." });
+    }
+    logApiKeyUsage(req, 200);
+    return res.status(200).json({ success: true, lead: data, deduped: true });
+  }
 
   // tenant_id vem só da API key (nunca do corpo da requisição) — ver requireApiKey.
   // "createdAt" NÃO existe na tabela (só "created_at", que já tem default
   // now()) — o insert falhava sempre com 42703 antes desta correção.
+  const id = randomUUID();
   const newLead = {
-    id, name, company, email, phone, cnpj, title, seller, source,
+    id, name, company, email: normalizedEmail, phone: normalizedPhone, cnpj, title, seller, source,
     status, priority, value: rawValue, stageId, pipelineId,
-    lead_interesse_cliente, customFields, clientId, clientName,
-    productIds, tenant_id: (req as any).tenantId, tenantName, scoreIA: 50, date: now,
+    lead_interesse_cliente, customFields: mergedCustomFields, clientId, clientName,
+    productIds, tenant_id: tenantId, tenantName, scoreIA: 50, date: now,
   };
-
-  if (!supabaseService) { logApiKeyUsage(req, 503); return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." }); }
 
   const { data, error } = await supabaseService.from("leads").insert(newLead).select().maybeSingle();
   if (error) {
@@ -397,7 +451,7 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
     return res.status(500).json({ error: "Falha ao salvar lead no banco." });
   }
   logApiKeyUsage(req, 201);
-  return res.status(201).json({ success: true, lead: data ?? newLead });
+  return res.status(201).json({ success: true, lead: data ?? newLead, deduped: false });
 });
 
 app.get("/api/v1/leads", requireApiKey, async (req, res) => {
