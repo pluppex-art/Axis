@@ -148,17 +148,22 @@ try {
 // Formato: "chave1:tenantIdA,chave2:tenantIdB" — cada API key é vinculada a
 // exatamente um tenant. Uma chave nunca pode ler/gravar leads de outro tenant,
 // mesmo que o chamador informe um tenantId diferente no corpo da requisição.
-const apiKeyTenantMap = new Map(
-  (process.env.SPY_API_KEYS || process.env.AXIS_API_KEYS || "")
-    .split(",")
-    .map((pair) => pair.trim())
-    .filter(Boolean)
-    .map((pair) => {
-      const [key, tenantId] = pair.split(":").map((s) => s.trim());
-      return [key, tenantId] as [string, string];
-    })
-    .filter(([key, tenantId]) => key && tenantId)
-);
+// Entradas malformadas (sem ":tenantId") são ignoradas — mas agora avisadas no
+// log de startup em vez de falharem silenciosamente como um 503 sem explicação.
+const rawApiKeyPairs = (process.env.SPY_API_KEYS || process.env.AXIS_API_KEYS || "")
+  .split(",")
+  .map((pair) => pair.trim())
+  .filter(Boolean);
+const apiKeyTenantMap = new Map<string, string>();
+for (const pair of rawApiKeyPairs) {
+  const [key, tenantId] = pair.split(":").map((s) => s.trim());
+  if (key && tenantId) {
+    apiKeyTenantMap.set(key, tenantId);
+  } else {
+    console.warn(`[API Keys] Entrada malformada ignorada (esperado "chave:tenantId"): "${pair.slice(0, 8)}..."`);
+  }
+}
+console.log(`[API Keys] ${apiKeyTenantMap.size} chave(s) válida(s) carregada(s) para /api/v1/leads.`);
 
 const FORM_CLIENT_ID = process.env.SPY_FORM_CLIENT_ID || process.env.AXIS_FORM_CLIENT_ID || "";
 
@@ -259,7 +264,17 @@ app.use((req, res, next) => {
 // força-bruta de x-api-key e abuso volumétrico), as rotas de IA (custo real por
 // chamada a Gemini/Groq) e o simulador de WhatsApp. Login/cadastro/reset de senha
 // não passam por aqui — dependem do rate limit nativo do próprio Supabase Auth.
-const apiKeyLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
+// keyGenerator por x-api-key (não por IP): sem isso, duas integrações reais de
+// tenants diferentes atrás do mesmo IP de saída (ex.: mesma hospedagem/proxy)
+// dividiriam uma única cota de 60/min. Cai pro IP só quando não há chave no
+// header (requisição que vai ser rejeitada como 401 de qualquer forma).
+const apiKeyLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.headers["x-api-key"] as string | undefined) || req.ip || "unknown",
+});
 const aiLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
 const whatsappLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
 const googleCalendarLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
@@ -275,11 +290,16 @@ app.use("/api/public/lead-capture", publicLeadLimiter);
 
 function requireApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (apiKeyTenantMap.size === 0) {
+    logApiKeyUsage(req, 503);
     return res.status(503).json({ error: "Nenhuma API Key configurada. Defina SPY_API_KEYS no formato chave:tenantId no .env." });
   }
   const key = req.headers["x-api-key"] as string | undefined;
   const tenantId = key ? apiKeyTenantMap.get(key) : undefined;
   if (!key || !tenantId) {
+    // tenantId ainda não existe no req aqui — logApiKeyUsage grava tenant_id
+    // null neste caso (tentativa com chave inválida/ausente, não atribuível
+    // a nenhum tenant real).
+    logApiKeyUsage(req, 401);
     return res.status(401).json({ error: "API Key inválida ou ausente." });
   }
   (req as any).tenantId = tenantId;
@@ -316,6 +336,28 @@ async function requireUser(req: express.Request, res: express.Response, next: ex
 
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
+// Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma
+// falha aqui não pode derrubar/atrasar a chamada de quem depende da API
+// (landing page, Zapier/Make, ERP de cliente). Só 8 primeiros chars da chave,
+// nunca a chave inteira.
+function logApiKeyUsage(req: express.Request, statusCode: number) {
+  if (!supabaseService) return;
+  const key = req.headers["x-api-key"] as string | undefined;
+  supabaseService
+    .from("api_key_usage_log")
+    .insert({
+      tenant_id: (req as any).tenantId ?? null,
+      api_key_prefix: key ? key.slice(0, 8) : "unknown",
+      method: req.method,
+      path: req.path,
+      status_code: statusCode,
+      ip: req.ip ?? null,
+    })
+    .then(({ error }: { error: any }) => {
+      if (error) console.warn("[API Keys] Falha ao gravar log de uso:", error.message);
+    });
+}
+
 app.post("/api/v1/leads", requireApiKey, async (req, res) => {
   const {
     name, company = "", email = "", phone = "", cnpj = "",
@@ -327,8 +369,8 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
     tenantName = ""
   } = req.body;
 
-  if (!name) return res.status(400).json({ error: "O campo 'name' é obrigatório." });
-  if (!email && !phone) return res.status(400).json({ error: "Informe ao menos 'email' ou 'phone'." });
+  if (!name) { logApiKeyUsage(req, 400); return res.status(400).json({ error: "O campo 'name' é obrigatório." }); }
+  if (!email && !phone) { logApiKeyUsage(req, 400); return res.status(400).json({ error: "Informe ao menos 'email' ou 'phone'." }); }
 
   const id = randomUUID();
   const now = new Date().toISOString().split("T")[0];
@@ -346,18 +388,20 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
     productIds, tenant_id: (req as any).tenantId, tenantName, scoreIA: 50, date: now,
   };
 
-  if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." });
+  if (!supabaseService) { logApiKeyUsage(req, 503); return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." }); }
 
   const { data, error } = await supabaseService.from("leads").insert(newLead).select().maybeSingle();
   if (error) {
     console.error("[API v1] Erro ao criar lead:", error.message);
+    logApiKeyUsage(req, 500);
     return res.status(500).json({ error: "Falha ao salvar lead no banco." });
   }
+  logApiKeyUsage(req, 201);
   return res.status(201).json({ success: true, lead: data ?? newLead });
 });
 
 app.get("/api/v1/leads", requireApiKey, async (req, res) => {
-  if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." });
+  if (!supabaseService) { logApiKeyUsage(req, 503); return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." }); }
 
   const { seller, status, limit = "100", offset = "0" } = req.query as Record<string, string>;
 
@@ -372,8 +416,10 @@ app.get("/api/v1/leads", requireApiKey, async (req, res) => {
   const { data, error } = await query;
   if (error) {
     console.error("[API v1] Erro ao buscar leads:", error.message);
+    logApiKeyUsage(req, 500);
     return res.status(500).json({ error: "Falha ao buscar leads." });
   }
+  logApiKeyUsage(req, 200);
   return res.json({ success: true, count: data?.length ?? 0, leads: data ?? [] });
 });
 
@@ -2106,6 +2152,150 @@ app.post("/api/integrations/webhook-test", requireUser, async (req: any, res) =>
       url,
       payload ?? { event: event || "test_ping", test: true, timestamp: new Date().toISOString() },
       { timeout: 8000, validateStatus: () => true }
+    );
+    const ok = response.status >= 200 && response.status < 300;
+    res.json({ ok, status: response.status, latencyMs: Date.now() - started });
+  } catch (err: any) {
+    res.json({ ok: false, status: null, error: err?.code === "ECONNABORTED" ? "Tempo de resposta esgotado (timeout)." : (err?.message || "Falha ao conectar ao endpoint.") });
+  }
+});
+
+// ── Conector Externo (FASE 5.4 — mandato Aurora+SPY+Integrações, V1 API/Webhook-only) ──────
+// Escrita/leitura do secret_value nunca passa pelo cliente do tenant (RLS nega tudo na tabela
+// base) — só estas rotas, via supabaseService. tenant_id nunca vem do corpo da requisição:
+// resolvido aqui a partir do próprio usuário autenticado (mesmo princípio de /api/v1/leads).
+async function requireTenantAdmin(req: any, res: express.Response, next: express.NextFunction) {
+  try {
+    const { data: caller, error } = await req.supabase
+      .from("users")
+      .select("is_master, is_tenant_admin, tenant_id")
+      .eq("id", req.user.id)
+      .maybeSingle();
+    if (error || !caller) {
+      return res.status(403).json({ error: "Não foi possível verificar permissões." });
+    }
+    if (!caller.is_master && !caller.is_tenant_admin) {
+      return res.status(403).json({ error: "Apenas administradores da empresa podem gerenciar conectores externos." });
+    }
+    req.tenantId = caller.tenant_id;
+    next();
+  } catch (err: any) {
+    console.error("[requireTenantAdmin]", err?.message);
+    res.status(500).json({ error: "Erro ao verificar permissões." });
+  }
+}
+
+app.post("/api/integrations/external", requireUser, requireTenantAdmin, async (req: any, res) => {
+  if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." });
+  const { name, base_url, auth_type = "none", auth_header_name, secret_value, sync_events = [] } = req.body ?? {};
+  if (!name || !base_url) return res.status(400).json({ error: "Nome e URL base são obrigatórios." });
+  if (!["none", "api_key", "bearer", "basic"].includes(auth_type)) {
+    return res.status(400).json({ error: "Tipo de autenticação inválido." });
+  }
+  try {
+    new URL(base_url);
+    if (!base_url.startsWith("https://")) return res.status(400).json({ error: "A URL base deve usar HTTPS." });
+  } catch {
+    return res.status(400).json({ error: "URL base inválida." });
+  }
+
+  const { data, error } = await supabaseService
+    .from("external_integrations")
+    .insert({
+      tenant_id: req.tenantId,
+      name,
+      base_url,
+      auth_type,
+      auth_header_name: auth_header_name || null,
+      secret_value: secret_value || null,
+      sync_events,
+      updated_by: req.user.id,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("[Conector Externo] Erro ao criar:", error.message);
+    return res.status(500).json({ error: "Falha ao salvar o conector." });
+  }
+  res.status(201).json({ success: true, id: data?.id });
+});
+
+app.put("/api/integrations/external/:id", requireUser, requireTenantAdmin, async (req: any, res) => {
+  if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." });
+  const { name, base_url, auth_type, auth_header_name, secret_value, sync_events, active } = req.body ?? {};
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString(), updated_by: req.user.id };
+  if (name !== undefined) updates.name = name;
+  if (base_url !== undefined) {
+    if (!base_url.startsWith("https://")) return res.status(400).json({ error: "A URL base deve usar HTTPS." });
+    updates.base_url = base_url;
+  }
+  if (auth_type !== undefined) updates.auth_type = auth_type;
+  if (auth_header_name !== undefined) updates.auth_header_name = auth_header_name || null;
+  // secret_value só é sobrescrito se um valor novo, não-vazio, foi enviado — permite editar
+  // outros campos (ex.: desativar) sem precisar re-digitar o segredo já salvo.
+  if (secret_value) updates.secret_value = secret_value;
+  if (sync_events !== undefined) updates.sync_events = sync_events;
+  if (active !== undefined) updates.active = active;
+
+  // .eq("tenant_id", ...) garante que um admin não pode editar o conector de outro tenant
+  // mesmo sabendo o id (RLS na tabela base nega tudo pro cliente, mas esta rota usa
+  // supabaseService — o isolamento aqui é feito explicitamente na query, não pela RLS).
+  const { error } = await supabaseService
+    .from("external_integrations")
+    .update(updates)
+    .eq("id", req.params.id)
+    .eq("tenant_id", req.tenantId);
+  if (error) {
+    console.error("[Conector Externo] Erro ao atualizar:", error.message);
+    return res.status(500).json({ error: "Falha ao atualizar o conector." });
+  }
+  res.json({ success: true });
+});
+
+app.delete("/api/integrations/external/:id", requireUser, requireTenantAdmin, async (req: any, res) => {
+  if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." });
+  const { error } = await supabaseService
+    .from("external_integrations")
+    .delete()
+    .eq("id", req.params.id)
+    .eq("tenant_id", req.tenantId);
+  if (error) {
+    console.error("[Conector Externo] Erro ao excluir:", error.message);
+    return res.status(500).json({ error: "Falha ao excluir o conector." });
+  }
+  res.json({ success: true });
+});
+
+// Teste real: busca o conector (com o segredo) no backend, monta o mesmo header que o
+// dispatcher (dispatch_external_integration_event) montaria, e faz uma chamada de verdade —
+// não é um setTimeout/Math.random() fingindo sucesso (mesmo cuidado já aplicado no teste do
+// Meta Pixel).
+app.post("/api/integrations/external/:id/test", requireUser, requireTenantAdmin, async (req: any, res) => {
+  if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." });
+  const { data: integration, error } = await supabaseService
+    .from("external_integrations")
+    .select("*")
+    .eq("id", req.params.id)
+    .eq("tenant_id", req.tenantId)
+    .maybeSingle();
+  if (error || !integration) return res.status(404).json({ error: "Conector não encontrado." });
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (integration.auth_type === "bearer" && integration.secret_value) {
+    headers["Authorization"] = `Bearer ${integration.secret_value}`;
+  } else if (integration.auth_type === "api_key" && integration.secret_value) {
+    headers[integration.auth_header_name || "X-API-Key"] = integration.secret_value;
+  } else if (integration.auth_type === "basic" && integration.secret_value) {
+    headers["Authorization"] = `Basic ${Buffer.from(integration.secret_value).toString("base64")}`;
+  }
+
+  try {
+    const started = Date.now();
+    const response = await axios.post(
+      integration.base_url,
+      { event: "test_ping", integration: integration.name, timestamp: new Date().toISOString() },
+      { headers, timeout: 8000, validateStatus: () => true }
     );
     const ok = response.status >= 200 && response.status < 300;
     res.json({ ok, status: response.status, latencyMs: Date.now() - started });

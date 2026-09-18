@@ -1,20 +1,58 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { FormField } from "../../components/ui/form-field";
 import { Badge } from "../../components/ui/badge";
 import { EmptyState } from "../../components/ui/empty-state";
-import { Settings, X, Zap, Send, Activity } from "lucide-react";
+import { Settings, X, Zap, Send, Activity, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { apiFetch } from "../../lib/apiClient";
+import { supabase } from "../../lib/supabase";
+
+interface RealWebhookLog {
+  id: string;
+  event: string;
+  endpoint_url: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
 
 export function ConfigIntegracoesWebhooks() {
   const { globalWebhooks, addGlobalWebhook, deleteGlobalWebhook, toggleGlobalWebhook } = useData();
+  const { activeTenantId } = useAuth();
 
   const [webhookLogs, setWebhookLogs] = useState<any[]>([]);
+  const [realLogs, setRealLogs] = useState<RealWebhookLog[]>([]);
+  const [loadingRealLogs, setLoadingRealLogs] = useState(true);
+
+  const refreshRealLogs = useCallback(async () => {
+    if (!supabase || !activeTenantId) {
+      setLoadingRealLogs(false);
+      return;
+    }
+    setLoadingRealLogs(true);
+    const { data, error } = await supabase
+      .from("webhook_logs")
+      .select("id, event, endpoint_url, payload, created_at")
+      .eq("tenant_id", activeTenantId)
+      .order("created_at", { ascending: false })
+      .limit(15);
+    if (error) {
+      console.error("[Supabase] webhook_logs select error:", error.message);
+      setRealLogs([]);
+    } else {
+      setRealLogs((data as RealWebhookLog[]) ?? []);
+    }
+    setLoadingRealLogs(false);
+  }, [activeTenantId]);
+
+  useEffect(() => {
+    refreshRealLogs();
+  }, [refreshRealLogs]);
 
   const [newWebhookUrl, setNewWebhookUrl] = useState("");
   const [newWebhookEvent, setNewWebhookEvent] = useState("Novo Lead Criado");
@@ -83,7 +121,10 @@ export function ConfigIntegracoesWebhooks() {
           <Zap className="w-5 h-5 text-[var(--color-primary-blue)]" />
         </h1>
         <p className="text-sm text-[var(--color-text-muted)] mt-1">
-          Cadastre endpoints e valide a conexão com "Disparar Teste" (chamada HTTP real). O disparo automático nos eventos do CRM (novo lead, negócio ganho, etc.) ainda não está implementado — hoje só o teste manual envia uma requisição de verdade.
+          Cadastre endpoints e valide a conexão com "Disparar Teste". O disparo automático já está ativo para 3 eventos:
+          Novo Lead Criado, Negócio Ganho e Negócio Perdido, Nova Tarefa SDR — assim que o evento acontece de verdade no CRM, o
+          endpoint marcado como "Ativo" é chamado automaticamente. "Reunião Agendada" ainda não dispara automaticamente
+          (reuniões ficam no Google Calendar, fora do banco do CRM) — só via teste manual por enquanto.
         </p>
       </div>
 
@@ -194,7 +235,7 @@ export function ConfigIntegracoesWebhooks() {
 
         <Card className="p-5 space-y-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm">
           <h3 className="text-sm font-bold text-[var(--color-text-primary)] flex items-center gap-2">
-            <Activity className="w-4 h-4 text-emerald-500" /> Logs de Envio & Depuração
+            <Activity className="w-4 h-4 text-emerald-500" /> Disparos de Teste (manuais)
           </h3>
           <div className="space-y-2.5 text-xs font-mono">
             {webhookLogs.length === 0 ? (
@@ -209,6 +250,46 @@ export function ConfigIntegracoesWebhooks() {
                     <div className="text-[10px] text-[var(--color-text-faint)]">{log.time} • {log.endpoint}</div>
                     <div className="text-[11px] text-[var(--color-text-muted)] truncate mt-1 bg-[var(--color-surface-elevated)] p-1.5 rounded border border-[var(--color-border-subtle)]">
                       {log.payload}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-5 space-y-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm md:col-span-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-[var(--color-text-primary)] flex items-center gap-2">
+              <Zap className="w-4 h-4 text-violet-400" /> Disparos Automáticos Reais (eventos do CRM)
+            </h3>
+            <Button
+              type="button"
+              onClick={refreshRealLogs}
+              className="bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold uppercase text-[10px] py-1.5 px-2.5 rounded-lg"
+            >
+              <RefreshCw className={`w-3 h-3 mr-1 ${loadingRealLogs ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
+          </div>
+          <div className="space-y-2.5 text-xs font-mono">
+            {loadingRealLogs ? (
+              <div className="text-center py-8 text-[var(--color-text-faint)] text-xs">Carregando...</div>
+            ) : realLogs.length === 0 ? (
+              <div className="text-center py-8 text-[var(--color-text-faint)] text-xs">
+                Nenhum evento real disparou um webhook ainda — assim que um lead for criado (ou negócio ganho/perdido, ou
+                tarefa criada) com um webhook "Ativo" cadastrado para esse evento, aparece aqui.
+              </div>
+            ) : (
+              realLogs.map((log) => (
+                <div key={log.id} className="p-3 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-[var(--radius-control)] flex items-start gap-3">
+                  <Badge variant="secondary" className="shrink-0">{log.event}</Badge>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] text-[var(--color-text-faint)]">
+                      {new Date(log.created_at).toLocaleString("pt-BR")} • {log.endpoint_url}
+                    </div>
+                    <div className="text-[11px] text-[var(--color-text-muted)] truncate mt-1 bg-[var(--color-surface-elevated)] p-1.5 rounded border border-[var(--color-border-subtle)]">
+                      {JSON.stringify(log.payload)}
                     </div>
                   </div>
                 </div>

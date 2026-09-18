@@ -4,7 +4,7 @@ import { requestNotificationPermission } from "./lib/notifications";
 import LandingPage from "./pages/landing/LandingPage";
 // Lazy: página de marketing pública, sem nenhuma dependência do app autenticado — fica no
 // próprio chunk pra quem visita /lp não baixar o bundle inteiro do CRM.
-const AxisLandingPage = lazy(() => import("./pages/lp/AxisLandingPage"));
+const SPYLandingPage = lazy(() => import("./pages/lp/SPYLandingPage"));
 import Dashboard from "./pages/dashboard/Dashboard";
 import PerformanceIA from "./pages/dashboard/PerformanceIA";
 import PainelGeral from "./pages/clinica/PainelGeral";
@@ -86,12 +86,15 @@ import {
   ConfigIntegracoesSMTP,
   ConfigSistemaBackups,
   ConfigSistemaAuroraUso,
+  ConfigInteligenciaArtificialAurora,
   ConfigIntegracoesSDR,
   ConfigFinanceiroSquads,
   ConfigRodizioLeads,
   ConfigKanbanBoards
 } from "./pages/settings/SettingsPages";
 import { ConfigIntegracoesWebhooks } from "./pages/settings/ConfigIntegracoesWebhooks";
+import { ConfigConectoresExternos } from "./pages/settings/ConfigConectoresExternos";
+import { ConfigLinksDinamicos } from "./pages/settings/ConfigLinksDinamicos";
 import SettingsGenericForm from "./pages/settings/SettingsGenericForm";
 import GenericPlaceholder from "./pages/common/GenericPlaceholder";
 import EducationTurmas from "./pages/education/Turmas";
@@ -191,7 +194,7 @@ function AppContent() {
           path="/lp"
           element={
             <Suspense fallback={<div className="min-h-screen bg-white" />}>
-              <AxisLandingPage />
+              <SPYLandingPage />
             </Suspense>
           }
         />
@@ -457,9 +460,12 @@ function AppContent() {
             <Route path="integracoes/smtp" element={<ConfigIntegracoesSMTP />} />
             <Route path="integracoes/webhooks" element={<ConfigIntegracoesWebhooks />} />
             <Route path="integracoes/sdr-webhooks" element={<ConfigIntegracoesSDR />} />
+            <Route path="integracoes/conectores-externos" element={<ConfigConectoresExternos />} />
+            <Route path="integracoes/links-dinamicos" element={<ConfigLinksDinamicos />} />
 
             <Route path="sistema/backups" element={<ConfigSistemaBackups />} />
             <Route path="sistema/aurora" element={<ConfigSistemaAuroraUso />} />
+            <Route path="ia/aurora" element={<ConfigInteligenciaArtificialAurora />} />
 
             <Route path="*" element={<SettingsGenericForm />} />
           </Route>

@@ -1,117 +1,255 @@
 import { useState } from "react";
+import Papa from "papaparse";
 import { PageContainer } from "../../components/PageContainer";
 import { Button } from "../../components/ui/button";
 import {
   UploadCloud, FileText, CheckCircle2, AlertCircle,
-  Download, ArrowRight, Table, Sparkles
+  Download, Table, Sparkles, ArrowLeft, ArrowRight,
 } from "lucide-react";
 import { Card } from "../../components/ui/card";
+import { Badge } from "../../components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
 
+// FASE 5.5 do mandato "Aurora + S.P.Y. + Integração com Sistemas Externos" (2026-09-19).
+// Substitui o importador anterior, que tinha 3 bugs reais confirmados por leitura de código:
+// (1) split(",") manual quebrava em qualquer campo com vírgula dentro de aspas — troca pra
+// papaparse (RFC4180 real); (2) mapeamento "automático" nunca era mostrado/editável pelo
+// usuário — agora é um passo real da tela; (3) o insert reportava "sucesso" mesmo quando o
+// próprio Supabase retornava erro (`console.warn` e seguia adiante) — e o payload antigo
+// escrevia "comercial"/"1" em colunas uuid (`pipeline_id`/`stage_id`) e uma string "R$ 0" numa
+// coluna numeric — ambos tipos incompatíveis que o Postgres rejeitaria; o import "sempre
+// funcionava" só porque o erro nunca chegava ao usuário. Este arquivo usa as mesmas colunas
+// camelCase que o resto do app já usa com sucesso (DataContext.addLead, POST /api/v1/leads).
+
+type TargetFieldKey = "name" | "company" | "email" | "phone" | "value" | "source" | "lead_interesse_cliente" | "__skip__";
+
+const TARGET_FIELDS: { key: TargetFieldKey; label: string; required?: boolean }[] = [
+  { key: "name", label: "Nome", required: true },
+  { key: "company", label: "Empresa" },
+  { key: "email", label: "E-mail" },
+  { key: "phone", label: "Telefone" },
+  { key: "value", label: "Valor estimado (R$)" },
+  { key: "source", label: "Origem" },
+  { key: "lead_interesse_cliente", label: "Interesse do cliente" },
+  { key: "__skip__", label: "Não importar esta coluna" },
+];
+
+function guessTargetField(header: string): TargetFieldKey {
+  const h = header.toLowerCase();
+  if (h.includes("nome") || h.includes("name")) return "name";
+  if (h.includes("empresa") || h.includes("company")) return "company";
+  if (h.includes("email") || h.includes("e-mail")) return "email";
+  if (h.includes("tel") || h.includes("phone") || h.includes("whats")) return "phone";
+  if (h.includes("valor") || h.includes("value")) return "value";
+  if (h.includes("origem") || h.includes("source")) return "source";
+  if (h.includes("interesse")) return "lead_interesse_cliente";
+  return "__skip__";
+}
+
+function parseMoney(raw: string): number {
+  const cleaned = raw.replace(/[^\d.,-]/g, "").replace(/\.(?=\d{3},)/g, "").replace(",", ".");
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
+type Step = "upload" | "mapping" | "review" | "done";
+
+interface ImportResult {
+  inserted: number;
+  skippedDuplicates: number;
+  failed: number;
+  errors: string[];
+}
+
 export default function CRMImportacao() {
   const { user, activeTenantId } = useAuth();
   const { refetchLeads } = useData() as any;
+
+  const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
-  const [previewRows, setPreviewRows] = useState<any[]>([]);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rawRows, setRawRows] = useState<Record<string, string>[]>([]);
+  const [mapping, setMapping] = useState<Record<string, TargetFieldKey>>({});
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
+  const [duplicateRowIndexes, setDuplicateRowIndexes] = useState<Set<number>>(new Set());
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [importedCount, setImportedCount] = useState<number | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
     setFile(f);
-    setImportedCount(null);
+    setResult(null);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      if (lines.length > 1) {
-        const headers = lines[0].split(",").map(h => h.trim().replace(/^["']|["']$/g, ""));
-        const rows = lines.slice(1, 6).map(line => {
-          const cols = line.split(",").map(c => c.trim().replace(/^["']|["']$/g, ""));
-          const rowObj: Record<string, string> = {};
-          headers.forEach((h, idx) => {
-            rowObj[h] = cols[idx] || "";
-          });
-          return rowObj;
-        });
-        setPreviewRows(rows);
+    Papa.parse<Record<string, string>>(f, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const parsedHeaders = results.meta.fields ?? [];
+        if (parsedHeaders.length === 0 || results.data.length === 0) {
+          toast.error("Não foi possível identificar colunas neste arquivo. Confira se é um CSV válido com cabeçalho.");
+          return;
+        }
+        const guessed: Record<string, TargetFieldKey> = {};
+        parsedHeaders.forEach((h) => { guessed[h] = guessTargetField(h); });
+        setHeaders(parsedHeaders);
+        setRawRows(results.data);
+        setMapping(guessed);
+        setStep("mapping");
+      },
+      error: (err) => {
+        toast.error(`Falha ao ler o arquivo: ${err.message}`);
+      },
+    });
+  };
+
+  const buildMappedRows = () => {
+    return rawRows.map((row) => {
+      const record: Record<string, any> = {
+        name: "",
+        company: "",
+        email: "",
+        phone: "",
+        value: 0,
+        source: "",
+        lead_interesse_cliente: "",
+      };
+      for (const header of headers) {
+        const target = mapping[header];
+        if (!target || target === "__skip__") continue;
+        const raw = (row[header] ?? "").trim();
+        record[target] = target === "value" ? parseMoney(raw) : raw;
       }
-    };
-    reader.readAsText(f);
+      return record;
+    }).filter((r) => r.name || r.email || r.phone);
+  };
+
+  const mappedRows = step === "review" || step === "done" ? buildMappedRows() : [];
+
+  const goToReview = async () => {
+    const hasNameMapped = Object.values(mapping).includes("name");
+    if (!hasNameMapped) {
+      toast.error("Mapeie ao menos uma coluna para o campo 'Nome' antes de continuar.");
+      return;
+    }
+    const rows = buildMappedRows();
+    if (rows.length === 0) {
+      toast.error("Nenhuma linha válida encontrada após o mapeamento (precisa de nome, e-mail ou telefone).");
+      return;
+    }
+
+    setCheckingDuplicates(true);
+    setStep("review");
+    try {
+      if (!supabase || !activeTenantId) {
+        setDuplicateRowIndexes(new Set());
+        return;
+      }
+      const emails = rows.map((r) => r.email).filter(Boolean);
+      const phones = rows.map((r) => r.phone).filter(Boolean);
+      if (emails.length === 0 && phones.length === 0) {
+        setDuplicateRowIndexes(new Set());
+        return;
+      }
+      const orFilters = [
+        emails.length > 0 ? `email.in.(${emails.map((e) => `"${e}"`).join(",")})` : null,
+        phones.length > 0 ? `phone.in.(${phones.map((p) => `"${p}"`).join(",")})` : null,
+      ].filter(Boolean).join(",");
+
+      const { data: existing, error } = await supabase
+        .from("leads")
+        .select("email, phone")
+        .eq("tenant_id", activeTenantId)
+        .or(orFilters);
+
+      if (error) {
+        console.error("[Importação] Erro ao checar duplicados:", error.message);
+        setDuplicateRowIndexes(new Set());
+        return;
+      }
+
+      const existingEmails = new Set((existing ?? []).map((l: any) => l.email).filter(Boolean));
+      const existingPhones = new Set((existing ?? []).map((l: any) => l.phone).filter(Boolean));
+      const dupIndexes = new Set<number>();
+      rows.forEach((r, idx) => {
+        if ((r.email && existingEmails.has(r.email)) || (r.phone && existingPhones.has(r.phone))) {
+          dupIndexes.add(idx);
+        }
+      });
+      setDuplicateRowIndexes(dupIndexes);
+    } finally {
+      setCheckingDuplicates(false);
+    }
   };
 
   const handleImport = async () => {
-    if (!file) {
-      toast.error("Selecione um arquivo CSV para importar.");
+    if (!supabase || !activeTenantId) {
+      toast.error("Sem conexão com o banco ou tenant ativo.");
       return;
     }
     setIsImporting(true);
 
-    try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const text = event.target?.result as string;
-        const lines = text.split(/\r?\n/).filter(Boolean);
-        if (lines.length <= 1) {
-          toast.error("Arquivo sem dados para importar.");
-          setIsImporting(false);
-          return;
-        }
+    const allRows = buildMappedRows();
+    const rowsToInsert = allRows
+      .map((r, idx) => ({ row: r, idx }))
+      .filter(({ idx }) => !(skipDuplicates && duplicateRowIndexes.has(idx)))
+      .map(({ row }) => ({
+        name: row.name || "Lead Importado",
+        company: row.company,
+        email: row.email,
+        phone: row.phone,
+        value: row.value,
+        source: row.source || "Importação CSV",
+        lead_interesse_cliente: row.lead_interesse_cliente,
+        status: "Novo",
+        stageId: "sdr-1",
+        pipelineId: "sdr",
+        seller: user?.name || "Sistema",
+        tenant_id: activeTenantId,
+        scoreIA: 50,
+        date: new Date().toISOString().split("T")[0],
+        customFields: {},
+      }));
 
-        const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/^["']|["']$/g, ""));
-        const rowsToInsert = lines.slice(1).map(line => {
-          const cols = line.split(",").map(c => c.trim().replace(/^["']|["']$/g, ""));
-          const record: any = {
-            name: "Lead Importado",
-            company: "",
-            email: "",
-            phone: "",
-            value: "R$ 0",
-            status: "Novo",
-            pipeline_id: "comercial",
-            stage_id: "1",
-            seller: user?.name || "Sistema",
-            tenant_id: activeTenantId,
-          };
+    const skippedDuplicates = allRows.length - rowsToInsert.length;
 
-          headers.forEach((h, i) => {
-            const val = cols[i] || "";
-            if (h.includes("nome") || h.includes("name")) record.name = val;
-            else if (h.includes("empresa") || h.includes("company")) record.company = val;
-            else if (h.includes("email") || h.includes("e-mail")) record.email = val;
-            else if (h.includes("tel") || h.includes("phone") || h.includes("whats")) record.phone = val;
-            else if (h.includes("valor") || h.includes("value")) record.value = val.startsWith("R$") ? val : `R$ ${val}`;
-          });
+    // Lotes de 25: um erro de tipo/constraint em UMA linha não pode fazer o Supabase rejeitar
+    // as outras ~1000 linhas de um arquivo grande num único INSERT — e também não faz sentido
+    // 1 requisição por linha. Cada lote reporta seu próprio sucesso/falha, sem fingir 100%.
+    const BATCH_SIZE = 25;
+    let inserted = 0;
+    const errors: string[] = [];
 
-          return record;
-        }).filter(r => Boolean(r.name && r.name !== "Lead Importado" || r.email || r.phone));
-
-        if (supabase && rowsToInsert.length > 0) {
-          const { error } = await supabase.from("leads").insert(rowsToInsert);
-          if (error) {
-            console.warn("Import warning (fallback client-side):", error.message);
-          }
-        }
-
-        setImportedCount(rowsToInsert.length);
-        setIsImporting(false);
-        toast.success(`${rowsToInsert.length} leads importados com sucesso para o pipeline!`);
-        if (refetchLeads) refetchLeads();
-      };
-      reader.readAsText(file);
-    } catch (err: any) {
-      toast.error(`Falha ao importar: ${err.message}`);
-      setIsImporting(false);
+    for (let i = 0; i < rowsToInsert.length; i += BATCH_SIZE) {
+      const batch = rowsToInsert.slice(i, i + BATCH_SIZE);
+      const { data, error } = await supabase.from("leads").insert(batch).select("id");
+      if (error) {
+        console.error(`[Importação] Lote ${i / BATCH_SIZE + 1} falhou:`, error.message);
+        errors.push(`Lote com linhas ${i + 1}–${i + batch.length}: ${error.message}`);
+      } else {
+        inserted += data?.length ?? batch.length;
+      }
     }
+
+    const failed = rowsToInsert.length - inserted;
+    setResult({ inserted, skippedDuplicates, failed, errors });
+    setIsImporting(false);
+    setStep("done");
+
+    if (failed === 0) {
+      toast.success(`${inserted} lead(s) importado(s) com sucesso.`);
+    } else {
+      toast.error(`${inserted} importado(s), ${failed} falharam. Veja o detalhe na tela.`);
+    }
+    if (refetchLeads) refetchLeads();
   };
 
   const handleDownloadTemplate = () => {
-    const csvContent = "data:text/csv;charset=utf-8," + "Nome,Empresa,Email,Telefone,Valor\nJoão Silva,Acme Corp,joao@acme.com,11999998888,5000\nMaria Santos,Tech Solucoes,maria@tech.com,21988887777,12000";
+    const csvContent = "data:text/csv;charset=utf-8," + "Nome,Empresa,Email,Telefone,Valor\nJoão Silva,Acme Corp,joao@acme.com,11999998888,5000\nMaria Santos,Tech Soluções,maria@tech.com,21988887777,12000";
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -121,102 +259,182 @@ export default function CRMImportacao() {
     document.body.removeChild(link);
   };
 
+  const reset = () => {
+    setStep("upload");
+    setFile(null);
+    setHeaders([]);
+    setRawRows([]);
+    setMapping({});
+    setDuplicateRowIndexes(new Set());
+    setResult(null);
+  };
+
   return (
     <PageContainer
       title="Importação de Leads em Massa"
-      description="Importe listas de contatos e leads via CSV diretamente para o funil comercial do S.P.Y."
+      description="Importe listas de contatos e leads via CSV diretamente para o funil comercial do S.P.Y., com mapeamento de colunas e detecção de duplicados."
       actions={
         <Button variant="outline" onClick={handleDownloadTemplate} className="h-9 px-3.5 text-xs font-bold gap-1.5 rounded-xl">
           <Download className="w-3.5 h-3.5" /> Baixar Planilha Modelo
         </Button>
       }
     >
-      <div className="max-w-3xl space-y-6">
-        {/* Upload Zone */}
-        <div className="p-8 border-2 border-dashed border-[var(--color-border-default)] hover:border-[var(--color-primary-blue)] rounded-3xl bg-[var(--color-surface)] text-center transition-all">
-          <UploadCloud className="w-12 h-12 mx-auto mb-3 text-[var(--color-primary-blue)] opacity-80" />
-          <h4 className="text-sm font-bold text-[var(--color-text-primary)] mb-1">
-            Selecione ou arraste seu arquivo .CSV
-          </h4>
-          <p className="text-xs text-[var(--color-text-muted)] mb-4 max-w-sm mx-auto">
-            O arquivo deve conter as colunas Nome, Empresa, E-mail, Telefone e Valor estimado.
-          </p>
+      <div className="max-w-4xl space-y-6">
+        {step === "upload" && (
+          <div className="p-8 border-2 border-dashed border-[var(--color-border-default)] hover:border-[var(--color-primary-blue)] rounded-3xl bg-[var(--color-surface)] text-center transition-all">
+            <UploadCloud className="w-12 h-12 mx-auto mb-3 text-[var(--color-primary-blue)] opacity-80" />
+            <h4 className="text-sm font-bold text-[var(--color-text-primary)] mb-1">
+              Selecione ou arraste seu arquivo .CSV
+            </h4>
+            <p className="text-xs text-[var(--color-text-muted)] mb-4 max-w-sm mx-auto">
+              Qualquer cabeçalho funciona — você escolhe quais colunas do arquivo correspondem a quais campos do CRM no próximo passo.
+            </p>
+            <label className="inline-flex">
+              <input type="file" accept=".csv,.txt" onChange={handleFileChange} className="hidden" />
+              <span className="px-5 py-2.5 bg-[var(--color-primary-blue)] text-white text-xs font-bold rounded-xl cursor-pointer hover:opacity-90 transition-all shadow-xs">
+                Escolher Arquivo
+              </span>
+            </label>
+            {file && (
+              <div className="mt-4 p-3 bg-[var(--color-surface-sunken)] rounded-xl border border-[var(--color-border-subtle)] inline-flex items-center gap-2 text-xs font-bold text-[var(--color-text-primary)]">
+                <FileText className="w-4 h-4 text-[var(--color-primary-blue)]" />
+                <span>{file.name}</span>
+                <span className="text-[10px] text-[var(--color-text-muted)]">({(file.size / 1024).toFixed(1)} KB)</span>
+              </div>
+            )}
+          </div>
+        )}
 
-          <label className="inline-flex">
-            <input
-              type="file"
-              accept=".csv,.txt"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            <span className="px-5 py-2.5 bg-[var(--color-primary-blue)] text-white text-xs font-bold rounded-xl cursor-pointer hover:opacity-90 transition-all shadow-xs">
-              {file ? "Trocar Arquivo" : "Escolher Arquivo"}
-            </span>
-          </label>
-
-          {file && (
-            <div className="mt-4 p-3 bg-[var(--color-surface-sunken)] rounded-xl border border-[var(--color-border-subtle)] inline-flex items-center gap-2 text-xs font-bold text-[var(--color-text-primary)]">
-              <FileText className="w-4 h-4 text-[var(--color-primary-blue)]" />
-              <span>{file.name}</span>
-              <span className="text-[10px] text-[var(--color-text-muted)]">({(file.size / 1024).toFixed(1)} KB)</span>
-            </div>
-          )}
-        </div>
-
-        {/* Data Preview */}
-        {previewRows.length > 0 && (
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border-default)] rounded-2xl p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-[var(--color-text-primary)] flex items-center gap-2">
-                <Table className="w-4 h-4 text-[var(--color-primary-blue)]" /> Pré-visualização dos Primeiros 5 Registros
-              </h4>
-              <span className="text-[10px] font-bold text-[var(--color-text-muted)]">Mapeamento Automático</span>
-            </div>
-
+        {step === "mapping" && (
+          <Card className="p-5 space-y-4">
+            <h4 className="text-xs font-bold text-[var(--color-text-primary)] flex items-center gap-2">
+              <Table className="w-4 h-4 text-[var(--color-primary-blue)]" /> Mapeamento de Colunas
+              <Badge variant="secondary">{rawRows.length} linha(s) no arquivo</Badge>
+            </h4>
+            <p className="text-[11px] text-[var(--color-text-muted)]">
+              Já sugerimos um mapeamento com base no nome de cada coluna — revise e ajuste antes de continuar. Colunas sem
+              correspondência clara vêm marcadas como "Não importar".
+            </p>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-[var(--color-border-subtle)] text-[10px] font-bold uppercase text-[var(--color-text-muted)]">
-                    {Object.keys(previewRows[0]).map(k => (
-                      <th key={k} className="py-2 px-3">{k}</th>
-                    ))}
+                    <th className="py-2 px-3">Coluna do arquivo</th>
+                    <th className="py-2 px-3">Exemplo</th>
+                    <th className="py-2 px-3">Campo do CRM</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border-subtle)]">
-                  {previewRows.map((r, i) => (
-                    <tr key={i} className="hover:bg-[var(--color-surface-sunken)]/50">
-                      {Object.values(r).map((val: any, vi) => (
-                        <td key={vi} className="py-2 px-3 text-[var(--color-text-primary)]">{val}</td>
-                      ))}
+                  {headers.map((h) => (
+                    <tr key={h}>
+                      <td className="py-2 px-3 font-bold text-[var(--color-text-primary)]">{h}</td>
+                      <td className="py-2 px-3 text-[var(--color-text-muted)] truncate max-w-[180px]">{rawRows[0]?.[h] ?? ""}</td>
+                      <td className="py-2 px-3">
+                        <select
+                          value={mapping[h] ?? "__skip__"}
+                          onChange={(e) => setMapping((m) => ({ ...m, [h]: e.target.value as TargetFieldKey }))}
+                          className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-2 py-1.5 text-xs font-bold text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+                        >
+                          {TARGET_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                        </select>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-
-            <div className="pt-3 border-t border-[var(--color-border-subtle)] flex justify-end">
-              <Button
-                onClick={handleImport}
-                disabled={isImporting}
-                className="h-10 px-6 text-xs font-bold gap-2"
-              >
-                <Sparkles className="w-4 h-4" />
-                {isImporting ? "Importando..." : "Confirmar Importação de Leads"}
-              </Button>
+            <div className="flex justify-between pt-3 border-t border-[var(--color-border-subtle)]">
+              <Button variant="outline" onClick={reset} className="h-9 text-xs font-bold gap-1.5"><ArrowLeft className="w-3.5 h-3.5" /> Voltar</Button>
+              <Button onClick={goToReview} className="h-9 text-xs font-bold gap-1.5">Continuar <ArrowRight className="w-3.5 h-3.5" /></Button>
             </div>
-          </div>
+          </Card>
         )}
 
-        {importedCount !== null && (
-          <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-            <div>
-              <p className="text-xs font-bold text-emerald-500">Importação Concluída com Sucesso!</p>
-              <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-                {importedCount} novos registros foram inseridos na base de Leads e já estão disponíveis no funil.
-              </p>
+        {step === "review" && (
+          <Card className="p-5 space-y-4">
+            <h4 className="text-xs font-bold text-[var(--color-text-primary)] flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[var(--color-primary-blue)]" /> Revisão antes de importar
+            </h4>
+            {checkingDuplicates ? (
+              <div className="text-center py-8 text-[var(--color-text-faint)] text-xs">Checando duplicados...</div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 text-xs">
+                  <Badge variant="secondary">{mappedRows.length} linha(s) mapeada(s)</Badge>
+                  {duplicateRowIndexes.size > 0 && <Badge variant="destructive">{duplicateRowIndexes.size} duplicado(s) encontrado(s)</Badge>}
+                  {duplicateRowIndexes.size > 0 && (
+                    <label className="flex items-center gap-1.5 font-bold text-[var(--color-text-primary)] cursor-pointer">
+                      <input type="checkbox" checked={skipDuplicates} onChange={(e) => setSkipDuplicates(e.target.checked)} />
+                      Pular duplicados (já existem por e-mail/telefone)
+                    </label>
+                  )}
+                </div>
+                <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-[var(--color-border-subtle)] text-[10px] font-bold uppercase text-[var(--color-text-muted)]">
+                        <th className="py-2 px-3">Status</th>
+                        <th className="py-2 px-3">Nome</th>
+                        <th className="py-2 px-3">E-mail</th>
+                        <th className="py-2 px-3">Telefone</th>
+                        <th className="py-2 px-3">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--color-border-subtle)]">
+                      {mappedRows.slice(0, 50).map((r, i) => (
+                        <tr key={i} className={duplicateRowIndexes.has(i) ? "opacity-50" : ""}>
+                          <td className="py-2 px-3">
+                            {duplicateRowIndexes.has(i)
+                              ? <Badge variant="destructive">Duplicado</Badge>
+                              : <Badge variant="success">Novo</Badge>}
+                          </td>
+                          <td className="py-2 px-3 text-[var(--color-text-primary)]">{r.name}</td>
+                          <td className="py-2 px-3 text-[var(--color-text-muted)]">{r.email}</td>
+                          <td className="py-2 px-3 text-[var(--color-text-muted)]">{r.phone}</td>
+                          <td className="py-2 px-3 text-[var(--color-text-muted)]">{r.value ? `R$ ${r.value}` : ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {mappedRows.length > 50 && (
+                    <p className="text-[10px] text-[var(--color-text-faint)] text-center pt-2">
+                      Mostrando 50 de {mappedRows.length} linhas — todas serão importadas.
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+            <div className="flex justify-between pt-3 border-t border-[var(--color-border-subtle)]">
+              <Button variant="outline" onClick={() => setStep("mapping")} className="h-9 text-xs font-bold gap-1.5" disabled={isImporting}>
+                <ArrowLeft className="w-3.5 h-3.5" /> Voltar ao mapeamento
+              </Button>
+              <Button onClick={handleImport} disabled={isImporting || checkingDuplicates} className="h-10 px-6 text-xs font-bold gap-2">
+                <Sparkles className="w-4 h-4" />
+                {isImporting ? "Importando..." : "Confirmar Importação"}
+              </Button>
             </div>
-          </div>
+          </Card>
+        )}
+
+        {step === "done" && result && (
+          <Card className="p-5 space-y-3">
+            <div className={`p-4 rounded-2xl border flex items-center gap-3 ${result.failed === 0 ? "bg-emerald-500/10 border-emerald-500/25" : "bg-amber-500/10 border-amber-500/25"}`}>
+              {result.failed === 0
+                ? <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                : <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />}
+              <div>
+                <p className={`text-xs font-bold ${result.failed === 0 ? "text-emerald-500" : "text-amber-500"}`}>
+                  {result.inserted} lead(s) importado(s){result.skippedDuplicates > 0 ? `, ${result.skippedDuplicates} pulado(s) por duplicidade` : ""}{result.failed > 0 ? `, ${result.failed} falharam` : ""}.
+                </p>
+                {result.errors.length > 0 && (
+                  <ul className="text-[11px] text-[var(--color-text-muted)] mt-1 space-y-0.5">
+                    {result.errors.map((e, i) => <li key={i}>• {e}</li>)}
+                  </ul>
+                )}
+              </div>
+            </div>
+            <Button variant="outline" onClick={reset} className="h-9 text-xs font-bold">Importar outro arquivo</Button>
+          </Card>
         )}
       </div>
     </PageContainer>

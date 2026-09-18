@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
-import { Building, Plug, Columns3, Briefcase, Zap, Wallet, Bell, HardDrive } from "lucide-react";
+import { Building, Plug, Columns3, Briefcase, Zap, Wallet, Bell, HardDrive, Bot } from "lucide-react";
 import { SectionSidebar, type SectionNavGroup } from "../../components/layout/SectionSidebar";
 
 export default function SettingsLayout() {
@@ -90,6 +90,8 @@ export default function SettingsLayout() {
         { title: "Servidores SMTP (E-mail)", path: "/app/configuracoes/integracoes/smtp" },
         { title: "Webhooks Globais & Logs", path: "/app/configuracoes/integracoes/webhooks" },
         { title: "Webhooks de SDR & Pré-Vendas", path: "/app/configuracoes/integracoes/sdr-webhooks" },
+        { title: "Conectores Externos (ERP/CRM)", path: "/app/configuracoes/integracoes/conectores-externos" },
+        { title: "Links Dinâmicos (Aurora/Júlia)", path: "/app/configuracoes/integracoes/links-dinamicos" },
       ],
     },
     {
@@ -100,6 +102,13 @@ export default function SettingsLayout() {
         { title: "Backups automáticos", path: "/app/configuracoes/sistema/backups" },
       ],
     },
+    ...((user?.isMaster || user?.isTenantAdmin) && isModuleEnabled("aurora") ? [{
+      title: "Inteligência Artificial",
+      icon: Bot,
+      items: [
+        { title: "Aurora", path: "/app/configuracoes/ia/aurora" },
+      ],
+    }] : []),
   ];
 
   return (

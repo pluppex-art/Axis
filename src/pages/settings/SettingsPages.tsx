@@ -9,5 +9,6 @@ export { ConfigNotificacoesPreferencias } from "./sections/SettingsNotificacoes"
 export { ConfigPerfilUsuario } from "./sections/usuario/ConfigPerfilUsuario";
 export { ConfigPreferenciasSistema } from "./sections/usuario/ConfigPreferenciasSistema";
 export { ConfigSistemaBackups, ConfigSistemaAuroraUso } from "./sections/SettingsSistema";
+export { ConfigInteligenciaArtificialAurora } from "./sections/SettingsInteligenciaArtificial";
 export { ConfigRodizioLeads } from "./sections/SettingsRodizioLeads";
 export { ConfigKanbanBoards } from "./sections/SettingsKanbanBoards";
