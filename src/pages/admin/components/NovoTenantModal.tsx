@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Building2, ShieldCheck, KeyRound, Palette, Blocks, Eye, EyeOff, RefreshCw, Check,
   Target, Sparkles, Clock, DollarSign, Package, Megaphone, MessageSquare, Award,
@@ -6,9 +6,8 @@ import {
 } from "lucide-react";
 import { Modal } from "../../../components/ui/modal";
 import { Button } from "../../../components/ui/button";
-import { createTenantAdmin } from "../../../lib/supabase";
+import { createTenantAdmin, fetchSpyLicenseProducts, type SpyLicenseProduct } from "../../../lib/supabase";
 import { BRAND_COLORS } from "../../../lib/theme";
-import { SPY_PLANS, DEFAULT_SPY_PLAN } from "../../../lib/plans";
 import { toast } from "sonner";
 
 interface NovoTenantModalProps {
@@ -82,7 +81,9 @@ const inputClass = "w-full bg-[var(--color-surface-sunken)] border border-[var(-
 export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalProps) {
   const [name, setName] = useState("");
   const [niche, setNiche] = useState(DEFAULT_NICHE);
-  const [plan, setPlan] = useState(DEFAULT_SPY_PLAN);
+  const [plan, setPlan] = useState("");
+  const [plans, setPlans] = useState<SpyLicenseProduct[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
   const [primaryColor, setPrimaryColor] = useState(DEFAULT_COLOR);
   const [modules, setModules] = useState<Record<string, boolean>>(() => buildModulesState(DEFAULT_MODULES_BY_NICHE[DEFAULT_NICHE]));
   const [adminEmail, setAdminEmail] = useState("");
@@ -93,10 +94,23 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
 
   const activeModuleCount = Object.values(modules).filter(Boolean).length;
 
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    setPlansLoading(true);
+    fetchSpyLicenseProducts().then(result => {
+      if (cancelled) return;
+      setPlans(result);
+      setPlan(prev => prev || result[0]?.value || "");
+      setPlansLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
   const reset = () => {
     setName("");
     setNiche(DEFAULT_NICHE);
-    setPlan(DEFAULT_SPY_PLAN);
+    setPlan(plans[0]?.value || "");
     setPrimaryColor(DEFAULT_COLOR);
     setModules(buildModulesState(DEFAULT_MODULES_BY_NICHE[DEFAULT_NICHE]));
     setAdminEmail("");
@@ -234,15 +248,32 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
 
             <div>
               <label className={labelClass}>Plano de Assinatura Inicial</label>
-              <select
-                value={plan}
-                onChange={e => setPlan(e.target.value)}
-                className={`${inputClass} cursor-pointer font-bold`}
-              >
-                {SPY_PLANS.map(p => (
-                  <option key={p.value} value={p.value}>S.P.Y. {p.label} ({p.price})</option>
-                ))}
-              </select>
+              {plansLoading ? (
+                <div className={`${inputClass} text-[var(--color-text-faint)]`}>Carregando planos do catálogo...</div>
+              ) : plans.length > 0 ? (
+                <select
+                  value={plan}
+                  onChange={e => setPlan(e.target.value)}
+                  className={`${inputClass} cursor-pointer font-bold`}
+                >
+                  {plans.map(p => (
+                    <option key={p.id} value={p.value}>
+                      S.P.Y. {p.label} (R$ {p.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/mês)
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={plan}
+                  onChange={e => setPlan(e.target.value)}
+                  placeholder="Nenhum plano no catálogo — digite manualmente"
+                  className={inputClass}
+                />
+              )}
+              <p className="text-[10px] text-[var(--color-text-faint)] mt-1">
+                Sincronizado com o Catálogo de Produtos da Pluppex.
+              </p>
             </div>
           </div>
         </div>

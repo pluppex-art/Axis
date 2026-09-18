@@ -1777,8 +1777,6 @@ app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) 
   if (!adminEmail?.trim()) return res.status(400).json({ error: "Informe o e-mail do administrador da empresa." });
   if (!adminPassword || adminPassword.length < 6) return res.status(400).json({ error: "A senha do administrador precisa ter pelo menos 6 caracteres." });
 
-  const ALLOWED_PLANS = ["START", "AUTOPILOT", "AUTONOMOUS", "PERSONALIZADO"];
-
   try {
     const { data: existingUser } = await supabaseService.from("users").select("id").eq("email", adminEmail.trim()).maybeSingle();
     if (existingUser) return res.status(409).json({ error: "Este e-mail já está cadastrado no sistema." });
@@ -1788,7 +1786,7 @@ app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) 
       .insert({
         name: tenantName.trim(),
         niche: niche || "Parceira",
-        plan: ALLOWED_PLANS.includes(plan) ? plan : "START",
+        plan: typeof plan === "string" && plan.trim() ? plan.trim().slice(0, 50) : "start",
         status: "Active",
         timezone: timezone?.trim() || "America/Sao_Paulo",
         primary_color: /^#[0-9A-Fa-f]{6}$/.test(primaryColor) ? primaryColor : "#2563EB",
