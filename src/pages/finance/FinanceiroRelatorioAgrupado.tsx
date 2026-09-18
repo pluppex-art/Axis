@@ -3,7 +3,9 @@ import { useParams, Link } from "react-router-dom";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
-import { Download, Printer } from "lucide-react";
+import { StatCell, StatCellRow } from "./components/StatCell";
+import { Download, Printer, Hash, Layers, TrendingUp, Crown } from "lucide-react";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid } from "recharts";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
@@ -130,6 +132,16 @@ export default function FinanceiroRelatorioAgrupado() {
   }, [config, financeEntries, catMap, centroCustoMap, periodo, incluirPagos, incluirNaoPagos]);
 
   const total = linhas.reduce((s, l) => s + l.valor, 0);
+  const qtdTotal = linhas.reduce((s, l) => s + l.qtd, 0);
+  const media = qtdTotal > 0 ? total / qtdTotal : 0;
+  const corBarra = config?.type === "Pagar" ? "var(--color-danger)" : "var(--color-success)";
+
+  const chartData = useMemo(() => {
+    const top = linhas.slice(0, 8).map(l => ({ name: l.label, valor: l.valor }));
+    const resto = linhas.slice(8).reduce((s, l) => s + l.valor, 0);
+    if (resto > 0) top.push({ name: "Outros", valor: resto });
+    return top;
+  }, [linhas]);
 
   if (!config) {
     return (
@@ -171,6 +183,32 @@ export default function FinanceiroRelatorioAgrupado() {
             <input type="checkbox" checked={incluirNaoPagos} onChange={(e) => setIncluirNaoPagos(e.target.checked)} /> Não pagos
           </label>
         </div>
+
+        <StatCellRow>
+          <StatCell label="Total" value={formatCurrency(total)} icon={TrendingUp} tone={config.type === "Pagar" ? "danger" : "success"} />
+          <StatCell label="Lançamentos" value={qtdTotal} icon={Hash} />
+          <StatCell label="Média por Lançamento" value={formatCurrency(media)} icon={Layers} />
+          <StatCell label={`Maior ${config.groupLabel}`} value={linhas[0] ? formatCurrency(linhas[0].valor) : "—"} hint={linhas[0]?.label} icon={Crown} />
+        </StatCellRow>
+
+        {chartData.length > 0 && (
+          <Card className="p-6 print:hidden">
+            <h3 className="text-xs font-semibold text-[var(--color-text-primary)] mb-4">Distribuição por {config.groupLabel}</h3>
+            <div style={{ height: Math.max(180, chartData.length * 34) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 24, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" horizontal={false} />
+                  <XAxis type="number" tickFormatter={(v) => formatCurrency(v)} axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 10 }} />
+                  <YAxis dataKey="name" type="category" width={140} axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 11 }} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} />
+                  <Bar dataKey="valor" radius={[0, 4, 4, 0]} maxBarSize={20}>
+                    {chartData.map((_, i) => <Cell key={i} fill={corBarra} fillOpacity={i === chartData.length - 1 && chartData[i].name === "Outros" ? 0.4 : 1 - i * 0.06} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        )}
 
         <Card className="overflow-hidden">
           <table className="w-full text-xs text-left">

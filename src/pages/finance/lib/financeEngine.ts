@@ -45,7 +45,7 @@ export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-function isInMonth(dateStr: string | undefined, year: number, month: number): boolean {
+export function isInMonth(dateStr: string | undefined, year: number, month: number): boolean {
   const d = parseEntryDate(dateStr);
   return !!d && d.getFullYear() === year && d.getMonth() === month;
 }

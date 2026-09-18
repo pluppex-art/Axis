@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
-import { Download, Printer } from "lucide-react";
+import { StatCell, StatCellRow } from "./components/StatCell";
+import { Download, Printer, TrendingUp, TrendingDown, Scale, Award } from "lucide-react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
@@ -27,6 +28,13 @@ export default function FinanceiroPerformanceMensal() {
     });
   }, [financeEntries]);
 
+  const { receitaTotal, despesaTotal, resultadoTotal, melhorMes } = useMemo(() => {
+    const receitaTotal = meses.reduce((s, m) => s + m.receita, 0);
+    const despesaTotal = meses.reduce((s, m) => s + m.despesa, 0);
+    const melhorMes = meses.reduce((best, m) => (!best || m.resultado > best.resultado ? m : best), meses[0]);
+    return { receitaTotal, despesaTotal, resultadoTotal: receitaTotal - despesaTotal, melhorMes };
+  }, [meses]);
+
   const handleExport = () => downloadCsv(`performance_mensal_${Date.now()}.csv`, ["Mês", "Receitas", "Despesas", "Resultado"], meses.map(m => [m.label, m.receita, m.despesa, m.resultado]));
 
   return (
@@ -42,6 +50,13 @@ export default function FinanceiroPerformanceMensal() {
       }
     >
       <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
+        <StatCellRow>
+          <StatCell label="Receitas (12m)" value={formatCurrency(receitaTotal)} icon={TrendingUp} tone="success" />
+          <StatCell label="Despesas (12m)" value={formatCurrency(despesaTotal)} icon={TrendingDown} tone="danger" />
+          <StatCell label="Resultado (12m)" value={formatCurrency(resultadoTotal)} icon={Scale} tone={resultadoTotal < 0 ? "danger" : "neutral"} />
+          <StatCell label="Melhor Mês" value={melhorMes ? formatCurrency(melhorMes.resultado) : "—"} hint={melhorMes?.label} icon={Award} />
+        </StatCellRow>
+
         <Card className="p-6">
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">

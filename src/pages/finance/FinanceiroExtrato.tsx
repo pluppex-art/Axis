@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
-import { Download, Printer, CheckCircle2, Clock } from "lucide-react";
+import { StatCell, StatCellRow } from "./components/StatCell";
+import { Download, Printer, CheckCircle2, Clock, Wallet, ArrowDownRight, ArrowUpRight, Landmark } from "lucide-react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
@@ -97,6 +99,11 @@ export default function FinanceiroExtrato() {
     downloadCsv(`extrato_${contaId}_${Date.now()}.csv`, ["Data", "Descrição", "Categoria", "Valor", "Saldo Acumulado"], linhas.map(l => [l.data.toLocaleDateString("pt-BR"), l.descricao, l.categoria, l.valor, l.saldoCorrido]));
   };
 
+  const chartData = useMemo(() => {
+    const pontos = [{ data: "Início", saldo: saldoAnterior }, ...linhas.map(l => ({ data: l.data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), saldo: l.saldoCorrido }))];
+    return pontos;
+  }, [saldoAnterior, linhas]);
+
   return (
     <PageContainer
       title="Extrato"
@@ -134,6 +141,41 @@ export default function FinanceiroExtrato() {
         {!conta ? (
           <Card className="p-12 text-center text-sm text-[var(--color-text-muted)]">Cadastre uma conta bancária para ver o extrato.</Card>
         ) : (
+          <>
+            <StatCellRow>
+              <StatCell label="Saldo Anterior" value={formatCurrency(saldoAnterior)} icon={Landmark} />
+              <StatCell label="Entradas" value={formatCurrency(totalEntradas)} icon={ArrowUpRight} tone="success" />
+              <StatCell label="Saídas" value={formatCurrency(totalSaidas)} icon={ArrowDownRight} tone="danger" />
+              <StatCell label="Saldo Final" value={formatCurrency(saldoFinal)} icon={Wallet} tone={saldoFinal < 0 ? "danger" : "neutral"} />
+            </StatCellRow>
+
+            {linhas.length > 0 && (
+              <Card className="p-6 print:hidden">
+                <h3 className="text-xs font-semibold text-[var(--color-text-primary)] mb-4">Evolução do Saldo</h3>
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData}>
+                      <defs>
+                        <linearGradient id="saldoGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--color-primary-blue)" stopOpacity={0.35} />
+                          <stop offset="100%" stopColor="var(--color-primary-blue)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" vertical={false} />
+                      <XAxis dataKey="data" axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 10 }} minTickGap={20} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--color-text-muted)", fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} width={40} />
+                      <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} />
+                      <ReferenceLine y={0} stroke="var(--color-border-default)" />
+                      <Area type="monotone" dataKey="saldo" name="Saldo" stroke="var(--color-primary-blue)" strokeWidth={2} fill="url(#saldoGradient)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            )}
+          </>
+        )}
+
+        {conta && (
           <Card className="overflow-hidden">
             <div className="p-4 border-b border-[var(--color-border-subtle)] flex items-center justify-between">
               <span className="text-xs font-semibold text-[var(--color-text-primary)]">{conta.nome} — {new Date(dataInicial + "T12:00:00").toLocaleDateString("pt-BR")} a {new Date(dataFinal + "T12:00:00").toLocaleDateString("pt-BR")}</span>
