@@ -455,12 +455,26 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
   };
 
   if (existing) {
-    const { data, error } = await supabaseService.from("leads").update({
+    // Uma chamada sem reserva (ex.: cadastro avulso de cliente no CRM interno
+    // do chamador) nunca deve regredir um lead que já tem histórico de
+    // reserva — senão um cliente com reserva confirmada volta pra etapa
+    // "Agendado" e perde o valor só porque foi re-cadastrado. Só move
+    // etapa/produto/valor quando a chamada realmente traz uma reserva nova,
+    // ou quando o lead ainda não tinha nenhuma reserva registrada.
+    const canAdvanceStage = !!incomingReservation || prevHistory.length === 0;
+    const updatePayload: Record<string, any> = {
       name, company, email: normalizedEmail, phone: normalizedPhone, cnpj,
-      value: rawValue, status, priority, source, stageId, pipelineId, productIds,
-      customFields: mergedCustomFields, tenantName,
+      priority, source, customFields: mergedCustomFields, tenantName,
       updated_at: new Date().toISOString(),
-    }).eq("id", existing.id).select().maybeSingle();
+    };
+    if (canAdvanceStage) {
+      updatePayload.value = rawValue;
+      updatePayload.status = status;
+      updatePayload.stageId = stageId;
+      updatePayload.pipelineId = pipelineId;
+      updatePayload.productIds = productIds;
+    }
+    const { data, error } = await supabaseService.from("leads").update(updatePayload).eq("id", existing.id).select().maybeSingle();
     if (error) {
       console.error("[API v1] Erro ao atualizar lead:", error.message);
       logApiKeyUsage(req, 500);
