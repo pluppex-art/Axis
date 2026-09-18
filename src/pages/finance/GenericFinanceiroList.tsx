@@ -1,7 +1,7 @@
 import { Card } from "../../components/ui/card";
 import {
   Download, Calendar, CheckCircle2,
-  Clock, AlertTriangle, Plus, Trash2, DollarSign, Pencil, Lock, Repeat, Layers, User
+  Clock, AlertTriangle, Plus, Trash2, DollarSign, Pencil, Lock, Repeat, Layers, User, Search, X
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
@@ -178,9 +178,47 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     return financeEntries.filter(f => f.type === type && (!statusFilter || f.status === statusFilter));
   }, [financeEntries, type, statusFilter]);
 
+  // Filtros do usuário — busca, categoria, contraparte, conta, centro de
+  // custo, período e (quando a tela mostra todos os status) status. Sem
+  // isso, Contas a Pagar/Receber viravam uma lista infinita sem jeito de
+  // achar um lançamento específico.
+  const [filtroBusca, setFiltroBusca] = useState("");
+  const [filtroCategoriaId, setFiltroCategoriaId] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState<"" | "Pago" | "A Vencer" | "Atrasado">("");
+  const [filtroContaBancariaId, setFiltroContaBancariaId] = useState("");
+  const [filtroCentroCustoId, setFiltroCentroCustoId] = useState("");
+  const [filtroDataInicio, setFiltroDataInicio] = useState("");
+  const [filtroDataFim, setFiltroDataFim] = useState("");
+
+  const temFiltrosAtivos = !!(filtroBusca || filtroCategoriaId || filtroStatus || filtroContaBancariaId || filtroCentroCustoId || filtroDataInicio || filtroDataFim);
+  const limparFiltros = () => {
+    setFiltroBusca(""); setFiltroCategoriaId(""); setFiltroStatus("");
+    setFiltroContaBancariaId(""); setFiltroCentroCustoId(""); setFiltroDataInicio(""); setFiltroDataFim("");
+  };
+
+  const filteredData = useMemo(() => {
+    const q = filtroBusca.trim().toLowerCase();
+    const inicio = filtroDataInicio ? new Date(filtroDataInicio + "T00:00:00") : null;
+    const fim = filtroDataFim ? new Date(filtroDataFim + "T23:59:59") : null;
+    return data.filter(item => {
+      if (q && !item.description.toLowerCase().includes(q) && !(item.category || "").toLowerCase().includes(q) && !(item.counterparty || "").toLowerCase().includes(q)) return false;
+      if (filtroCategoriaId && (item as any).category_id !== filtroCategoriaId) return false;
+      if (filtroStatus && item.status !== filtroStatus) return false;
+      if (filtroContaBancariaId && (item as any).conta_bancaria_id !== filtroContaBancariaId) return false;
+      if (filtroCentroCustoId && (item as any).centro_custo_id !== filtroCentroCustoId) return false;
+      if (inicio || fim) {
+        const d = parseEntryDate(item.date);
+        if (!d) return false;
+        if (inicio && d < inicio) return false;
+        if (fim && d > fim) return false;
+      }
+      return true;
+    });
+  }, [data, filtroBusca, filtroCategoriaId, filtroStatus, filtroContaBancariaId, filtroCentroCustoId, filtroDataInicio, filtroDataFim]);
+
   const totalValue = useMemo(() => {
-    return data.reduce((acc, item) => acc + item.value, 0);
-  }, [data]);
+    return filteredData.reduce((acc, item) => acc + item.value, 0);
+  }, [filteredData]);
 
   const [formErrors, setFormErrors] = useState<{ desc?: string; value?: string; category?: string }>({});
 
@@ -294,7 +332,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     downloadCsv(
       `${type === 'Pagar' ? 'contas_a_pagar' : 'contas_a_receber'}_${Date.now()}.csv`,
       ["Nome", "Categoria", "Cliente/Fornecedor", "Forma de Pagamento", "Vencimento", "Status", "Valor"],
-      data.map(item => [item.description, item.category, item.counterparty || "", item.payment_method || "", item.date, item.status, item.value])
+      filteredData.map(item => [item.description, item.category, item.counterparty || "", item.payment_method || "", item.date, item.status, item.value])
     );
   };
 
@@ -429,10 +467,74 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
         </div>
       </div>
 
+      <Card className="p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Buscar</label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-faint)]" />
+              <input
+                type="text"
+                placeholder="Nome, categoria ou cliente/fornecedor..."
+                value={filtroBusca}
+                onChange={(e) => setFiltroBusca(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] pl-8 pr-3 py-2 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)]"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Categoria</label>
+            <select value={filtroCategoriaId} onChange={(e) => setFiltroCategoriaId(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer">
+              <option value="">Todas</option>
+              {categoriasDoTipo.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+          </div>
+          {!statusFilter && (
+            <div>
+              <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Status</label>
+              <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer">
+                <option value="">Todos</option>
+                <option value="Pago">Pago</option>
+                <option value="A Vencer">A Vencer</option>
+                <option value="Atrasado">Atrasado</option>
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Conta Bancária</label>
+            <select value={filtroContaBancariaId} onChange={(e) => setFiltroContaBancariaId(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer">
+              <option value="">Todas</option>
+              {contasAtivas.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Centro de Custo</label>
+            <select value={filtroCentroCustoId} onChange={(e) => setFiltroCentroCustoId(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer">
+              <option value="">Todos</option>
+              {(financeCentrosCusto as any[]).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">De</label>
+            <input type="date" value={filtroDataInicio} onChange={(e) => setFiltroDataInicio(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Até</label>
+            <input type="date" value={filtroDataFim} onChange={(e) => setFiltroDataFim(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
+          </div>
+          {temFiltrosAtivos && (
+            <Button variant="outline" onClick={limparFiltros} className="h-9 px-3 text-xs font-bold gap-1.5 border-[var(--color-border-default)]">
+              <X className="w-3.5 h-3.5" /> Limpar
+            </Button>
+          )}
+        </div>
+      </Card>
+
       <Card className="bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] overflow-hidden shadow-sm">
         <div className="p-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)] flex items-center justify-between">
           <div className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
             Fluxo de Caixa / {type === 'Pagar' ? 'Contas a Pagar' : 'Contas a Receber'}
+            {temFiltrosAtivos && <span className="ml-2 normal-case font-medium text-[var(--color-primary-blue)]">· {filteredData.length} de {data.length} lançamento(s)</span>}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-[var(--color-primary-blue)] font-semibold">
             <Calendar className="w-3.5 h-3.5" /> Ciclo Atual
@@ -455,14 +557,14 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border-subtle)]">
-              {data.length === 0 ? (
+              {filteredData.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-[var(--color-text-muted)]">
-                    Nenhum lançamento encontrado para este período.
+                    {temFiltrosAtivos ? "Nenhum lançamento encontrado para os filtros selecionados." : "Nenhum lançamento encontrado para este período."}
                   </td>
                 </tr>
               ) : (
-                data.map((item) => (
+                filteredData.map((item) => (
                   <tr key={item.id} className="hover:bg-[var(--color-surface-sunken)]/50 transition-colors group">
                     <td className="px-6 py-4 font-bold text-[var(--color-text-primary)]">
                       <span className="inline-flex items-center gap-1.5">
@@ -527,7 +629,10 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
 
           {/* Mobile Cards */}
           <div className="md:hidden p-4 space-y-3">
-            {data.map((item) => (
+            {filteredData.length === 0 && (
+              <p className="text-center text-xs text-[var(--color-text-muted)] py-8">{temFiltrosAtivos ? "Nenhum lançamento encontrado para os filtros selecionados." : "Nenhum lançamento encontrado para este período."}</p>
+            )}
+            {filteredData.map((item) => (
               <div key={item.id} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] p-4 rounded-xl flex flex-col gap-3 relative">
                 <div className="absolute top-3 right-3 flex items-center gap-2">
                   <button

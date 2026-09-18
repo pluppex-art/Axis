@@ -4,7 +4,7 @@ import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { StatCell, StatCellRow } from "./components/StatCell";
-import { Download, Printer, Hash, Layers, TrendingUp, Crown } from "lucide-react";
+import { Download, Printer, Hash, Layers, TrendingUp, Crown, Search } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid } from "recharts";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
@@ -13,7 +13,8 @@ import { parseEntryDate } from "./lib/financeDates";
 import { dreTipoDe, categoriesById, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
 
 type Dimension = "description" | "day" | "dreTipo" | "category" | "tags" | "centroCusto" | "counterparty";
-type Periodo = "mes" | "trimestre" | "ano" | "tudo";
+type Periodo = "mes" | "trimestre" | "ano" | "tudo" | "personalizado";
+type Status = "Pago" | "A Vencer" | "Atrasado";
 
 interface ReportConfig {
   type: "Pagar" | "Receber";
@@ -52,13 +53,23 @@ const PERIODOS: { id: Periodo; label: string }[] = [
   { id: "trimestre", label: "Este Trimestre" },
   { id: "ano", label: "Este Ano" },
   { id: "tudo", label: "Tudo" },
+  { id: "personalizado", label: "Personalizado" },
 ];
 
-function isInPeriodo(date: Date | null, periodo: Periodo, now: Date): boolean {
+const STATUSES: Status[] = ["Pago", "A Vencer", "Atrasado"];
+
+function isInPeriodo(date: Date | null, periodo: Periodo, now: Date, custom: { inicio: string; fim: string }): boolean {
   if (periodo === "tudo") return true;
   if (!date) return false;
   if (periodo === "mes") return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
   if (periodo === "trimestre") return date.getFullYear() === now.getFullYear() && Math.floor(date.getMonth() / 3) === Math.floor(now.getMonth() / 3);
+  if (periodo === "personalizado") {
+    const inicio = custom.inicio ? new Date(custom.inicio + "T00:00:00") : null;
+    const fim = custom.fim ? new Date(custom.fim + "T23:59:59") : null;
+    if (inicio && date < inicio) return false;
+    if (fim && date > fim) return false;
+    return true;
+  }
   return date.getFullYear() === now.getFullYear();
 }
 
@@ -68,8 +79,14 @@ export default function FinanceiroRelatorioAgrupado() {
   const { financeEntries, financeCategories, financeCentrosCusto } = useData();
   const { formatCurrency } = useLocalization();
   const [periodo, setPeriodo] = useState<Periodo>("mes");
-  const [incluirPagos, setIncluirPagos] = useState(true);
-  const [incluirNaoPagos, setIncluirNaoPagos] = useState(true);
+  const [customInicio, setCustomInicio] = useState("");
+  const [customFim, setCustomFim] = useState("");
+  const [statusAtivos, setStatusAtivos] = useState<Status[]>(["Pago", "A Vencer", "Atrasado"]);
+  const [busca, setBusca] = useState("");
+
+  const toggleStatus = (s: Status) => {
+    setStatusAtivos(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+  };
 
   const catMap = useMemo(() => categoriesById(financeCategories as FinanceCategoryLike[]), [financeCategories]);
   const centroCustoMap = useMemo(() => new Map((financeCentrosCusto as any[]).map(c => [c.id, c.nome])), [financeCentrosCusto]);
@@ -79,9 +96,8 @@ export default function FinanceiroRelatorioAgrupado() {
     const now = new Date();
     const base = (financeEntries as (FinanceEntryLike & any)[]).filter(e => {
       if (e.type !== config.type) return false;
-      if (e.status === "Pago" && !incluirPagos) return false;
-      if (e.status !== "Pago" && !incluirNaoPagos) return false;
-      return isInPeriodo(parseEntryDate(e.date), periodo, now);
+      if (!statusAtivos.includes(e.status as Status)) return false;
+      return isInPeriodo(parseEntryDate(e.date), periodo, now, { inicio: customInicio, fim: customFim });
     });
 
     const grupos = new Map<string, { label: string; valor: number; qtd: number }>();
@@ -129,19 +145,25 @@ export default function FinanceiroRelatorioAgrupado() {
     }
 
     return Array.from(grupos.values()).sort((a, b) => b.valor - a.valor);
-  }, [config, financeEntries, catMap, centroCustoMap, periodo, incluirPagos, incluirNaoPagos]);
+  }, [config, financeEntries, catMap, centroCustoMap, periodo, customInicio, customFim, statusAtivos]);
 
-  const total = linhas.reduce((s, l) => s + l.valor, 0);
-  const qtdTotal = linhas.reduce((s, l) => s + l.qtd, 0);
+  const linhasFiltradas = useMemo(() => {
+    if (!busca.trim()) return linhas;
+    const q = busca.trim().toLowerCase();
+    return linhas.filter(l => l.label.toLowerCase().includes(q));
+  }, [linhas, busca]);
+
+  const total = linhasFiltradas.reduce((s, l) => s + l.valor, 0);
+  const qtdTotal = linhasFiltradas.reduce((s, l) => s + l.qtd, 0);
   const media = qtdTotal > 0 ? total / qtdTotal : 0;
   const corBarra = config?.type === "Pagar" ? "var(--color-danger)" : "var(--color-success)";
 
   const chartData = useMemo(() => {
-    const top = linhas.slice(0, 8).map(l => ({ name: l.label, valor: l.valor }));
-    const resto = linhas.slice(8).reduce((s, l) => s + l.valor, 0);
+    const top = linhasFiltradas.slice(0, 8).map(l => ({ name: l.label, valor: l.valor }));
+    const resto = linhasFiltradas.slice(8).reduce((s, l) => s + l.valor, 0);
     if (resto > 0) top.push({ name: "Outros", valor: resto });
     return top;
-  }, [linhas]);
+  }, [linhasFiltradas]);
 
   if (!config) {
     return (
@@ -154,7 +176,7 @@ export default function FinanceiroRelatorioAgrupado() {
   }
 
   const handleExport = () => {
-    downloadCsv(`${slug}_${Date.now()}.csv`, [config.groupLabel, "Quantidade", "Valor", "% do Total"], linhas.map(l => [l.label, l.qtd, l.valor, total > 0 ? `${((l.valor / total) * 100).toFixed(1)}%` : "0%"]));
+    downloadCsv(`${slug}_${Date.now()}.csv`, [config.groupLabel, "Quantidade", "Valor", "% do Total"], linhasFiltradas.map(l => [l.label, l.qtd, l.valor, total > 0 ? `${((l.valor / total) * 100).toFixed(1)}%` : "0%"]));
   };
 
   return (
@@ -176,19 +198,39 @@ export default function FinanceiroRelatorioAgrupado() {
               <Button key={p.id} size="sm" variant={periodo === p.id ? "default" : "ghost"} onClick={() => setPeriodo(p.id)} className="h-7 px-3 text-xs font-medium">{p.label}</Button>
             ))}
           </div>
-          <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] cursor-pointer">
-            <input type="checkbox" checked={incluirPagos} onChange={(e) => setIncluirPagos(e.target.checked)} /> Pagos
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] cursor-pointer">
-            <input type="checkbox" checked={incluirNaoPagos} onChange={(e) => setIncluirNaoPagos(e.target.checked)} /> Não pagos
-          </label>
+
+          {periodo === "personalizado" && (
+            <div className="flex items-center gap-1.5 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-2.5 h-9 text-xs">
+              <span className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase">De:</span>
+              <input type="date" value={customInicio} onChange={(e) => setCustomInicio(e.target.value)} className="bg-transparent text-xs text-[var(--color-text-primary)] font-mono focus:outline-none" />
+              <span className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase ml-1">Até:</span>
+              <input type="date" value={customFim} onChange={(e) => setCustomFim(e.target.value)} className="bg-transparent text-xs text-[var(--color-text-primary)] font-mono focus:outline-none" />
+            </div>
+          )}
+
+          <div className="flex items-center gap-1 bg-[var(--color-surface-sunken)] p-1 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)]">
+            {STATUSES.map(s => (
+              <Button key={s} size="sm" variant={statusAtivos.includes(s) ? "default" : "ghost"} onClick={() => toggleStatus(s)} className="h-7 px-3 text-xs font-medium">{s}</Button>
+            ))}
+          </div>
+
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-faint)]" />
+            <input
+              type="text"
+              placeholder={`Buscar ${config.groupLabel.toLowerCase()}...`}
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] pl-8 pr-3 h-9 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)] w-48"
+            />
+          </div>
         </div>
 
         <StatCellRow>
           <StatCell label="Total" value={formatCurrency(total)} icon={TrendingUp} tone={config.type === "Pagar" ? "danger" : "success"} />
           <StatCell label="Lançamentos" value={qtdTotal} icon={Hash} />
           <StatCell label="Média por Lançamento" value={formatCurrency(media)} icon={Layers} />
-          <StatCell label={`Maior ${config.groupLabel}`} value={linhas[0] ? formatCurrency(linhas[0].valor) : "—"} hint={linhas[0]?.label} icon={Crown} />
+          <StatCell label={`Maior ${config.groupLabel}`} value={linhasFiltradas[0] ? formatCurrency(linhasFiltradas[0].valor) : "—"} hint={linhasFiltradas[0]?.label} icon={Crown} />
         </StatCellRow>
 
         {chartData.length > 0 && (
@@ -221,9 +263,9 @@ export default function FinanceiroRelatorioAgrupado() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border-subtle)]">
-              {linhas.length === 0 ? (
-                <tr><td colSpan={4} className="px-6 py-10 text-center text-[var(--color-text-faint)]">Nenhum lançamento no período.</td></tr>
-              ) : linhas.map(l => (
+              {linhasFiltradas.length === 0 ? (
+                <tr><td colSpan={4} className="px-6 py-10 text-center text-[var(--color-text-faint)]">Nenhum lançamento encontrado para os filtros selecionados.</td></tr>
+              ) : linhasFiltradas.map(l => (
                 <tr key={l.label} className="hover:bg-[var(--color-surface-sunken)]/50 transition-colors">
                   <td className="px-6 py-3 font-medium text-[var(--color-text-primary)]">{l.label}</td>
                   <td className="px-6 py-3 text-right tabular-nums text-[var(--color-text-muted)]">{l.qtd}</td>
@@ -232,11 +274,11 @@ export default function FinanceiroRelatorioAgrupado() {
                 </tr>
               ))}
             </tbody>
-            {linhas.length > 0 && (
+            {linhasFiltradas.length > 0 && (
               <tfoot className="bg-[var(--color-surface-sunken)] border-t border-[var(--color-border-subtle)] font-semibold">
                 <tr>
                   <td className="px-6 py-3 text-[var(--color-text-muted)] uppercase text-[10px]">Total</td>
-                  <td className="px-6 py-3 text-right tabular-nums">{linhas.reduce((s, l) => s + l.qtd, 0)}</td>
+                  <td className="px-6 py-3 text-right tabular-nums">{qtdTotal}</td>
                   <td className="px-6 py-3 text-right tabular-nums">{formatCurrency(total)}</td>
                   <td className="px-6 py-3 text-right">100%</td>
                 </tr>

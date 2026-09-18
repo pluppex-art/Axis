@@ -1,4 +1,5 @@
-import { Outlet } from "react-router-dom";
+import { useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -23,8 +24,10 @@ import {
   AlertTriangle,
   Search,
   Upload,
+  Plus,
 } from "lucide-react";
 import { SectionSidebar, type SectionNavGroup } from "../../components/layout/SectionSidebar";
+import { NovaOperacaoModal } from "./components/NovaOperacaoModal";
 
 const groups: SectionNavGroup[] = [
   {
@@ -95,10 +98,44 @@ const groups: SectionNavGroup[] = [
   },
 ];
 
+// Páginas que já têm seu próprio botão de lançamento (GenericFinanceiroList
+// ou fluxo de criação dedicado) não ganham o FAB global — evitaria dois
+// botões de "+" fazendo coisas parecidas na mesma tela.
+const PAGINAS_COM_BOTAO_PROPRIO = [
+  "/app/financeiro/receber",
+  "/app/financeiro/pagar",
+  "/app/financeiro/receitas",
+  "/app/financeiro/despesas",
+  "/app/financeiro/bancos",
+  "/app/financeiro/transferencias",
+  "/app/financeiro/centros-custo",
+  "/app/financeiro/contatos",
+  "/app/financeiro/cobrancas",
+];
+
 export default function FinanceiroLayout() {
+  const location = useLocation();
+  const [novaOperacaoOpen, setNovaOperacaoOpen] = useState(false);
+
+  const mostrarFab = !PAGINAS_COM_BOTAO_PROPRIO.some(p => location.pathname.startsWith(p));
+  const tipoPadrao = location.pathname.includes("recebimento") ? "Receber" : "Pagar";
+
   return (
     <SectionSidebar heading="Financeiro" subheading="Gestão Financeira" groups={groups}>
       <Outlet />
+
+      {mostrarFab && (
+        <button
+          type="button"
+          onClick={() => setNovaOperacaoOpen(true)}
+          className="fixed bottom-20 sm:bottom-6 right-6 z-40 h-12 w-12 rounded-full bg-[var(--color-primary-blue)] text-white shadow-lg flex items-center justify-center hover:brightness-110 active:scale-95 transition-all cursor-pointer print:hidden"
+          title="Nova Operação"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      )}
+
+      <NovaOperacaoModal isOpen={novaOperacaoOpen} onClose={() => setNovaOperacaoOpen(false)} defaultType={tipoPadrao} />
     </SectionSidebar>
   );
 }

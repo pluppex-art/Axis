@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -11,22 +11,24 @@ import { downloadCsv } from "../../lib/csvExport";
 import { parseEntryDate } from "./lib/financeDates";
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+const JANELAS = [6, 12, 24] as const;
 
 export default function FinanceiroPerformanceMensal() {
   const { financeEntries } = useData();
   const { formatCurrency } = useLocalization();
+  const [janela, setJanela] = useState<(typeof JANELAS)[number]>(12);
 
   const meses = useMemo(() => {
     const now = new Date();
-    return Array.from({ length: 12 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+    return Array.from({ length: janela }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (janela - 1 - i), 1);
       const y = d.getFullYear(), m = d.getMonth();
       const doMes = financeEntries.filter(e => { const ed = parseEntryDate(e.date); return ed && ed.getFullYear() === y && ed.getMonth() === m && e.status === "Pago"; });
       const receita = doMes.filter(e => e.type === "Receber").reduce((s, e) => s + e.value, 0);
       const despesa = doMes.filter(e => e.type === "Pagar").reduce((s, e) => s + e.value, 0);
       return { label: `${MONTH_NAMES[m]}/${String(y).slice(2)}`, receita, despesa, resultado: receita - despesa };
     });
-  }, [financeEntries]);
+  }, [financeEntries, janela]);
 
   const { receitaTotal, despesaTotal, resultadoTotal, melhorMes } = useMemo(() => {
     const receitaTotal = meses.reduce((s, m) => s + m.receita, 0);
@@ -40,10 +42,15 @@ export default function FinanceiroPerformanceMensal() {
   return (
     <PageContainer
       title="Performance Mensal"
-      description="Receitas, despesas e resultado realizados nos últimos 12 meses."
+      description={`Receitas, despesas e resultado realizados nos últimos ${janela} meses.`}
       breadcrumb={[{ label: "Financeiro", path: "/app/financeiro/dashboard" }, { label: "Relatórios", path: "/app/financeiro/relatorios" }, { label: "Performance Mensal" }]}
       actions={
         <div className="flex items-center gap-2 print:hidden">
+          <div className="flex items-center gap-1 bg-[var(--color-surface-sunken)] p-1 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)]">
+            {JANELAS.map(j => (
+              <Button key={j} size="sm" variant={janela === j ? "default" : "ghost"} onClick={() => setJanela(j)} className="h-7 px-3 text-xs font-medium">{j}m</Button>
+            ))}
+          </div>
           <Button variant="outline" onClick={() => window.print()} className="h-9 px-3 text-xs font-medium"><Printer className="w-3.5 h-3.5" /></Button>
           <Button onClick={handleExport} className="h-9 px-4 text-xs font-medium gap-1.5"><Download className="w-3.5 h-3.5" /> Exportar CSV</Button>
         </div>
@@ -51,9 +58,9 @@ export default function FinanceiroPerformanceMensal() {
     >
       <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
         <StatCellRow>
-          <StatCell label="Receitas (12m)" value={formatCurrency(receitaTotal)} icon={TrendingUp} tone="success" />
-          <StatCell label="Despesas (12m)" value={formatCurrency(despesaTotal)} icon={TrendingDown} tone="danger" />
-          <StatCell label="Resultado (12m)" value={formatCurrency(resultadoTotal)} icon={Scale} tone={resultadoTotal < 0 ? "danger" : "neutral"} />
+          <StatCell label={`Receitas (${janela}m)`} value={formatCurrency(receitaTotal)} icon={TrendingUp} tone="success" />
+          <StatCell label={`Despesas (${janela}m)`} value={formatCurrency(despesaTotal)} icon={TrendingDown} tone="danger" />
+          <StatCell label={`Resultado (${janela}m)`} value={formatCurrency(resultadoTotal)} icon={Scale} tone={resultadoTotal < 0 ? "danger" : "neutral"} />
           <StatCell label="Melhor Mês" value={melhorMes ? formatCurrency(melhorMes.resultado) : "—"} hint={melhorMes?.label} icon={Award} />
         </StatCellRow>
 
