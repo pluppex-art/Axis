@@ -99,7 +99,7 @@ export default function SettingsLayout() {
       title: "Sistema",
       icon: HardDrive,
       items: [
-        ...(user?.isMaster && isModuleEnabled("aurora") ? [{ title: "Aurora (Consumo & Agentes)", path: "/app/configuracoes/sistema/aurora" }] : []),
+        ...(isModuleEnabled("aurora") ? [{ title: "Aurora (Consumo & Agentes)", path: "/app/configuracoes/sistema/aurora" }] : []),
         { title: "Backups automáticos", path: "/app/configuracoes/sistema/backups" },
       ],
     },

@@ -1259,18 +1259,24 @@ app.post("/api/ai/aurora-chat", requireUser, async (req: any, res: any) => {
   const webhookUrl = process.env.AURORA_WEBHOOK_URL;
   if (!webhookUrl) return res.status(503).json({ error: "Aurora não está configurada neste ambiente." });
 
-  // Este endpoint atende dois chamadores bem diferentes com a mesma Aurora (n8n AURORA CORE):
-  //   1) o widget pessoal do Gustavo/G-TECH (AuroraWidget.tsx) — não manda sessionId, cai no
-  //      buffer de memória fixo e compartilhado com o jarvis-os. A UI já esconde esse widget de
-  //      quem não é master (Layout.tsx: `user?.isMaster && ...`), mas isso é só a UI — sem essa
-  //      checagem aqui, qualquer usuário autenticado de QUALQUER tenant podia chamar a API direto
-  //      (fora do widget) e injetar mensagens/ouvir respostas na sessão pessoal do Gustavo.
+  // Este endpoint atende dois chamadores diferentes com a mesma Aurora (n8n AURORA CORE):
+  //   1) o widget da Aurora (AuroraWidget.tsx) — liberado pra qualquer empresa com o módulo
+  //      "aurora" ativo (Layout.tsx), não só G-Tech. Cada usuário ganha sua própria sessão de
+  //      memória (aurora-user-<id>), isolada das outras empresas; o master/G-Tech mantém a
+  //      sessão pessoal histórica ("aurora-gustavo-principal") por compatibilidade com o que já
+  //      estava configurado no workflow. tenantId/tenantName/isMaster vão no payload pro workflow
+  //      do n8n rotear as ferramentas de escrita (calendário/WhatsApp) pra credencial da empresa
+  //      certa — essa parametrização está sendo feita no n8n em paralelo a esta mudança.
   //   2) o copilot de reunião (ReuniaoRoom.tsx / useAuroraMeetingPresence.ts) — manda um
   //      sessionId próprio por reunião (`aurora-reuniao-<reuniaoId>`), disponível a qualquer
   //      closer autenticado. Antes de usar esse reuniaoId pra montar a chave de memória, valida
   //      que a reunião existe pro tenant do chamador — via req.supabase (client escopado ao JWT,
   //      sujeito à RLS da Fase 1), então um reuniaoId de outro tenant simplesmente não aparece.
   let sessionId: string;
+  let tenantId: string | null = null;
+  let tenantName: string | null = null;
+  let isMasterCaller = false;
+
   const meetingMatch = typeof clientSessionId === "string" ? clientSessionId.match(/^aurora-reuniao-(.+)$/) : null;
   if (meetingMatch) {
     const { data: reuniao, error: reuniaoError } = await req.supabase
@@ -1281,17 +1287,22 @@ app.post("/api/ai/aurora-chat", requireUser, async (req: any, res: any) => {
     sessionId = clientSessionId;
   } else {
     const { data: caller, error: callerError } = await req.supabase
-      .from("users").select("is_master").eq("id", req.user.id).maybeSingle();
-    if (callerError || !caller?.is_master) {
-      return res.status(403).json({ error: "Apenas administradores master podem usar a Aurora pessoal." });
+      .from("users").select("is_master, tenant_id, tenants(name)").eq("id", req.user.id).maybeSingle();
+    if (callerError || !caller) {
+      return res.status(403).json({ error: "Não foi possível identificar o usuário." });
     }
-    sessionId = clientSessionId || "aurora-gustavo-principal";
+    isMasterCaller = !!caller.is_master;
+    tenantId = caller.tenant_id ?? null;
+    tenantName = (caller as any).tenants?.name ?? null;
+    sessionId = isMasterCaller
+      ? (clientSessionId || "aurora-gustavo-principal")
+      : (clientSessionId || `aurora-user-${req.user.id}`);
   }
 
   try {
     const { data } = await axios.post(
       webhookUrl,
-      { action: "sendMessage", sessionId, chatInput: message },
+      { action: "sendMessage", sessionId, chatInput: message, tenantId, tenantName, isMaster: isMasterCaller },
       { timeout: 60000 }
     );
     return res.json({ output: data?.output ?? "", audioBase64: data?.audioBase64 ?? null });

@@ -60,11 +60,13 @@ export default function Layout() {
         setIsMobileMoreOpen={setIsMobileMoreOpen}
       />
 
-      {/* Aurora só aparece para usuários master (G-TECH) — ela tem ferramentas de escrita
-          reais escopadas ao tenant da G-TECH e não faz sentido/não é seguro para outros
-          tenants do S.P.Y. (Target AgroTech, Pluppex, etc.) verem esse chat. Além disso, agora
-          é um módulo de verdade (Configurações → Módulos) — dá pra desligar sem mexer em código. */}
-      {user?.isMaster && isModuleEnabled("aurora") && <AuroraWidget />}
+      {/* Aurora era restrita a usuários master (G-TECH) porque as ferramentas de escrita
+          (calendário/WhatsApp) estavam hardcoded pro tenant da G-TECH. Liberada aqui pra
+          qualquer tenant com o módulo "aurora" ativo — a parametrização por tenant das
+          ferramentas de escrita está sendo feita em paralelo (n8n / backend); até isso
+          terminar, tenants não-master verão o widget mas chamadas à Aurora pessoal ainda
+          são bloqueadas no backend (server.ts, rota /api/ai/aurora-chat, checagem is_master). */}
+      {isModuleEnabled("aurora") && <AuroraWidget />}
       <OnboardingWizard />
 
       <Toaster

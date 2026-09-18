@@ -513,7 +513,7 @@ function AppContent() {
           </Route>
 
           <Route path="admin" element={<ProtectedRoute requireMaster><AdminSaaS /></ProtectedRoute>} />
-          <Route path="parceiros" element={<PartnersOverview />} />
+          <Route path="parceiros" element={<ProtectedRoute requirePartner><PartnersOverview /></ProtectedRoute>} />
         </Route>
 
         {/* Portfólio público do corretor — sem autenticação */}
