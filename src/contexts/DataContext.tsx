@@ -27,6 +27,26 @@ import { useLocalization } from "./LocalizationContext";
 export { useData };
 export type { DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao };
 
+// O PostgREST do Supabase limita a 1000 linhas por resposta por padrão — um
+// simples `.select('*')` (sem paginação) silenciosamente cortava tenants com
+// mais de 1000 linhas numa tabela (ex.: leads/reunioes de uma integração que
+// sincroniza um volume grande de uma vez), sem erro nenhum, só mostrando os
+// primeiros 1000 registros na tela. Pagina com `.range()` até esgotar.
+async function fetchAllRowsForTenant(table: string, tenantId: string) {
+  let all: any[] = [];
+  let from = 0;
+  const step = 1000;
+  while (true) {
+    const { data, error } = await supabase!.from(table).select('*').eq('tenant_id', tenantId).range(from, from + step - 1);
+    if (error) return { data: null as any[] | null, error };
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < step) break;
+    from += step;
+  }
+  return { data: all, error: null as any };
+}
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const { user, authLoading, updatePreferences, activeTenantId, activeFilialId } = useAuth();
   const { formatCurrency } = useLocalization();
@@ -424,7 +444,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const fetchLeads = async () => {
     if (!supabase || !tenantId) return;
-    const { data } = await supabase.from('leads').select('*').eq('tenant_id', tenantId);
+    const { data } = await fetchAllRowsForTenant('leads', tenantId);
     if (data) setLeads(data.map(mapLeadRow));
   };
 
@@ -643,7 +663,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               marketingFormsRes, nichosRes, financeCommissionEntriesRes, indicacoesRes, mktAutoRes, auroraAgentsRes,
               financeBankAccountsRes, financeTransfersRes, financePeriodLocksRes, financeAuditLogRes, financeCentrosCustoRes, financeAttachmentsRes
             ] = await Promise.all([
-              supabase.from('leads').select('*').eq('tenant_id', tenantId),
+              fetchAllRowsForTenant('leads', tenantId),
               supabase.from('tasks').select('*').eq('tenant_id', tenantId),
               supabase.from('contracts').select('*').eq('tenant_id', tenantId),
               supabase.from('lead_activities').select('*').eq('tenant_id', tenantId),
@@ -669,7 +689,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               supabase.from('certificates').select('*').eq('tenant_id', tenantId),
               supabase.from('cargos').select('*').eq('tenant_id', tenantId),
               supabase.from('clientes').select('*').eq('tenant_id', tenantId),
-              supabase.from('reunioes').select('*').eq('tenant_id', tenantId),
+              fetchAllRowsForTenant('reunioes', tenantId),
               supabase.from('financial_goals').select('*').eq('tenant_id', tenantId),
               supabase.from('crm_funis').select('*').eq('tenant_id', tenantId),
               supabase.from('empresa_filiais').select('*').eq('tenant_id', tenantId),
