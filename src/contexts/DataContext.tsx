@@ -41,7 +41,11 @@ export type { DataContextType, LeadActivity, Notification, Appointment, GlobalWe
 // Agora cada página tenta de novo até 3x antes de desistir, e se mesmo assim
 // falhar, devolve o que já foi buscado com sucesso até ali em vez de jogar
 // tudo fora — melhor mostrar 90% dos registros do que zerar a tela inteira.
-async function fetchAllRowsForTenant(table: string, tenantId: string) {
+async function fetchAllRowsForTenant(
+  table: string,
+  tenantId: string,
+  extraFilter?: (query: any) => any
+) {
   let all: any[] = [];
   let from = 0;
   const step = 1000;
@@ -49,7 +53,9 @@ async function fetchAllRowsForTenant(table: string, tenantId: string) {
     let data: any[] | null = null;
     let error: any = null;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await supabase!.from(table).select('*').eq('tenant_id', tenantId).range(from, from + step - 1);
+      let query = supabase!.from(table).select('*').eq('tenant_id', tenantId);
+      if (extraFilter) query = extraFilter(query);
+      const res = await query.range(from, from + step - 1);
       data = res.data;
       error = res.error;
       if (!error) break;
@@ -363,7 +369,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const fetchFunis = async () => {
     if (!supabase || !tenantId) return;
-    const { data } = await supabase.from('crm_funis').select('*').eq('tenant_id', tenantId);
+    const { data } = await fetchAllRowsForTenant('crm_funis', tenantId);
     if (data) setFunis(data.map(rowToFunil));
   };
 
@@ -399,7 +405,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const fetchContracts = async () => {
     if (!supabase || !tenantId) return;
-    const { data } = await supabase.from('contracts').select('*').eq('tenant_id', tenantId);
+    const { data } = await fetchAllRowsForTenant('contracts', tenantId);
     if (data) setContracts(data.map(rowToContract));
   };
 
@@ -479,19 +485,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const fetchAppointments = async () => {
     if (!supabase || !tenantId) return;
-    const { data } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId);
+    const { data } = await fetchAllRowsForTenant('appointments', tenantId);
     if (data) setAppointments(data.map(mapAppointmentRow));
   };
 
   const fetchSquads = async () => {
     if (!supabase || !tenantId) return;
-    const { data } = await supabase.from('squads').select('*').eq('tenant_id', tenantId);
+    const { data } = await fetchAllRowsForTenant('squads', tenantId);
     if (data) setSquads(data.map(mapSquadRow));
   };
 
   const fetchProducts = async () => {
     if (!supabase || !tenantId) return;
-    const { data } = await supabase.from('products').select('*').eq('tenant_id', tenantId);
+    const { data } = await fetchAllRowsForTenant('products', tenantId);
     if (data) setProducts(data.map(mapProductRow));
   };
 
@@ -603,9 +609,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // has_tenant_access() verdadeiro para vários tenants ao mesmo tempo (fase 4
   // de parceiros), então um select('*') sem esse filtro devolve linhas de
   // todos os tenants que a conta pode acessar, não só o tenant ativo na tela.
+  // Usada por ~20 handlers de realtime (tasks, proposals, colaboradores etc.)
+  // — reaproveita o helper paginado pra não recair no corte de 1000 linhas
+  // assim que qualquer evento realtime disparar um refetch dessas tabelas.
   const fetchTableData = async (tableName: string, setter: React.Dispatch<React.SetStateAction<any[]>>) => {
     if (!supabase || !tenantId) return;
-    const { data } = await supabase.from(tableName).select('*').eq('tenant_id', tenantId);
+    const { data } = await fetchAllRowsForTenant(tableName, tenantId);
     if (data) setter(data);
   };
 
@@ -645,37 +654,44 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             debouncedRefetch('leads', fetchLeads);
           }
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => fetchTableData('tasks', setTasks))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => fetchContracts())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_entries' }, () => fetchTableData('finance_entries', setFinanceEntries))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'squads' }, () => fetchSquads())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => fetchAppointments())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => fetchProducts())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, () => fetchTableData('proposals', setProposals))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposal_items' }, () => fetchTableData('proposal_items', setProposalItems))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'turmas' }, () => fetchTableData('turmas', setTurmas))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => fetchTableData('students', setStudents))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'colaboradores' }, () => fetchTableData('colaboradores', setColaboradores))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'squad_metas' }, () => fetchTableData('squad_metas', setSquadMetas))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'financial_goals' }, () => fetchTableData('financial_goals', setFinancialGoals))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'cargos' }, () => fetchTableData('cargos', setCargos))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'certificates' }, () => fetchTableData('certificates', setCertificates))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => debouncedRefetch('tasks', () => fetchTableData('tasks', setTasks)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => debouncedRefetch('contracts', fetchContracts))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_entries' }, () => debouncedRefetch('finance_entries', () => fetchTableData('finance_entries', setFinanceEntries)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'squads' }, () => debouncedRefetch('squads', fetchSquads))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => debouncedRefetch('appointments', fetchAppointments))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => debouncedRefetch('products', fetchProducts))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, () => debouncedRefetch('proposals', () => fetchTableData('proposals', setProposals)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposal_items' }, () => debouncedRefetch('proposal_items', () => fetchTableData('proposal_items', setProposalItems)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'turmas' }, () => debouncedRefetch('turmas', () => fetchTableData('turmas', setTurmas)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => debouncedRefetch('students', () => fetchTableData('students', setStudents)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'colaboradores' }, () => debouncedRefetch('colaboradores', () => fetchTableData('colaboradores', setColaboradores)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'squad_metas' }, () => debouncedRefetch('squad_metas', () => fetchTableData('squad_metas', setSquadMetas)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'financial_goals' }, () => debouncedRefetch('financial_goals', () => fetchTableData('financial_goals', setFinancialGoals)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cargos' }, () => debouncedRefetch('cargos', () => fetchTableData('cargos', setCargos)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'certificates' }, () => debouncedRefetch('certificates', () => fetchTableData('certificates', setCertificates)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'reunioes' }, () => debouncedRefetch('reunioes', fetchReunioes))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_funis' }, () => fetchFunis())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'empresa_filiais' }, () => fetchTableData('empresa_filiais', setEmpresaFiliais))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'nichos' }, () => fetchNichos())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_categories' }, () => fetchTableData('finance_categories', setFinanceCategories))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_bank_accounts' }, () => fetchTableData('finance_bank_accounts', setFinanceBankAccounts))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transfers' }, () => fetchTableData('finance_transfers', setFinanceTransfers))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_centros_custo' }, () => fetchTableData('finance_centros_custo', setFinanceCentrosCusto))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_attachments' }, () => fetchTableData('finance_attachments', setFinanceAttachments))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_period_locks' }, () => fetchTableData('finance_period_locks', setFinancePeriodLocks))
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'finance_audit_log' }, () => fetchTableData('finance_audit_log', setFinanceAuditLog))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_commission_entries' }, () => fetchTableData('finance_commission_entries', setFinanceCommissionEntries))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_exports' }, () => fetchTableData('scheduled_exports', setScheduledExports))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'education_content' }, () => fetchTableData('education_content', setEducationContent))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'indicacoes' }, () => fetchTableData('indicacoes', setIndicacoes as any))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'aurora_agents' }, () => fetchTableData('aurora_agents', setAuroraAgents as any))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_funis' }, () => debouncedRefetch('crm_funis', fetchFunis))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'empresa_filiais' }, () => debouncedRefetch('empresa_filiais', () => fetchTableData('empresa_filiais', setEmpresaFiliais)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'nichos' }, () => debouncedRefetch('nichos', fetchNichos))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_categories' }, () => debouncedRefetch('finance_categories', () => fetchTableData('finance_categories', setFinanceCategories)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_bank_accounts' }, () => debouncedRefetch('finance_bank_accounts', () => fetchTableData('finance_bank_accounts', setFinanceBankAccounts)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transfers' }, () => debouncedRefetch('finance_transfers', () => fetchTableData('finance_transfers', setFinanceTransfers)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_centros_custo' }, () => debouncedRefetch('finance_centros_custo', () => fetchTableData('finance_centros_custo', setFinanceCentrosCusto)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_attachments' }, () => debouncedRefetch('finance_attachments', () => fetchTableData('finance_attachments', setFinanceAttachments)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_period_locks' }, () => debouncedRefetch('finance_period_locks', () => fetchTableData('finance_period_locks', setFinancePeriodLocks)))
+        // Log de auditoria cresce indefinidamente por natureza — mantém o
+        // mesmo limite de 500 mais recentes da carga inicial (fetchTableData
+        // buscaria a tabela inteira, o que não faz sentido pra um audit log).
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'finance_audit_log' }, () => debouncedRefetch('finance_audit_log', async () => {
+          if (!supabase || !tenantId) return;
+          const { data } = await supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500);
+          if (data) setFinanceAuditLog(data);
+        }))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_commission_entries' }, () => debouncedRefetch('finance_commission_entries', () => fetchTableData('finance_commission_entries', setFinanceCommissionEntries)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_exports' }, () => debouncedRefetch('scheduled_exports', () => fetchTableData('scheduled_exports', setScheduledExports)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'education_content' }, () => debouncedRefetch('education_content', () => fetchTableData('education_content', setEducationContent)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'indicacoes' }, () => debouncedRefetch('indicacoes', () => fetchTableData('indicacoes', setIndicacoes as any)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'aurora_agents' }, () => debouncedRefetch('aurora_agents', () => fetchTableData('aurora_agents', setAuroraAgents as any)))
         .subscribe();
     }
 
@@ -706,51 +722,51 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               financeBankAccountsRes, financeTransfersRes, financePeriodLocksRes, financeAuditLogRes, financeCentrosCustoRes, financeAttachmentsRes
             ] = await Promise.all([
               fetchAllRowsForTenant('leads', tenantId),
-              supabase.from('tasks').select('*').eq('tenant_id', tenantId),
-              supabase.from('contracts').select('*').eq('tenant_id', tenantId),
-              supabase.from('lead_activities').select('*').eq('tenant_id', tenantId),
-              supabase.from('finance_entries').select('*').eq('tenant_id', tenantId),
-              supabase.from('appointments').select('*').eq('tenant_id', tenantId),
-              supabase.from('squads').select('*').eq('tenant_id', tenantId),
-              supabase.from('notifications').select('*').eq('tenant_id', tenantId),
-              supabase.from('marketing_campaigns').select('*').eq('tenant_id', tenantId),
-              supabase.from('marketing_content').select('*').eq('tenant_id', tenantId).is('deleted_at', null),
-              supabase.from('marketing_landing_pages').select('*').eq('tenant_id', tenantId),
+              fetchAllRowsForTenant('tasks', tenantId),
+              fetchAllRowsForTenant('contracts', tenantId),
+              fetchAllRowsForTenant('lead_activities', tenantId),
+              fetchAllRowsForTenant('finance_entries', tenantId),
+              fetchAllRowsForTenant('appointments', tenantId),
+              fetchAllRowsForTenant('squads', tenantId),
+              fetchAllRowsForTenant('notifications', tenantId),
+              fetchAllRowsForTenant('marketing_campaigns', tenantId),
+              fetchAllRowsForTenant('marketing_content', tenantId, (q: any) => q.is('deleted_at', null)),
+              fetchAllRowsForTenant('marketing_landing_pages', tenantId),
               // Inclui linhas globais (tenant_id IS NULL) + as do tenant ativo, explicitamente —
               // sem esse filtro, contas master/parceiro (has_tenant_access verdadeiro pra vários
               // tenants) recebiam via RLS configurações de TODOS os tenants acessíveis misturadas
               // num único mapa por key (ver merge abaixo), fazendo "configs grudarem" ao trocar de empresa.
               supabase.from('app_settings').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`),
-              supabase.from('products').select('*').eq('tenant_id', tenantId),
-              supabase.from('proposals').select('*').eq('tenant_id', tenantId),
-              supabase.from('proposal_items').select('*').eq('tenant_id', tenantId),
-              supabase.from('turmas').select('*').eq('tenant_id', tenantId),
-              supabase.from('students').select('*').eq('tenant_id', tenantId),
-              supabase.from('colaboradores').select('*').eq('tenant_id', tenantId),
-              supabase.from('squad_metas').select('*').eq('tenant_id', tenantId),
-              supabase.from('certificates').select('*').eq('tenant_id', tenantId),
-              supabase.from('cargos').select('*').eq('tenant_id', tenantId),
-              supabase.from('clientes').select('*').eq('tenant_id', tenantId),
+              fetchAllRowsForTenant('products', tenantId),
+              fetchAllRowsForTenant('proposals', tenantId),
+              fetchAllRowsForTenant('proposal_items', tenantId),
+              fetchAllRowsForTenant('turmas', tenantId),
+              fetchAllRowsForTenant('students', tenantId),
+              fetchAllRowsForTenant('colaboradores', tenantId),
+              fetchAllRowsForTenant('squad_metas', tenantId),
+              fetchAllRowsForTenant('certificates', tenantId),
+              fetchAllRowsForTenant('cargos', tenantId),
+              fetchAllRowsForTenant('clientes', tenantId),
               fetchAllRowsForTenant('reunioes', tenantId),
-              supabase.from('financial_goals').select('*').eq('tenant_id', tenantId),
-              supabase.from('crm_funis').select('*').eq('tenant_id', tenantId),
-              supabase.from('empresa_filiais').select('*').eq('tenant_id', tenantId),
-              supabase.from('finance_categories').select('*').eq('tenant_id', tenantId),
-              supabase.from('scheduled_exports').select('*').eq('tenant_id', tenantId),
-              supabase.from('education_content').select('*').eq('tenant_id', tenantId),
-              supabase.from('marketing_forms').select('*').eq('tenant_id', tenantId),
+              fetchAllRowsForTenant('financial_goals', tenantId),
+              fetchAllRowsForTenant('crm_funis', tenantId),
+              fetchAllRowsForTenant('empresa_filiais', tenantId),
+              fetchAllRowsForTenant('finance_categories', tenantId),
+              fetchAllRowsForTenant('scheduled_exports', tenantId),
+              fetchAllRowsForTenant('education_content', tenantId),
+              fetchAllRowsForTenant('marketing_forms', tenantId),
               // Nichos globais (tenant_id null) + os do tenant ativo, mesmo motivo do app_settings acima.
               supabase.from('nichos').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`),
-              supabase.from('finance_commission_entries').select('*').eq('tenant_id', tenantId),
-              supabase.from('indicacoes').select('*').eq('tenant_id', tenantId),
-              supabase.from('marketing_automations').select('*').eq('tenant_id', tenantId),
-              supabase.from('aurora_agents').select('*').eq('tenant_id', tenantId),
-              supabase.from('finance_bank_accounts').select('*').eq('tenant_id', tenantId),
-              supabase.from('finance_transfers').select('*').eq('tenant_id', tenantId),
-              supabase.from('finance_period_locks').select('*').eq('tenant_id', tenantId),
+              fetchAllRowsForTenant('finance_commission_entries', tenantId),
+              fetchAllRowsForTenant('indicacoes', tenantId),
+              fetchAllRowsForTenant('marketing_automations', tenantId),
+              fetchAllRowsForTenant('aurora_agents', tenantId),
+              fetchAllRowsForTenant('finance_bank_accounts', tenantId),
+              fetchAllRowsForTenant('finance_transfers', tenantId),
+              fetchAllRowsForTenant('finance_period_locks', tenantId),
               supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500),
-              supabase.from('finance_centros_custo').select('*').eq('tenant_id', tenantId),
-              supabase.from('finance_attachments').select('*').eq('tenant_id', tenantId),
+              fetchAllRowsForTenant('finance_centros_custo', tenantId),
+              fetchAllRowsForTenant('finance_attachments', tenantId),
             ]);
 
             // `leadsRes.data` pode vir parcial (algumas páginas obtidas, uma

@@ -1,5 +1,7 @@
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
+import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
 import { EmptyState } from "../../../../components/ui/empty-state";
 import {
@@ -40,11 +42,17 @@ function statusBadgeVariant(status: string): "success" | "warning" | "destructiv
   return "secondary";
 }
 
+const PAGE_SIZE = 50;
+
 export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelete, onEdit, onDownloadPdf }: ContractsTableProps) {
   const filtered = contracts.filter(c =>
     c.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.plan.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery]);
+  const paged = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
   return (
     <Card className="overflow-hidden">
@@ -88,7 +96,7 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((contract) => (
+            {paged.map((contract) => (
               <TableRow key={contract.id} className="group cursor-pointer">
                 <TableCell>
                   <div className="font-semibold text-[var(--color-text-primary)] group-hover:text-accent transition-colors flex items-center gap-2">
@@ -146,6 +154,13 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
             ))}
           </TableBody>
         </Table>
+      )}
+      {visibleCount < filtered.length && (
+        <div className="flex justify-center p-4 border-t border-[var(--color-border-subtle)]">
+          <Button variant="outline" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
+            Carregar mais ({filtered.length - visibleCount} restantes)
+          </Button>
+        </div>
       )}
     </Card>
   );

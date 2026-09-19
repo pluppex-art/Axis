@@ -25,6 +25,8 @@ type Contato = {
 
 type ClienteOption = { id: string; name: string };
 
+const PAGE_SIZE = 50;
+
 export default function Contatos() {
   const { user, activeTenantId } = useAuth();
   const [contatos, setContatos] = useState<Contato[]>([]);
@@ -32,6 +34,7 @@ export default function Contatos() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [cargoFilter, setCargoFilter] = useState("Todos");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [showModal, setShowModal] = useState(false);
   const [novoContato, setNovoContato] = useState({
     nome: "", email: "", telefone: "", cargo: "", clienteId: "", isDecisor: false,
@@ -39,14 +42,34 @@ export default function Contatos() {
 
   const fetchContatos = async () => {
     setLoading(true);
-    if (!supabase) {
+    if (!supabase || !activeTenantId) {
       setLoading(false);
       return;
     }
-    const { data, error } = await supabase
-      .from("cliente_contatos")
-      .select("id, nome, email, telefone, cargo, principal, created_at, clientes(name)")
-      .order("created_at", { ascending: false });
+    // Mesmo motivo do fetchClientes logo abaixo: sem o filtro de tenant,
+    // contas de parceiro (has_tenant_access verdadeiro pra vários tenants)
+    // recebiam via RLS contatos de todos os tenants acessíveis, não só o
+    // ativo na tela. E pagina com .range() — select() sem limite corta
+    // silenciosamente em 1000 linhas no PostgREST.
+    let all: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let fetchError: any = null;
+    while (true) {
+      const { data: page, error } = await supabase
+        .from("cliente_contatos")
+        .select("id, nome, email, telefone, cargo, principal, created_at, clientes(name)")
+        .eq("tenant_id", activeTenantId)
+        .order("created_at", { ascending: false })
+        .range(from, from + step - 1);
+      if (error) { fetchError = error; break; }
+      if (!page || page.length === 0) break;
+      all = all.concat(page);
+      if (page.length < step) break;
+      from += step;
+    }
+    const data = all;
+    const error = fetchError;
 
     if (error) {
       console.warn("cliente_contatos fetch notice:", error.message);
@@ -94,6 +117,12 @@ export default function Contatos() {
       return matchQ && matchCargo;
     });
   }, [contatos, search, cargoFilter]);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [search, cargoFilter]);
+
+  const paged = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
   const decisoresCount = useMemo(() => contatos.filter(c => c.isDecisor).length, [contatos]);
 
@@ -203,7 +232,7 @@ export default function Contatos() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border-subtle)]">
-              {filtered.map((c) => (
+              {paged.map((c) => (
                 <tr key={c.id} className="hover:bg-[var(--color-surface-sunken)]/40 transition-colors">
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
@@ -283,6 +312,14 @@ export default function Contatos() {
           </table>
         </div>
       </div>
+
+      {visibleCount < filtered.length && (
+        <div className="flex justify-center py-4">
+          <Button variant="outline" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
+            Carregar mais ({filtered.length - visibleCount} restantes)
+          </Button>
+        </div>
+      )}
 
       {/* Modal Novo Contato */}
       {showModal && (

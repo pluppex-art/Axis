@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Search, MoreVertical, X, MessageCircle, Instagram, Mail } from "lucide-react";
 import { motion } from "motion/react";
 import { Contact, Channel } from "./useMessaging";
+
+const PAGE_SIZE = 50;
 
 interface ChatListSidebarProps {
   isMobile: boolean;
@@ -36,6 +38,10 @@ export function ChatListSidebar({
   handleChatSelect,
   tabs
 }: ChatListSidebarProps) {
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, activeTab]);
+  const visibleContacts = filteredContacts.slice(0, visibleCount);
+
   return (
     <div className={`${
         isMobile 
@@ -117,7 +123,7 @@ export function ChatListSidebar({
           ) : (
             /* Real contacts list */
             <>
-              {filteredContacts.map(contact => {
+              {visibleContacts.map(contact => {
                 const isActive = !isMobile && activeChat === contact.id;
                 return (
                   <button
@@ -168,6 +174,16 @@ export function ChatListSidebar({
                 );
               })}
               
+              {visibleCount < filteredContacts.length && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                  className="w-full py-3 text-center text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)]/60 transition-colors cursor-pointer"
+                >
+                  Carregar mais ({filteredContacts.length - visibleCount} restantes)
+                </button>
+              )}
+
               {filteredContacts.length === 0 && (
                 <div className="p-8 flex flex-col items-center justify-center gap-3 text-center animate-in fade-in duration-200">
                   <div className="w-12 h-12 rounded-xl bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] flex items-center justify-center text-[var(--color-text-muted)]">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card } from "../../../../components/ui/card";
 import { Input } from "../../../../components/ui/input";
 import { Badge } from "../../../../components/ui/badge";
@@ -62,6 +62,7 @@ const STATUS_CONFIG = {
   Recusada: { variant: "destructive" as const, icon: XCircle },
 };
 const DEFAULT_STATUS = { variant: "secondary" as const, icon: History };
+const PAGE_SIZE = 50;
 
 interface PropostasTableProps {
   propostas: Proposta[];
@@ -85,6 +86,10 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
     (p.cliente || "").toLowerCase().includes(search.toLowerCase()) ||
     p.titulo.toLowerCase().includes(search.toLowerCase())
   );
+
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [search]);
+  const paged = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
   return (
     <>
@@ -128,7 +133,7 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((item) => {
+            {paged.map((item) => {
               const status = STATUS_CONFIG[item.status as keyof typeof STATUS_CONFIG] || DEFAULT_STATUS;
               const itens = proposalItems.filter(pi => pi.proposal_id === item.id);
               return (
@@ -259,6 +264,13 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
             </TableBody>
           </Table>
         )}
+      {visibleCount < filtered.length && (
+        <div className="flex justify-center py-4">
+          <Button variant="outline" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
+            Carregar mais ({filtered.length - visibleCount} restantes)
+          </Button>
+        </div>
+      )}
       <PropostaEditorWordModal
         isOpen={isWordModalOpen}
         onClose={() => setIsWordModalOpen(false)}
