@@ -791,129 +791,52 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // sozinho depois (dependências abaixo cobrem isso quando o tenant muda).
       if (supabase && !authLoading && tenantId) {
         console.log('[DataContext] 🔄 Carregando dados do Supabase (tenant ' + tenantId + ')...');
-        try {
-            const [
-              leadsRes, tasksRes, contractsRes, actsRes, financeRes, apptRes, squadsRes,
-              notifRes, mktCampRes, mktContRes, mktLpRes, settingsRes,
-              productsRes, proposalsRes, proposalItemsRes, turmasRes, studentsRes, colabRes, squadMetasRes, certRes, cargosRes,
-              clienteBaseRes, reunioesRes, financialGoalsRes, funisRes, filiaisRes,
-              financeCategoriesRes, scheduledExportsRes, educationContentRes,
-              marketingFormsRes, nichosRes, financeCommissionEntriesRes, indicacoesRes, mktAutoRes, auroraAgentsRes,
-              financeBankAccountsRes, financeTransfersRes, financePeriodLocksRes, financeAuditLogRes, financeCentrosCustoRes, financeAttachmentsRes
-            ] = await Promise.all([
-              fetchAllRowsForTenant('leads', tenantId),
-              fetchAllRowsForTenant('tasks', tenantId),
-              fetchAllRowsForTenant('contracts', tenantId),
-              fetchAllRowsForTenant('lead_activities', tenantId),
-              fetchAllRowsForTenant('finance_entries', tenantId),
-              fetchAllRowsForTenant('appointments', tenantId),
-              fetchAllRowsForTenant('squads', tenantId),
-              fetchAllRowsForTenant('notifications', tenantId),
-              fetchAllRowsForTenant('marketing_campaigns', tenantId),
-              fetchAllRowsForTenant('marketing_content', tenantId, (q: any) => q.is('deleted_at', null)),
-              fetchAllRowsForTenant('marketing_landing_pages', tenantId),
-              // Inclui linhas globais (tenant_id IS NULL) + as do tenant ativo, explicitamente —
-              // sem esse filtro, contas master/parceiro (has_tenant_access verdadeiro pra vários
-              // tenants) recebiam via RLS configurações de TODOS os tenants acessíveis misturadas
-              // num único mapa por key (ver merge abaixo), fazendo "configs grudarem" ao trocar de empresa.
-              dbLimit(() => supabase.from('app_settings').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`)),
-              fetchAllRowsForTenant('products', tenantId),
-              fetchAllRowsForTenant('proposals', tenantId),
-              fetchAllRowsForTenant('proposal_items', tenantId),
-              fetchAllRowsForTenant('turmas', tenantId),
-              fetchAllRowsForTenant('students', tenantId),
-              fetchAllRowsForTenant('colaboradores', tenantId),
-              fetchAllRowsForTenant('squad_metas', tenantId),
-              fetchAllRowsForTenant('certificates', tenantId),
-              fetchAllRowsForTenant('cargos', tenantId),
-              fetchAllRowsForTenant('clientes', tenantId),
-              fetchAllRowsForTenant('reunioes', tenantId),
-              fetchAllRowsForTenant('financial_goals', tenantId),
-              fetchAllRowsForTenant('crm_funis', tenantId),
-              fetchAllRowsForTenant('empresa_filiais', tenantId),
-              fetchAllRowsForTenant('finance_categories', tenantId),
-              fetchAllRowsForTenant('scheduled_exports', tenantId),
-              fetchAllRowsForTenant('education_content', tenantId),
-              fetchAllRowsForTenant('marketing_forms', tenantId),
-              // Nichos globais (tenant_id null) + os do tenant ativo, mesmo motivo do app_settings acima.
-              dbLimit(() => supabase.from('nichos').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`)),
-              fetchAllRowsForTenant('finance_commission_entries', tenantId),
-              fetchAllRowsForTenant('indicacoes', tenantId),
-              fetchAllRowsForTenant('marketing_automations', tenantId),
-              fetchAllRowsForTenant('aurora_agents', tenantId),
-              fetchAllRowsForTenant('finance_bank_accounts', tenantId),
-              fetchAllRowsForTenant('finance_transfers', tenantId),
-              fetchAllRowsForTenant('finance_period_locks', tenantId),
-              dbLimit(() => supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500)),
-              fetchAllRowsForTenant('finance_centros_custo', tenantId),
-              fetchAllRowsForTenant('finance_attachments', tenantId),
-            ]);
 
-            // Tenant mudou (ou o componente desmontou) enquanto esse
-            // Promise.all ainda estava em voo — descarta a resposta atrasada
-            // em vez de aplicar dados do tenant errado por cima do certo.
-            if (cancelled) return;
-
-            // `leadsRes.data` pode vir parcial (algumas páginas obtidas, uma
-            // falhou mesmo após retry) — ainda assim é melhor que a lista
-            // vazia/anterior. `error` aqui só indica que faltou parte, não
-            // que não há nada aproveitável.
-            if (leadsRes.data && leadsRes.data.length > 0) {
-              setLeads((leadsRes.data as any[]).map(mapLeadRow) as Lead[]);
-            }
-            if (tasksRes.data && tasksRes.data.length > 0) setTasks(tasksRes.data as Task[]);
-            // Faltava esse hidrate — `contracts` nunca era populado a partir do
-            // Supabase na carga inicial (só via evento realtime de escrita na
-            // tabela), então a cada refresh da página o estado local começava
-            // vazio. Isso fazia a reconciliação de propostas aceitas (Propostas.tsx)
-            // achar "nenhum contrato existente" toda vez e recriar um duplicado
-            // + disparar notificação de novo contrato a cada entrada na tela.
-            if (contractsRes.data) setContracts(contractsRes.data.map(rowToContract));
-            if (actsRes.data && actsRes.data.length > 0) setLeadActivities(actsRes.data as LeadActivity[]);
-            if (financeRes.data && financeRes.data.length > 0) setFinanceEntries(financeRes.data as FinanceEntry[]);
-            if (apptRes.data && apptRes.data.length > 0) setAppointments(apptRes.data.map(mapAppointmentRow));
-            if (squadsRes.data && squadsRes.data.length > 0) setSquads(squadsRes.data.map(mapSquadRow));
-            if (notifRes.data && notifRes.data.length > 0) setNotifications(notifRes.data as Notification[]);
-            if (mktCampRes.data) setMarketingCampaigns(mktCampRes.data);
-            if (mktContRes.data) setMarketingContent(mktContRes.data);
-            if (mktLpRes.data) setMarketingLandingPages(mktLpRes.data);
-            if (productsRes.data) setProducts(productsRes.data.map(mapProductRow));
-            if (proposalsRes.data) setProposals(proposalsRes.data);
-            if (proposalItemsRes.data) setProposalItems(proposalItemsRes.data);
-            if (turmasRes.data) setTurmas(turmasRes.data);
-            if (studentsRes.data) setStudents(studentsRes.data);
-            if (colabRes.error) console.error('[Supabase] colaboradores load error:', colabRes.error.message);
-            else if (colabRes.data) setColaboradores(colabRes.data);
-            if (squadMetasRes.data) setSquadMetas(squadMetasRes.data);
-            if (financialGoalsRes.data) setFinancialGoals(financialGoalsRes.data);
-            if (certRes.data) setCertificates(certRes.data);
-            if (cargosRes.data) setCargos(cargosRes.data);
-            if (clienteBaseRes.data) setClienteBase(clienteBaseRes.data);
-            if (reunioesRes.data) setReunioes(reunioesRes.data as Reuniao[]);
-            if (funisRes.data) setFunis(funisRes.data.map(rowToFunil));
-            if (filiaisRes.data) setEmpresaFiliais(filiaisRes.data);
-            if (nichosRes.data) setNichos(nichosRes.data);
-            if (financeCategoriesRes.data) setFinanceCategories(financeCategoriesRes.data);
-            if (financeBankAccountsRes.data) setFinanceBankAccounts(financeBankAccountsRes.data);
-            if (financeTransfersRes.data) setFinanceTransfers(financeTransfersRes.data);
-            if (financePeriodLocksRes.data) setFinancePeriodLocks(financePeriodLocksRes.data);
-            if (financeAuditLogRes.data) setFinanceAuditLog(financeAuditLogRes.data);
-            if (financeCentrosCustoRes.data) setFinanceCentrosCusto(financeCentrosCustoRes.data);
-            if (financeAttachmentsRes.data) setFinanceAttachments(financeAttachmentsRes.data);
-            if (financeCommissionEntriesRes.data) setFinanceCommissionEntries(financeCommissionEntriesRes.data);
-            if (indicacoesRes.data) setIndicacoes(indicacoesRes.data as Indicacao[]);
-            if (mktAutoRes.data) setMarketingAutomations(mktAutoRes.data);
-            if (auroraAgentsRes.data) setAuroraAgents(auroraAgentsRes.data as AuroraAgent[]);
-            if (scheduledExportsRes.data) setScheduledExports(scheduledExportsRes.data);
-            if (educationContentRes.data) setEducationContent(educationContentRes.data);
-            if (marketingFormsRes.data) setMarketingForms(marketingFormsRes.data);
-
-            if (settingsRes.data) {
+        // Cada tabela aplica seu próprio setState assim que TERMINA, sem
+        // esperar as outras ~43 — antes (Promise.all + destructuring), a
+        // tela só recebia QUALQUER dado depois que a tabela mais lenta de
+        // todas terminasse, mesmo que leads/produtos/etc. já estivessem
+        // prontos há segundos. `leads` fica primeiro na lista de propósito:
+        // como o dbLimit é FIFO, é dos primeiros a pegar uma vaga na fila de
+        // 10 requisições simultâneas e aparecer na tela.
+        const jobs: Array<{ name: string; promise: Promise<any>; apply: (res: any) => void }> = [
+          {
+            name: 'leads',
+            promise: fetchAllRowsForTenant('leads', tenantId),
+            // `data` pode vir parcial (algumas páginas obtidas, uma falhou mesmo
+            // após retry) — ainda assim é melhor que a lista vazia/anterior.
+            apply: (res) => { if (res.data && res.data.length > 0) setLeads((res.data as any[]).map(mapLeadRow) as Lead[]); },
+          },
+          { name: 'tasks', promise: fetchAllRowsForTenant('tasks', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setTasks(res.data as Task[]); } },
+          // Faltava esse hidrate — `contracts` nunca era populado a partir do
+          // Supabase na carga inicial (só via evento realtime de escrita na
+          // tabela), então a cada refresh da página o estado local começava
+          // vazio. Isso fazia a reconciliação de propostas aceitas (Propostas.tsx)
+          // achar "nenhum contrato existente" toda vez e recriar um duplicado
+          // + disparar notificação de novo contrato a cada entrada na tela.
+          { name: 'contracts', promise: fetchAllRowsForTenant('contracts', tenantId), apply: (res) => { if (res.data) setContracts(res.data.map(rowToContract)); } },
+          { name: 'lead_activities', promise: fetchAllRowsForTenant('lead_activities', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setLeadActivities(res.data as LeadActivity[]); } },
+          { name: 'finance_entries', promise: fetchAllRowsForTenant('finance_entries', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setFinanceEntries(res.data as FinanceEntry[]); } },
+          { name: 'appointments', promise: fetchAllRowsForTenant('appointments', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setAppointments(res.data.map(mapAppointmentRow)); } },
+          { name: 'squads', promise: fetchAllRowsForTenant('squads', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setSquads(res.data.map(mapSquadRow)); } },
+          { name: 'notifications', promise: fetchAllRowsForTenant('notifications', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setNotifications(res.data as Notification[]); } },
+          { name: 'marketing_campaigns', promise: fetchAllRowsForTenant('marketing_campaigns', tenantId), apply: (res) => { if (res.data) setMarketingCampaigns(res.data); } },
+          { name: 'marketing_content', promise: fetchAllRowsForTenant('marketing_content', tenantId, (q: any) => q.is('deleted_at', null)), apply: (res) => { if (res.data) setMarketingContent(res.data); } },
+          { name: 'marketing_landing_pages', promise: fetchAllRowsForTenant('marketing_landing_pages', tenantId), apply: (res) => { if (res.data) setMarketingLandingPages(res.data); } },
+          {
+            name: 'app_settings',
+            // Inclui linhas globais (tenant_id IS NULL) + as do tenant ativo, explicitamente —
+            // sem esse filtro, contas master/parceiro (has_tenant_access verdadeiro pra vários
+            // tenants) recebiam via RLS configurações de TODOS os tenants acessíveis misturadas
+            // num único mapa por key (ver merge abaixo), fazendo "configs grudarem" ao trocar de empresa.
+            promise: dbLimit(() => supabase.from('app_settings').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`)),
+            apply: (res) => {
+              if (!res.data) return;
               const settingsMap: Record<string, any> = {};
               // Processa as linhas globais (tenant_id null) primeiro, depois as do tenant ativo —
               // assim, se a mesma key existir nos dois níveis, o valor específico do tenant sempre
               // vence o default global, em vez de depender da ordem que o Postgres devolveu.
-              const orderedSettings = [...settingsRes.data].sort((a: any, b: any) =>
+              const orderedSettings = [...res.data].sort((a: any, b: any) =>
                 (a.tenant_id === null ? 0 : 1) - (b.tenant_id === null ? 0 : 1)
               );
               orderedSettings.forEach((setting: any) => {
@@ -931,11 +854,72 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               if (sidebarModules !== undefined) setSidebarModulesState(sidebarModules);
               setAppSettings(settingsMap);
               setAppSettingsLoaded(true);
-            }
-            console.log('[DataContext] ✅ Dados carregados do Supabase.');
-        } catch (err) {
-          console.error('[DataContext] ❌ Erro ao fetch Supabase:', err);
-        }
+            },
+          },
+          { name: 'products', promise: fetchAllRowsForTenant('products', tenantId), apply: (res) => { if (res.data) setProducts(res.data.map(mapProductRow)); } },
+          { name: 'proposals', promise: fetchAllRowsForTenant('proposals', tenantId), apply: (res) => { if (res.data) setProposals(res.data); } },
+          { name: 'proposal_items', promise: fetchAllRowsForTenant('proposal_items', tenantId), apply: (res) => { if (res.data) setProposalItems(res.data); } },
+          { name: 'turmas', promise: fetchAllRowsForTenant('turmas', tenantId), apply: (res) => { if (res.data) setTurmas(res.data); } },
+          { name: 'students', promise: fetchAllRowsForTenant('students', tenantId), apply: (res) => { if (res.data) setStudents(res.data); } },
+          {
+            name: 'colaboradores',
+            promise: fetchAllRowsForTenant('colaboradores', tenantId),
+            apply: (res) => {
+              if (res.error) console.error('[Supabase] colaboradores load error:', res.error.message);
+              else if (res.data) setColaboradores(res.data);
+            },
+          },
+          { name: 'squad_metas', promise: fetchAllRowsForTenant('squad_metas', tenantId), apply: (res) => { if (res.data) setSquadMetas(res.data); } },
+          { name: 'certificates', promise: fetchAllRowsForTenant('certificates', tenantId), apply: (res) => { if (res.data) setCertificates(res.data); } },
+          { name: 'cargos', promise: fetchAllRowsForTenant('cargos', tenantId), apply: (res) => { if (res.data) setCargos(res.data); } },
+          { name: 'clientes', promise: fetchAllRowsForTenant('clientes', tenantId), apply: (res) => { if (res.data) setClienteBase(res.data); } },
+          { name: 'reunioes', promise: fetchAllRowsForTenant('reunioes', tenantId), apply: (res) => { if (res.data) setReunioes(res.data as Reuniao[]); } },
+          { name: 'financial_goals', promise: fetchAllRowsForTenant('financial_goals', tenantId), apply: (res) => { if (res.data) setFinancialGoals(res.data); } },
+          { name: 'crm_funis', promise: fetchAllRowsForTenant('crm_funis', tenantId), apply: (res) => { if (res.data) setFunis(res.data.map(rowToFunil)); } },
+          { name: 'empresa_filiais', promise: fetchAllRowsForTenant('empresa_filiais', tenantId), apply: (res) => { if (res.data) setEmpresaFiliais(res.data); } },
+          { name: 'finance_categories', promise: fetchAllRowsForTenant('finance_categories', tenantId), apply: (res) => { if (res.data) setFinanceCategories(res.data); } },
+          { name: 'scheduled_exports', promise: fetchAllRowsForTenant('scheduled_exports', tenantId), apply: (res) => { if (res.data) setScheduledExports(res.data); } },
+          { name: 'education_content', promise: fetchAllRowsForTenant('education_content', tenantId), apply: (res) => { if (res.data) setEducationContent(res.data); } },
+          { name: 'marketing_forms', promise: fetchAllRowsForTenant('marketing_forms', tenantId), apply: (res) => { if (res.data) setMarketingForms(res.data); } },
+          {
+            name: 'nichos',
+            // Nichos globais (tenant_id null) + os do tenant ativo, mesmo motivo do app_settings acima.
+            promise: dbLimit(() => supabase.from('nichos').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`)),
+            apply: (res) => { if (res.data) setNichos(res.data); },
+          },
+          { name: 'finance_commission_entries', promise: fetchAllRowsForTenant('finance_commission_entries', tenantId), apply: (res) => { if (res.data) setFinanceCommissionEntries(res.data); } },
+          { name: 'indicacoes', promise: fetchAllRowsForTenant('indicacoes', tenantId), apply: (res) => { if (res.data) setIndicacoes(res.data as Indicacao[]); } },
+          { name: 'marketing_automations', promise: fetchAllRowsForTenant('marketing_automations', tenantId), apply: (res) => { if (res.data) setMarketingAutomations(res.data); } },
+          { name: 'aurora_agents', promise: fetchAllRowsForTenant('aurora_agents', tenantId), apply: (res) => { if (res.data) setAuroraAgents(res.data as AuroraAgent[]); } },
+          { name: 'finance_bank_accounts', promise: fetchAllRowsForTenant('finance_bank_accounts', tenantId), apply: (res) => { if (res.data) setFinanceBankAccounts(res.data); } },
+          { name: 'finance_transfers', promise: fetchAllRowsForTenant('finance_transfers', tenantId), apply: (res) => { if (res.data) setFinanceTransfers(res.data); } },
+          { name: 'finance_period_locks', promise: fetchAllRowsForTenant('finance_period_locks', tenantId), apply: (res) => { if (res.data) setFinancePeriodLocks(res.data); } },
+          {
+            name: 'finance_audit_log',
+            promise: dbLimit(() => supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500)),
+            apply: (res) => { if (res.data) setFinanceAuditLog(res.data); },
+          },
+          { name: 'finance_centros_custo', promise: fetchAllRowsForTenant('finance_centros_custo', tenantId), apply: (res) => { if (res.data) setFinanceCentrosCusto(res.data); } },
+          { name: 'finance_attachments', promise: fetchAllRowsForTenant('finance_attachments', tenantId), apply: (res) => { if (res.data) setFinanceAttachments(res.data); } },
+        ];
+
+        jobs.forEach(({ name, promise, apply }) => {
+          promise
+            .then((res: any) => {
+              // Tenant mudou (ou o componente desmontou) enquanto essa tabela
+              // ainda estava em voo — descarta a resposta atrasada em vez de
+              // aplicar dados do tenant errado por cima do certo.
+              if (cancelled) return;
+              apply(res);
+            })
+            .catch((err: any) => {
+              console.error(`[DataContext] ❌ Falha ao carregar "${name}":`, err);
+            });
+        });
+
+        Promise.allSettled(jobs.map((j) => j.promise)).then(() => {
+          if (!cancelled) console.log('[DataContext] ✅ Dados carregados do Supabase.');
+        });
       }
     }
     loadInitialData();
