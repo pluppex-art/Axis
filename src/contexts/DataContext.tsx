@@ -71,10 +71,14 @@ function createLimiter(concurrency: number) {
 // mostrou "canceling statement due to statement timeout" numa query de
 // reunioes (que sozinha leva 21ms) batendo no timeout de 8s do papel
 // `authenticated`. Isso só acontece com contenção real (CPU/locks) sob carga
-// simultânea alta, não é hipotético. Volta pro nível anterior (10), que não
-// teve nenhum erro reportado — a fila fica um pouco mais longa, mas sem
-// arriscar falhar operações reais.
-const dbLimit = createLimiter(10);
+// simultânea alta, não é hipotético. Reduzido pra 10 nessa época, e depois
+// pra 6: o projeto Supabase roda no tier "Micro" (256MB shared_buffers, 60
+// max_connections) e uma rajada de ~70 requisições/min de um único tenant
+// (carga inicial de ~6 tabelas em paralelo) já foi o suficiente pra saturar
+// esse compute e derrubar TUDO em "statement timeout" (confirmado nos logs
+// do Postgres em 2026-09-19). Isso mitiga a rajada do lado do cliente — não
+// resolve o teto de capacidade do compute em si.
+const dbLimit = createLimiter(6);
 
 async function fetchPageWithRetry(
   table: string,
