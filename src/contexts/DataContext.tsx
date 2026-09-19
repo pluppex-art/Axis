@@ -67,7 +67,11 @@ function createLimiter(concurrency: number) {
     });
   };
 }
-const dbLimit = createLimiter(10);
+// 15 é um meio-termo: o banco tem 60 conexões no total e já tinha 39 em uso
+// por outras coisas (Realtime, outras sessões) na hora que medi — dar mais
+// concorrência do que isso por sessão arrisca estourar o teto quando vários
+// usuários carregam o app ao mesmo tempo.
+const dbLimit = createLimiter(15);
 
 async function fetchPageWithRetry(
   table: string,
