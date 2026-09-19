@@ -164,6 +164,41 @@ async function fetchAllRowsForTenant(table: string, tenantId: string, extraFilte
 // e gerou "statement timeout" em cascata (confirmado nos logs em 2026-09-19).
 // DELETE não depende de tenant_id: como o filtro é por id contra o estado já
 // carregado, um id de outro tenant simplesmente não bate com nada (no-op).
+// Cache de sessão (sessionStorage) pra tabelas de catálogo/configuração que
+// mudam pouco (products, crm_funis, squads) — evita reconsultar o Supabase
+// toda vez que o usuário troca de tenant e volta (comum em contas
+// master/parceiro que alternam entre várias empresas). TTL curto (5min) +
+// invalidação ativa: toda vez que um evento realtime dessas tabelas dispara
+// um refetch (algo mudou de verdade), o resultado fresco sobrescreve o cache
+// também — nunca fica noticeably desatualizado, só evita refetch redundante
+// quando NADA mudou.
+const CACHE_TTL_MS = 5 * 60 * 1000;
+function cacheKey(tenantId: string, table: string) { return `spy_cache:${tenantId}:${table}`; }
+function cacheGet(tenantId: string, table: string): any[] | null {
+  try {
+    const raw = sessionStorage.getItem(cacheKey(tenantId, table));
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) return null;
+    return data;
+  } catch { return null; }
+}
+function cacheSet(tenantId: string, table: string, data: any[]) {
+  try { sessionStorage.setItem(cacheKey(tenantId, table), JSON.stringify({ data, ts: Date.now() })); } catch { /* sessionStorage indisponível (modo privado, quota) — cache é só otimização, segue sem ele */ }
+}
+// `useCache=true` (carga inicial): pode servir do cache se fresco.
+// `useCache=false` (disparado por evento realtime — algo mudou agora):
+// sempre busca fresco, mas ainda atualiza o cache pro próximo hit.
+async function cachedFetchAllRowsForTenant(table: string, tenantId: string, useCache: boolean) {
+  if (useCache) {
+    const cached = cacheGet(tenantId, table);
+    if (cached) return { data: cached, error: null as any };
+  }
+  const res = await fetchAllRowsForTenant(table, tenantId);
+  if (!res.error && res.data) cacheSet(tenantId, table, res.data);
+  return res;
+}
+
 function applyRealtimeUpsert<T extends { id: string }>(
   setter: React.Dispatch<React.SetStateAction<T[]>>,
   payload: any,
@@ -498,7 +533,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const fetchFunis = async () => {
     if (!supabase || !tenantId) return;
-    const { data } = await fetchAllRowsForTenant('crm_funis', tenantId);
+    const { data } = await cachedFetchAllRowsForTenant('crm_funis', tenantId, false);
     if (data) setFunis(data.map(rowToFunil));
   };
 
@@ -620,13 +655,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const fetchSquads = async () => {
     if (!supabase || !tenantId) return;
-    const { data } = await fetchAllRowsForTenant('squads', tenantId);
+    const { data } = await cachedFetchAllRowsForTenant('squads', tenantId, false);
     if (data) setSquads(data.map(mapSquadRow));
   };
 
   const fetchProducts = async () => {
     if (!supabase || !tenantId) return;
-    const { data } = await fetchAllRowsForTenant('products', tenantId);
+    const { data } = await cachedFetchAllRowsForTenant('products', tenantId, false);
     if (data) setProducts(data.map(mapProductRow));
   };
 
@@ -883,7 +918,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           { name: 'lead_activities', promise: fetchAllRowsForTenant('lead_activities', tenantId), apply: (res) => { if (res.data) setLeadActivities(res.data as LeadActivity[]); } },
           { name: 'finance_entries', promise: fetchAllRowsForTenant('finance_entries', tenantId), apply: (res) => { if (res.data) setFinanceEntries(res.data as FinanceEntry[]); } },
           { name: 'appointments', promise: fetchAllRowsForTenant('appointments', tenantId), apply: (res) => { if (res.data) setAppointments(res.data.map(mapAppointmentRow)); } },
-          { name: 'squads', promise: fetchAllRowsForTenant('squads', tenantId), apply: (res) => { if (res.data) setSquads(res.data.map(mapSquadRow)); } },
+          { name: 'squads', promise: cachedFetchAllRowsForTenant('squads', tenantId, true), apply: (res) => { if (res.data) setSquads(res.data.map(mapSquadRow)); } },
           { name: 'notifications', promise: fetchAllRowsForTenant('notifications', tenantId), apply: (res) => { if (res.data) setNotifications(res.data as Notification[]); } },
           { name: 'marketing_landing_pages', promise: fetchAllRowsForTenant('marketing_landing_pages', tenantId), apply: (res) => { if (res.data) setMarketingLandingPages(res.data); } },
           {
@@ -919,7 +954,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               setAppSettingsLoaded(true);
             },
           },
-          { name: 'products', promise: fetchAllRowsForTenant('products', tenantId), apply: (res) => { if (res.data) setProducts(res.data.map(mapProductRow)); } },
+          { name: 'products', promise: cachedFetchAllRowsForTenant('products', tenantId, true), apply: (res) => { if (res.data) setProducts(res.data.map(mapProductRow)); } },
           { name: 'proposals', promise: fetchAllRowsForTenant('proposals', tenantId), apply: (res) => { if (res.data) setProposals(res.data); setProposalsLoaded(true); } },
           { name: 'proposal_items', promise: fetchAllRowsForTenant('proposal_items', tenantId), apply: (res) => { if (res.data) setProposalItems(res.data); } },
           { name: 'turmas', promise: fetchAllRowsForTenant('turmas', tenantId), apply: (res) => { if (res.data) setTurmas(res.data); } },
@@ -938,7 +973,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           { name: 'clientes', promise: fetchAllRowsForTenant('clientes', tenantId), apply: (res) => { if (res.data) setClienteBase(res.data); } },
           { name: 'reunioes', promise: fetchAllRowsForTenant('reunioes', tenantId), apply: (res) => { if (res.data) setReunioes(res.data as Reuniao[]); } },
           { name: 'financial_goals', promise: fetchAllRowsForTenant('financial_goals', tenantId), apply: (res) => { if (res.data) setFinancialGoals(res.data); } },
-          { name: 'crm_funis', promise: fetchAllRowsForTenant('crm_funis', tenantId), apply: (res) => { if (res.data) setFunis(res.data.map(rowToFunil)); } },
+          { name: 'crm_funis', promise: cachedFetchAllRowsForTenant('crm_funis', tenantId, true), apply: (res) => { if (res.data) setFunis(res.data.map(rowToFunil)); } },
           { name: 'empresa_filiais', promise: fetchAllRowsForTenant('empresa_filiais', tenantId), apply: (res) => { if (res.data) setEmpresaFiliais(res.data); } },
           { name: 'scheduled_exports', promise: fetchAllRowsForTenant('scheduled_exports', tenantId), apply: (res) => { if (res.data) setScheduledExports(res.data); } },
           {
