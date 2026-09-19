@@ -17,16 +17,34 @@ function getStageId(funilId: string, idx: number): string {
 }
 
 export function useDashboard() {
-  const { leads, contracts, squads, leadActivities, appointments, funis, products, proposals } = useData();
+  const { leads: allLeads, contracts, squads, leadActivities, appointments, funis, products, proposals } = useData();
   const { isModuleEnabled, user, activeTenantId } = useAuth();
   const [activeTab, setActiveTab] = useState<'executivo' | 'comercial' | 'sucesso' | 'marketing'>('executivo');
   const [comparisonPeriod, setComparisonPeriod] = useState<'month' | 'year'>('month');
+
+  // Filtro de período do Dashboard — por `date` do lead (data de cadastro/
+  // criação), o mesmo campo já usado no gráfico de performance mais abaixo.
+  // Vazio (null) = sem filtro, mostra tudo. Afeta os cartões/funil/ranking
+  // que dependem de `leads`; o gráfico de performance mantém sua própria
+  // janela fixa de 7 meses (é um gráfico de tendência, não um total).
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
+
+  const leads = useMemo(() => {
+    if (!dateFrom && !dateTo) return allLeads;
+    return (allLeads as any[]).filter((l) => {
+      if (!l.date) return false;
+      if (dateFrom && l.date < dateFrom) return false;
+      if (dateTo && l.date > dateTo) return false;
+      return true;
+    });
+  }, [allLeads, dateFrom, dateTo]);
 
   // Goal Alerts
   const goalAlerts = useMemo(() => {
     return squads.filter(sq => (sq.faturamentoAlcancado / sq.meta) >= 0.9);
   }, [squads]);
-  
+
   // Stats Calculations — via camada única de métricas (src/lib/revenueMetrics.ts)
   // pra usar exatamente a mesma definição de MRR/conversão/leads ativos em
   // todos os dashboards do sistema, não uma fórmula própria por tela.
@@ -223,5 +241,9 @@ export function useDashboard() {
     funnelData,
     recentActivities,
     churnRate,
+    dateFrom,
+    setDateFrom,
+    dateTo,
+    setDateTo,
   };
 }
