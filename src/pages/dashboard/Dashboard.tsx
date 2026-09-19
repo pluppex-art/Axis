@@ -1,11 +1,11 @@
 import { PageContainer } from "../../components/PageContainer";
+import { DateRangeFilter } from "../../components/ui/DateRangeFilter";
 
 import { useDashboard } from "./useDashboard";
 import { DashboardGoalAlerts } from "./components/DashboardGoalAlerts";
 import { DashboardActionsTabs } from "./components/DashboardActionsTabs";
 import { DashboardTabContent } from "./components/DashboardTabContent";
 import { DashboardStatsSection } from "./components/DashboardStatsSection";
-import { DashboardDateFilter } from "./components/DashboardDateFilter";
 
 
 
@@ -46,12 +46,14 @@ export default function Dashboard() {
 
         {/* Filtro de período — afeta cartões, funil e ranking (por data de
             cadastro do lead); o gráfico de tendência mantém sua janela fixa. */}
-        <DashboardDateFilter
-          dateFrom={dateFrom}
-          setDateFrom={setDateFrom}
-          dateTo={dateTo}
-          setDateTo={setDateTo}
-        />
+        <div className="w-fit">
+          <DateRangeFilter
+            dateFrom={dateFrom}
+            setDateFrom={setDateFrom}
+            dateTo={dateTo}
+            setDateTo={setDateTo}
+          />
+        </div>
 
         {/* Goal Alerts Banner */}
         <DashboardGoalAlerts goalAlerts={goalAlerts} />

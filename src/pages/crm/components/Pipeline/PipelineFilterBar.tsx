@@ -1,4 +1,5 @@
 import { Search, Filter, Building2, Briefcase, Zap } from "lucide-react";
+import { DateRangeFilter } from "../../../../components/ui/DateRangeFilter";
 
 interface PipelineFilterBarProps {
   comercialFunis: any[];
@@ -18,6 +19,10 @@ interface PipelineFilterBarProps {
   sellerFilter: string;
   setSellerFilter: (s: string) => void;
   sellers: string[];
+  dateFrom: string | null;
+  setDateFrom: (v: string | null) => void;
+  dateTo: string | null;
+  setDateTo: (v: string | null) => void;
 }
 
 export function PipelineFilterBar({
@@ -26,6 +31,7 @@ export function PipelineFilterBar({
   companyFilter, setCompanyFilter, companiesList,
   clientFilter, setClientFilter, clientsList,
   sellerFilter, setSellerFilter, sellers,
+  dateFrom, setDateFrom, dateTo, setDateTo,
 }: PipelineFilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -121,6 +127,8 @@ export function PipelineFilterBar({
           {sellers.map(s => <option key={s} value={s} className="bg-[var(--color-surface-elevated)]">{s === "Todos" ? "Todos os vendedores" : s}</option>)}
         </select>
       </div>
+
+      <DateRangeFilter dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
     </div>
   );
 }

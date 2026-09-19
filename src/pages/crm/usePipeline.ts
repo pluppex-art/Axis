@@ -39,6 +39,8 @@ export function usePipeline() {
   const { formatCurrency } = useLocalization();
 
   const [clientFilter, setClientFilter] = useState("Todos");
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
   // `clienteBase` (useData) já vem escopado ao tenant ativo — um fetch próprio
   // de "clientes" aqui não filtrava por tenant_id e vazava linhas de outros
   // tenants pra contas de parceiro (has_tenant_access verdadeiro pra vários).
@@ -168,7 +170,12 @@ export function usePipeline() {
         (item.vertical ?? "").toLowerCase().includes(q) ||
         (item.origem   ?? "").toLowerCase().includes(q) ||
         (item.email    ?? "").toLowerCase().includes(q);
-      return matchesPipeline && matchesSeller && matchesCompany && matchesClient && matchesSearch;
+      // `date` é a mesma data de cadastro usada no filtro do Dashboard —
+      // string 'YYYY-MM-DD', comparável diretamente.
+      const matchesDate =
+        (!dateFrom || (item.date && item.date >= dateFrom)) &&
+        (!dateTo || (item.date && item.date <= dateTo));
+      return matchesPipeline && matchesSeller && matchesCompany && matchesClient && matchesSearch && matchesDate;
     })
     // Newest leads first — uses Supabase's auto-set created_at
     .sort((a: any, b: any) => {
@@ -179,7 +186,7 @@ export function usePipeline() {
       if (!db) return -1;
       return db > da ? 1 : db < da ? -1 : 0;
     }),
-  [leads, currentPipeline, sellerFilter, searchQuery, companyFilter, clientFilter, clientNameToId, products]);
+  [leads, currentPipeline, sellerFilter, searchQuery, companyFilter, clientFilter, clientNameToId, products, dateFrom, dateTo]);
 
   // ─── Metrics ─────────────────────────────────────────────────────────────────
   const analyticsData = useMemo(() =>
@@ -369,6 +376,7 @@ export function usePipeline() {
     webhookUrl, setWebhookUrl,
     leads, updateLead, tasks, addTask,
     clientFilter, setClientFilter, clientsList,
+    dateFrom, setDateFrom, dateTo, setDateTo,
     currentPipeline, setCurrentPipeline, switchPipeline,
     selectedFunilId, setSelectedFunilId,
     activeFunil,

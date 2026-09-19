@@ -61,6 +61,7 @@ export default function Pipeline() {
     webhookUrl, setWebhookUrl,
     leads, updateLead, tasks,
     clientFilter, setClientFilter, clientsList,
+    dateFrom, setDateFrom, dateTo, setDateTo,
     currentPipeline, switchPipeline,
     selectedFunilId, setSelectedFunilId,
     comercialFunis, sdrFunis,
@@ -192,6 +193,8 @@ export default function Pipeline() {
               setClientFilter={setClientFilter} clientsList={clientsList}
               sellerFilter={sellerFilter} setSellerFilter={setSellerFilter}
               sellers={sellers}
+              dateFrom={dateFrom} setDateFrom={setDateFrom}
+              dateTo={dateTo} setDateTo={setDateTo}
             />
 
             {activePipelineStages.length > 0 ? (
