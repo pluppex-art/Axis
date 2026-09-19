@@ -918,6 +918,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           { name: 'indicacoes', promise: fetchAllRowsForTenant('indicacoes', tenantId), apply: (res) => { if (res.data) setIndicacoes(res.data as Indicacao[]); } },
         ];
 
+        // Falha total (retries esgotados, ex.: timeout do banco sob carga)
+        // resolvia silenciosamente com `data: []` — a tela ficava mostrando
+        // "vazio" (ou o estado anterior, dependendo do timing) sem NENHUM
+        // aviso, o que já foi confundido com "dado do tenant errado
+        // aparecendo" quando na real era só uma falha de carregamento não
+        // sinalizada. Acumula os nomes que falharam de verdade e avisa uma
+        // vez só (não um toast por tabela) depois que tudo assentar.
+        const failedTables: string[] = [];
         jobs.forEach(({ name, promise, apply }) => {
           promise
             .then((res: any) => {
@@ -925,15 +933,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               // ainda estava em voo — descarta a resposta atrasada em vez de
               // aplicar dados do tenant errado por cima do certo.
               if (cancelled) return;
+              if (res?.error) failedTables.push(name);
               apply(res);
             })
             .catch((err: any) => {
+              if (!cancelled) failedTables.push(name);
               console.error(`[DataContext] ❌ Falha ao carregar "${name}":`, err);
             });
         });
 
         Promise.allSettled(jobs.map((j) => j.promise)).then(() => {
-          if (!cancelled) console.log('[DataContext] ✅ Dados carregados do Supabase.');
+          if (cancelled) return;
+          console.log('[DataContext] ✅ Dados carregados do Supabase.');
+          if (failedTables.length > 0) {
+            toast.error(`Alguns dados não carregaram (${failedTables.join(', ')}) — atualize a página pra tentar de novo.`, { duration: 8000 });
+          }
         });
       }
     }

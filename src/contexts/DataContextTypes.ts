@@ -36,7 +36,7 @@ export interface FinanceEntry {
   /** Nome curto do lançamento (título) — o que aparece na lista/cards. */
   description: string;
   category: string;
-  status: 'Pago' | 'A Vencer' | 'Atrasado';
+  status: 'Pago' | 'A Vencer' | 'Atrasado' | 'Pendente';
   value: number;
   type: 'Pagar' | 'Receber';
   date: string;

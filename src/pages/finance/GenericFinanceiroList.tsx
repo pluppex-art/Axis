@@ -1,7 +1,7 @@
 import { Card } from "../../components/ui/card";
 import {
   Download, Calendar, CheckCircle2,
-  Clock, AlertTriangle, Plus, Trash2, DollarSign, Pencil, Lock, Repeat, Layers, User, Search, X
+  Clock, AlertTriangle, Plus, Trash2, DollarSign, Pencil, Lock, Repeat, Layers, User, Search, X, HelpCircle
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
@@ -141,7 +141,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
   const [editPaymentMethod, setEditPaymentMethod] = useState("");
   const [editValue, setEditValue] = useState("");
   const [editDate, setEditDate] = useState("");
-  const [editStatus, setEditStatus] = useState<"Pago" | "A Vencer" | "Atrasado">("A Vencer");
+  const [editStatus, setEditStatus] = useState<"Pago" | "A Vencer" | "Atrasado" | "Pendente">("A Vencer");
   const [editIsRecurring, setEditIsRecurring] = useState(false);
   const [editFrequency, setEditFrequency] = useState<Frequencia>("mensal");
   const [rateioOpen, setRateioOpen] = useState(false);
@@ -184,7 +184,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
   // achar um lançamento específico.
   const [filtroBusca, setFiltroBusca] = useState("");
   const [filtroCategoriaId, setFiltroCategoriaId] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState<"" | "Pago" | "A Vencer" | "Atrasado">("");
+  const [filtroStatus, setFiltroStatus] = useState<"" | "Pago" | "A Vencer" | "Atrasado" | "Pendente">("");
   const [filtroContaBancariaId, setFiltroContaBancariaId] = useState("");
   const [filtroCentroCustoId, setFiltroCentroCustoId] = useState("");
   const [filtroDataInicio, setFiltroDataInicio] = useState("");
@@ -358,7 +358,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     setEditPaymentMethod(item.payment_method || "");
     setEditValue(String(item.value));
     setEditDate(item.date);
-    setEditStatus((item.status as "Pago" | "A Vencer" | "Atrasado") || "A Vencer");
+    setEditStatus((item.status as "Pago" | "A Vencer" | "Atrasado" | "Pendente") || "A Vencer");
     setEditIsRecurring(!!item.is_recurring);
     setEditFrequency((item.recurring_frequency as Frequencia) || "mensal");
   };
@@ -405,6 +405,9 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     switch (status) {
       case 'Pago': return <CheckCircle2 className="w-3 h-3 mr-1" />;
       case 'A Vencer': return <Clock className="w-3 h-3 mr-1" />;
+      // "Pendente" — pagamento retornado como em processamento por um gateway
+      // (ex.: Mercado Pago "in_process"), nem aprovado nem rejeitado ainda.
+      case 'Pendente': return <HelpCircle className="w-3 h-3 mr-1" />;
       default: return <AlertTriangle className="w-3 h-3 mr-1" />;
     }
   };
@@ -414,6 +417,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
       case 'Pago': return "bg-emerald-500/10 text-emerald-500 border-emerald-500/30";
       case 'A Vencer': return "bg-blue-500/10 text-blue-500 border-blue-500/30";
       case 'Atrasado': return "bg-rose-500/10 text-rose-500 border-rose-500/30";
+      case 'Pendente': return "bg-amber-500/10 text-amber-500 border-amber-500/30";
       default: return "bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] border-[var(--color-border-subtle)]";
     }
   };
@@ -496,6 +500,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
                 <option value="">Todos</option>
                 <option value="Pago">Pago</option>
                 <option value="A Vencer">A Vencer</option>
+                <option value="Pendente">Pendente</option>
                 <option value="Atrasado">Atrasado</option>
               </select>
             </div>
@@ -1183,12 +1188,13 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
             </label>
             <select
               value={editStatus}
-              onChange={(e) => setEditStatus(e.target.value as "Pago" | "A Vencer" | "Atrasado")}
+              onChange={(e) => setEditStatus(e.target.value as "Pago" | "A Vencer" | "Atrasado" | "Pendente")}
               className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
             >
               <option value="A Vencer">A Vencer</option>
               <option value="Pago">Pago</option>
               <option value="Atrasado">Atrasado</option>
+              <option value="Pendente">Pendente</option>
             </select>
           </div>
 
