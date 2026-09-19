@@ -32,45 +32,77 @@ export type { DataContextType, LeadActivity, Notification, Appointment, GlobalWe
 // mais de 1000 linhas numa tabela (ex.: leads/reunioes de uma integração que
 // sincroniza um volume grande de uma vez), sem erro nenhum, só mostrando os
 // primeiros 1000 registros na tela. Pagina com `.range()` até esgotar.
-//
-// Tabelas grandes (leads/reunioes) agora precisam de várias requisições
-// sequenciais (4-5+) pra trazer tudo. Antes, se QUALQUER uma delas desse um
-// erro transitório de rede, a função inteira abortava e devolvia `data: null`
-// — o chamador então não atualizava o estado, fazendo a tela mostrar tudo
-// (leads antigos em memória) ou nada (primeira carga), nunca "quase tudo".
-// Agora cada página tenta de novo até 3x antes de desistir, e se mesmo assim
-// falhar, devolve o que já foi buscado com sucesso até ali em vez de jogar
-// tudo fora — melhor mostrar 90% dos registros do que zerar a tela inteira.
-async function fetchAllRowsForTenant(
+const PAGE_STEP = 1000;
+
+async function fetchPageWithRetry(
   table: string,
   tenantId: string,
-  extraFilter?: (query: any) => any
-) {
-  let all: any[] = [];
-  let from = 0;
-  const step = 1000;
-  while (true) {
-    let data: any[] | null = null;
-    let error: any = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      let query = supabase!.from(table).select('*').eq('tenant_id', tenantId);
-      if (extraFilter) query = extraFilter(query);
-      const res = await query.range(from, from + step - 1);
-      data = res.data;
-      error = res.error;
-      if (!error) break;
-      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-    }
-    if (error) {
-      console.error(`[fetchAllRowsForTenant] Falha ao buscar página de "${table}" após 3 tentativas — retornando ${all.length} linha(s) já obtida(s).`, error);
-      return { data: all, error };
-    }
-    if (!data || data.length === 0) break;
-    all = all.concat(data);
-    if (data.length < step) break;
-    from += step;
+  extraFilter: ((query: any) => any) | undefined,
+  from: number,
+  withCount: boolean
+): Promise<{ data: any[] | null; error: any; count: number | null }> {
+  let data: any[] | null = null;
+  let error: any = null;
+  let count: number | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let query = supabase!.from(table).select('*', withCount ? { count: 'exact' } : undefined).eq('tenant_id', tenantId);
+    if (extraFilter) query = extraFilter(query);
+    const res: any = await query.range(from, from + PAGE_STEP - 1);
+    data = res.data;
+    error = res.error;
+    count = res.count ?? null;
+    if (!error) break;
+    await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
   }
-  return { data: all, error: null as any };
+  return { data, error, count };
+}
+
+// Tabelas grandes (leads/reunioes) precisam de várias páginas pra trazer
+// tudo. Buscá-las uma de cada vez (sequencial) fazia a carga inicial somar a
+// LATÊNCIA de cada página — com leads (4 páginas) + reunioes (5 páginas)
+// dessa forma, só essas duas tabelas já eram 9 round-trips em série. Agora
+// a 1ª página vem com `count: 'exact'` (sabe o total sem round-trip extra) e
+// as páginas restantes disparam todas em paralelo — 9 round-trips sequenciais
+// viram 2 "ondas" (1ª página, depois o resto de uma vez).
+//
+// Resiliência a falha parcial: cada página tenta de nov o até 3x antes de
+// desistir; se mesmo assim uma falhar, devolve o que já foi buscado com
+// sucesso nas outras em vez de jogar tudo fora — melhor mostrar 90% dos
+// registros do que zerar a tela inteira (e o chamador sabe disso pelo
+// `error` retornado, sem precisar que ele seja null pra usar o `data`).
+async function fetchAllRowsForTenant(table: string, tenantId: string, extraFilter?: (query: any) => any) {
+  const first = await fetchPageWithRetry(table, tenantId, extraFilter, 0, true);
+  if (first.error) {
+    console.error(`[fetchAllRowsForTenant] Falha ao buscar 1ª página de "${table}" após 3 tentativas.`, first.error);
+    return { data: [] as any[], error: first.error };
+  }
+  const firstPage = first.data ?? [];
+  const total = first.count;
+
+  // Sem contagem confiável (não deveria acontecer sem erro, mas por
+  // segurança) ou só 1 página — não há o que paralelizar.
+  if (total === null || firstPage.length < PAGE_STEP || total <= PAGE_STEP) {
+    return { data: firstPage, error: null as any };
+  }
+
+  const remainingFroms: number[] = [];
+  for (let from = PAGE_STEP; from < total; from += PAGE_STEP) remainingFroms.push(from);
+
+  const rest = await Promise.all(
+    remainingFroms.map((from) => fetchPageWithRetry(table, tenantId, extraFilter, from, false))
+  );
+
+  let all = firstPage;
+  let firstError: any = null;
+  for (const page of rest) {
+    if (page.error) {
+      firstError = firstError ?? page.error;
+      console.error(`[fetchAllRowsForTenant] Falha numa página de "${table}" após 3 tentativas — mantendo as demais páginas já obtidas.`, page.error);
+      continue;
+    }
+    if (page.data) all = all.concat(page.data);
+  }
+  return { data: all, error: firstError };
 }
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
@@ -704,6 +736,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [tenantId]);
 
   useEffect(() => {
+    // Agora que a carga pagina de verdade (várias requisições sequenciais
+    // por tabela em vez de uma só), fica bem mais fácil um master trocar de
+    // tenant (switchTenant) ANTES da carga anterior terminar. Sem essa
+    // flag, quando a resposta antiga finalmente chegava, ela sobrescrevia
+    // com os dados do tenant ERRADO por cima do que já tinha carregado
+    // corretamente pro tenant novo — exatamente o sintoma de "não consigo
+    // ver só os dados do tenant escolhido". `cancelled` é fechado sobre o
+    // tenantId desta execução do efeito; vira true assim que o efeito
+    // reroda (tenant mudou) ou desmonta, e barra os setState tardios.
+    let cancelled = false;
+
     async function loadInitialData() {
       // Aguarda a sessão resolver e o tenant ser conhecido antes de buscar
       // dados — evita disparar a carga como "anon" (RLS devolveria tudo
@@ -769,6 +812,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               fetchAllRowsForTenant('finance_attachments', tenantId),
             ]);
 
+            // Tenant mudou (ou o componente desmontou) enquanto esse
+            // Promise.all ainda estava em voo — descarta a resposta atrasada
+            // em vez de aplicar dados do tenant errado por cima do certo.
+            if (cancelled) return;
+
             // `leadsRes.data` pode vir parcial (algumas páginas obtidas, uma
             // falhou mesmo após retry) — ainda assim é melhor que a lista
             // vazia/anterior. `error` aqui só indica que faltou parte, não
@@ -776,54 +824,54 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             if (leadsRes.data && leadsRes.data.length > 0) {
               setLeads((leadsRes.data as any[]).map(mapLeadRow) as Lead[]);
             }
-            if (!tasksRes.error && tasksRes.data && tasksRes.data.length > 0) setTasks(tasksRes.data as Task[]);
+            if (tasksRes.data && tasksRes.data.length > 0) setTasks(tasksRes.data as Task[]);
             // Faltava esse hidrate — `contracts` nunca era populado a partir do
             // Supabase na carga inicial (só via evento realtime de escrita na
             // tabela), então a cada refresh da página o estado local começava
             // vazio. Isso fazia a reconciliação de propostas aceitas (Propostas.tsx)
             // achar "nenhum contrato existente" toda vez e recriar um duplicado
             // + disparar notificação de novo contrato a cada entrada na tela.
-            if (!contractsRes.error && contractsRes.data) setContracts(contractsRes.data.map(rowToContract));
-            if (!actsRes.error && actsRes.data && actsRes.data.length > 0) setLeadActivities(actsRes.data as LeadActivity[]);
-            if (!financeRes.error && financeRes.data && financeRes.data.length > 0) setFinanceEntries(financeRes.data as FinanceEntry[]);
-            if (!apptRes.error && apptRes.data && apptRes.data.length > 0) setAppointments(apptRes.data.map(mapAppointmentRow));
-            if (!squadsRes.error && squadsRes.data && squadsRes.data.length > 0) setSquads(squadsRes.data.map(mapSquadRow));
-            if (!notifRes.error && notifRes.data && notifRes.data.length > 0) setNotifications(notifRes.data as Notification[]);
-            if (!mktCampRes.error && mktCampRes.data) setMarketingCampaigns(mktCampRes.data);
-            if (!mktContRes.error && mktContRes.data) setMarketingContent(mktContRes.data);
-            if (!mktLpRes.error && mktLpRes.data) setMarketingLandingPages(mktLpRes.data);
-            if (!productsRes.error && productsRes.data) setProducts(productsRes.data.map(mapProductRow));
-            if (!proposalsRes.error && proposalsRes.data) setProposals(proposalsRes.data);
-            if (!proposalItemsRes.error && proposalItemsRes.data) setProposalItems(proposalItemsRes.data);
-            if (!turmasRes.error && turmasRes.data) setTurmas(turmasRes.data);
-            if (!studentsRes.error && studentsRes.data) setStudents(studentsRes.data);
+            if (contractsRes.data) setContracts(contractsRes.data.map(rowToContract));
+            if (actsRes.data && actsRes.data.length > 0) setLeadActivities(actsRes.data as LeadActivity[]);
+            if (financeRes.data && financeRes.data.length > 0) setFinanceEntries(financeRes.data as FinanceEntry[]);
+            if (apptRes.data && apptRes.data.length > 0) setAppointments(apptRes.data.map(mapAppointmentRow));
+            if (squadsRes.data && squadsRes.data.length > 0) setSquads(squadsRes.data.map(mapSquadRow));
+            if (notifRes.data && notifRes.data.length > 0) setNotifications(notifRes.data as Notification[]);
+            if (mktCampRes.data) setMarketingCampaigns(mktCampRes.data);
+            if (mktContRes.data) setMarketingContent(mktContRes.data);
+            if (mktLpRes.data) setMarketingLandingPages(mktLpRes.data);
+            if (productsRes.data) setProducts(productsRes.data.map(mapProductRow));
+            if (proposalsRes.data) setProposals(proposalsRes.data);
+            if (proposalItemsRes.data) setProposalItems(proposalItemsRes.data);
+            if (turmasRes.data) setTurmas(turmasRes.data);
+            if (studentsRes.data) setStudents(studentsRes.data);
             if (colabRes.error) console.error('[Supabase] colaboradores load error:', colabRes.error.message);
             else if (colabRes.data) setColaboradores(colabRes.data);
-            if (!squadMetasRes.error && squadMetasRes.data) setSquadMetas(squadMetasRes.data);
-            if (!financialGoalsRes.error && financialGoalsRes.data) setFinancialGoals(financialGoalsRes.data);
-            if (!certRes.error && certRes.data) setCertificates(certRes.data);
-            if (!cargosRes.error && cargosRes.data) setCargos(cargosRes.data);
-            if (!clienteBaseRes.error && clienteBaseRes.data) setClienteBase(clienteBaseRes.data);
+            if (squadMetasRes.data) setSquadMetas(squadMetasRes.data);
+            if (financialGoalsRes.data) setFinancialGoals(financialGoalsRes.data);
+            if (certRes.data) setCertificates(certRes.data);
+            if (cargosRes.data) setCargos(cargosRes.data);
+            if (clienteBaseRes.data) setClienteBase(clienteBaseRes.data);
             if (reunioesRes.data) setReunioes(reunioesRes.data as Reuniao[]);
-            if (!funisRes.error && funisRes.data) setFunis(funisRes.data.map(rowToFunil));
-            if (!filiaisRes.error && filiaisRes.data) setEmpresaFiliais(filiaisRes.data);
-            if (!nichosRes.error && nichosRes.data) setNichos(nichosRes.data);
-            if (!financeCategoriesRes.error && financeCategoriesRes.data) setFinanceCategories(financeCategoriesRes.data);
-            if (!financeBankAccountsRes.error && financeBankAccountsRes.data) setFinanceBankAccounts(financeBankAccountsRes.data);
-            if (!financeTransfersRes.error && financeTransfersRes.data) setFinanceTransfers(financeTransfersRes.data);
-            if (!financePeriodLocksRes.error && financePeriodLocksRes.data) setFinancePeriodLocks(financePeriodLocksRes.data);
-            if (!financeAuditLogRes.error && financeAuditLogRes.data) setFinanceAuditLog(financeAuditLogRes.data);
-            if (!financeCentrosCustoRes.error && financeCentrosCustoRes.data) setFinanceCentrosCusto(financeCentrosCustoRes.data);
-            if (!financeAttachmentsRes.error && financeAttachmentsRes.data) setFinanceAttachments(financeAttachmentsRes.data);
-            if (!financeCommissionEntriesRes.error && financeCommissionEntriesRes.data) setFinanceCommissionEntries(financeCommissionEntriesRes.data);
-            if (!indicacoesRes.error && indicacoesRes.data) setIndicacoes(indicacoesRes.data as Indicacao[]);
-            if (!mktAutoRes.error && mktAutoRes.data) setMarketingAutomations(mktAutoRes.data);
-            if (!auroraAgentsRes.error && auroraAgentsRes.data) setAuroraAgents(auroraAgentsRes.data as AuroraAgent[]);
-            if (!scheduledExportsRes.error && scheduledExportsRes.data) setScheduledExports(scheduledExportsRes.data);
-            if (!educationContentRes.error && educationContentRes.data) setEducationContent(educationContentRes.data);
-            if (!marketingFormsRes.error && marketingFormsRes.data) setMarketingForms(marketingFormsRes.data);
+            if (funisRes.data) setFunis(funisRes.data.map(rowToFunil));
+            if (filiaisRes.data) setEmpresaFiliais(filiaisRes.data);
+            if (nichosRes.data) setNichos(nichosRes.data);
+            if (financeCategoriesRes.data) setFinanceCategories(financeCategoriesRes.data);
+            if (financeBankAccountsRes.data) setFinanceBankAccounts(financeBankAccountsRes.data);
+            if (financeTransfersRes.data) setFinanceTransfers(financeTransfersRes.data);
+            if (financePeriodLocksRes.data) setFinancePeriodLocks(financePeriodLocksRes.data);
+            if (financeAuditLogRes.data) setFinanceAuditLog(financeAuditLogRes.data);
+            if (financeCentrosCustoRes.data) setFinanceCentrosCusto(financeCentrosCustoRes.data);
+            if (financeAttachmentsRes.data) setFinanceAttachments(financeAttachmentsRes.data);
+            if (financeCommissionEntriesRes.data) setFinanceCommissionEntries(financeCommissionEntriesRes.data);
+            if (indicacoesRes.data) setIndicacoes(indicacoesRes.data as Indicacao[]);
+            if (mktAutoRes.data) setMarketingAutomations(mktAutoRes.data);
+            if (auroraAgentsRes.data) setAuroraAgents(auroraAgentsRes.data as AuroraAgent[]);
+            if (scheduledExportsRes.data) setScheduledExports(scheduledExportsRes.data);
+            if (educationContentRes.data) setEducationContent(educationContentRes.data);
+            if (marketingFormsRes.data) setMarketingForms(marketingFormsRes.data);
 
-            if (!settingsRes.error && settingsRes.data) {
+            if (settingsRes.data) {
               const settingsMap: Record<string, any> = {};
               // Processa as linhas globais (tenant_id null) primeiro, depois as do tenant ativo —
               // assim, se a mesma key existir nos dois níveis, o valor específico do tenant sempre
@@ -854,6 +902,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
     }
     loadInitialData();
+    return () => { cancelled = true; };
   }, [authLoading, tenantId]);
 
   const notifiedRemindersRef = React.useRef<Record<string, boolean>>({});
