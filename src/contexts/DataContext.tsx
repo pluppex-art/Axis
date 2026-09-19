@@ -153,6 +153,41 @@ async function fetchAllRowsForTenant(table: string, tenantId: string, extraFilte
   return { data: all, error: firstError };
 }
 
+// Aplica um evento realtime (INSERT/UPDATE/DELETE) direto no estado local em
+// vez de disparar um refetch da tabela inteira — antes, TODO handler de
+// realtime (exceto INSERT de leads) recarregava a tabela completa a cada
+// evento. Numa sincronização em massa (ex.: automação reserva → proposta →
+// contrato → financeiro, que grava em várias tabelas quase ao mesmo tempo),
+// isso disparava um refetch paginado de cada tabela afetada dentro da mesma
+// janela de ~1.5s (debounce), somando uma rajada de dezenas de requisições
+// simultâneas — foi exatamente essa rajada que saturou o compute do Supabase
+// e gerou "statement timeout" em cascata (confirmado nos logs em 2026-09-19).
+// DELETE não depende de tenant_id: como o filtro é por id contra o estado já
+// carregado, um id de outro tenant simplesmente não bate com nada (no-op).
+function applyRealtimeUpsert<T extends { id: string }>(
+  setter: React.Dispatch<React.SetStateAction<T[]>>,
+  payload: any,
+  mapRow: (r: any) => T,
+  currentTenantId: string | null,
+) {
+  if (payload.eventType === 'DELETE') {
+    const oldId = payload.old?.id;
+    if (!oldId) return;
+    setter((prev) => prev.filter((item) => item.id !== oldId));
+    return;
+  }
+  const row = payload.new;
+  if (!row || !currentTenantId || row.tenant_id !== currentTenantId) return;
+  const mapped = mapRow(row);
+  setter((prev) => {
+    const idx = prev.findIndex((item) => item.id === mapped.id);
+    if (idx === -1) return payload.eventType === 'INSERT' ? [mapped, ...prev] : prev;
+    const next = prev.slice();
+    next[idx] = mapped;
+    return next;
+  });
+}
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const { user, authLoading, updatePreferences, activeTenantId, activeFilialId } = useAuth();
   const { formatCurrency } = useLocalization();
@@ -735,27 +770,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       channel = supabase.channel('global-db-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, (payload) => {
-          if (payload.eventType === 'INSERT') {
-            // Mesmo motivo do fetchTableData: o evento pode vir de outro
-            // tenant que esta conta de parceiro também acessa — só entra na
-            // lista se for do tenant ativo. payload.new é a linha crua do
-            // Postgres (snake_case), daí o acesso via `any`.
-            if (payload.new && (payload.new as any).tenant_id === tenantId) {
-              setLeads(prev => [mapLeadRow(payload.new) as Lead, ...prev]);
-              toast.info(`Novo lead: ${payload.new.name}`, { description: 'Recebido via Realtime' });
-            }
-          } else {
-            debouncedRefetch('leads', fetchLeads);
+          // Patch incremental em vez de refetch da tabela inteira — ver
+          // applyRealtimeUpsert acima. INSERT ainda mostra o toast de aviso.
+          if (payload.eventType === 'INSERT' && payload.new && (payload.new as any).tenant_id === tenantId) {
+            toast.info(`Novo lead: ${payload.new.name}`, { description: 'Recebido via Realtime' });
           }
+          applyRealtimeUpsert(setLeads, payload, (r) => mapLeadRow(r) as Lead, tenantId);
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => debouncedRefetch('tasks', () => fetchTableData('tasks', setTasks)))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => debouncedRefetch('contracts', fetchContracts))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_entries' }, () => debouncedRefetch('finance_entries', () => fetchTableData('finance_entries', setFinanceEntries)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, (payload) => applyRealtimeUpsert(setContracts, payload, rowToContract, tenantId))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_entries' }, (payload) => applyRealtimeUpsert(setFinanceEntries, payload, (r) => r as FinanceEntry, tenantId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'squads' }, () => debouncedRefetch('squads', fetchSquads))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => debouncedRefetch('appointments', fetchAppointments))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => debouncedRefetch('products', fetchProducts))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, () => debouncedRefetch('proposals', () => fetchTableData('proposals', setProposals)))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposal_items' }, () => debouncedRefetch('proposal_items', () => fetchTableData('proposal_items', setProposalItems)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, (payload) => applyRealtimeUpsert(setProposals, payload, (r) => r, tenantId))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposal_items' }, (payload) => applyRealtimeUpsert(setProposalItems, payload, (r) => r, tenantId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'turmas' }, () => debouncedRefetch('turmas', () => fetchTableData('turmas', setTurmas)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => debouncedRefetch('students', () => fetchTableData('students', setStudents)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'colaboradores' }, () => debouncedRefetch('colaboradores', () => fetchTableData('colaboradores', setColaboradores)))
@@ -763,7 +792,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'financial_goals' }, () => debouncedRefetch('financial_goals', () => fetchTableData('financial_goals', setFinancialGoals)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cargos' }, () => debouncedRefetch('cargos', () => fetchTableData('cargos', setCargos)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'certificates' }, () => debouncedRefetch('certificates', () => fetchTableData('certificates', setCertificates)))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reunioes' }, () => debouncedRefetch('reunioes', fetchReunioes))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reunioes' }, (payload) => applyRealtimeUpsert(setReunioes, payload, (r) => r as Reuniao, tenantId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_funis' }, () => debouncedRefetch('crm_funis', fetchFunis))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'empresa_filiais' }, () => debouncedRefetch('empresa_filiais', () => fetchTableData('empresa_filiais', setEmpresaFiliais)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'nichos' }, () => debouncedRefetch('nichos', fetchNichos))
