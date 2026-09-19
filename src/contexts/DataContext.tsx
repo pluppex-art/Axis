@@ -448,6 +448,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (data) setLeads(data.map(mapLeadRow));
   };
 
+  // `reunioes` já passou de 1000 linhas (histórico migrado do to na pista) —
+  // usa o mesmo helper paginado do fetchLeads. fetchTableData (select sem
+  // .range) cortaria de volta pra 1000 a cada evento realtime.
+  const fetchReunioes = async () => {
+    if (!supabase || !tenantId) return;
+    const { data } = await fetchAllRowsForTenant('reunioes', tenantId);
+    if (data) setReunioes(data as Reuniao[]);
+  };
+
   const fetchAppointments = async () => {
     if (!supabase || !tenantId) return;
     const { data } = await supabase.from('appointments').select('*').eq('tenant_id', tenantId);
@@ -583,6 +592,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let channel: any = null;
 
+    // Sincronizações em massa (ex.: migração de reservas do to na pista pro
+    // Spy) disparam dezenas de eventos UPDATE em `leads`/`reunioes` por
+    // minuto. Sem debounce, cada evento refazia um fetch completo da tabela
+    // (agora sem limite de 1000 linhas — vários round-trips paginados),
+    // deixando o app extremamente pesado enquanto a migração roda. Agrupa
+    // rajadas de eventos da mesma tabela num único refetch.
+    const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+    const debouncedRefetch = (key: string, fn: () => void, waitMs = 1500) => {
+      clearTimeout(debounceTimers[key]);
+      debounceTimers[key] = setTimeout(fn, waitMs);
+    };
+
     async function setupRealtime() {
       // Sem tenantId ainda (sessão não resolveu) — não assina; o efeito reroda
       // quando tenantId chega (está nas deps abaixo), e as closures capturadas
@@ -601,7 +622,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               toast.info(`Novo lead: ${payload.new.name}`, { description: 'Recebido via Realtime' });
             }
           } else {
-            fetchLeads();
+            debouncedRefetch('leads', fetchLeads);
           }
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => fetchTableData('tasks', setTasks))
@@ -619,7 +640,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'financial_goals' }, () => fetchTableData('financial_goals', setFinancialGoals))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cargos' }, () => fetchTableData('cargos', setCargos))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'certificates' }, () => fetchTableData('certificates', setCertificates))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reunioes' }, () => fetchTableData('reunioes', setReunioes as any))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reunioes' }, () => debouncedRefetch('reunioes', fetchReunioes))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_funis' }, () => fetchFunis())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'empresa_filiais' }, () => fetchTableData('empresa_filiais', setEmpresaFiliais))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'nichos' }, () => fetchNichos())
@@ -641,6 +662,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setupRealtime();
 
     return () => {
+      Object.values(debounceTimers).forEach(clearTimeout);
       if (channel && supabase) supabase.removeChannel(channel);
     };
   }, [tenantId]);
