@@ -1,12 +1,11 @@
-import { CalendarRange, X } from "lucide-react";
 import { PageContainer } from "../../components/PageContainer";
-import { Button } from "../../components/ui/button";
 
 import { useDashboard } from "./useDashboard";
 import { DashboardGoalAlerts } from "./components/DashboardGoalAlerts";
 import { DashboardActionsTabs } from "./components/DashboardActionsTabs";
 import { DashboardTabContent } from "./components/DashboardTabContent";
 import { DashboardStatsSection } from "./components/DashboardStatsSection";
+import { DashboardDateFilter } from "./components/DashboardDateFilter";
 
 
 
@@ -47,32 +46,12 @@ export default function Dashboard() {
 
         {/* Filtro de período — afeta cartões, funil e ranking (por data de
             cadastro do lead); o gráfico de tendência mantém sua janela fixa. */}
-        <div className="flex flex-wrap items-center gap-2 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 w-fit">
-          <CalendarRange className="w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0" />
-          <input
-            type="date"
-            value={dateFrom ?? ""}
-            onChange={(e) => setDateFrom(e.target.value || null)}
-            className="bg-transparent text-xs text-[var(--color-text-primary)] focus:outline-none cursor-pointer"
-          />
-          <span className="text-xs text-[var(--color-text-faint)]">até</span>
-          <input
-            type="date"
-            value={dateTo ?? ""}
-            onChange={(e) => setDateTo(e.target.value || null)}
-            className="bg-transparent text-xs text-[var(--color-text-primary)] focus:outline-none cursor-pointer"
-          />
-          {(dateFrom || dateTo) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setDateFrom(null); setDateTo(null); }}
-              className="h-6 px-2 text-[10px] gap-1"
-            >
-              <X className="w-3 h-3" /> Limpar
-            </Button>
-          )}
-        </div>
+        <DashboardDateFilter
+          dateFrom={dateFrom}
+          setDateFrom={setDateFrom}
+          dateTo={dateTo}
+          setDateTo={setDateTo}
+        />
 
         {/* Goal Alerts Banner */}
         <DashboardGoalAlerts goalAlerts={goalAlerts} />
