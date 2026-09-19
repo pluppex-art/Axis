@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { FileText, ChevronRight, Plus, Trash2, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -22,7 +22,8 @@ export const DEFAULT_EMPREENDA_FORM: FormDefinition = {
 
 export default function MarketingFormularios() {
   const { activeTenantId } = useAuth();
-  const { marketingForms, addMarketingForm, deleteMarketingForm } = useData();
+  const { marketingForms, addMarketingForm, deleteMarketingForm, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const [selected, setSelected] = useState<FormDefinition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 

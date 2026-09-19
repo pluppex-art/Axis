@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Zap, Search, Plus, Play,
   Users, Mail,
@@ -61,7 +61,8 @@ const DEFAULT_STEPS: AutomationStep[] = [
 ];
 
 export default function MarketingAutomacoes() {
-  const { marketingAutomations, addMarketingAutomation, updateMarketingAutomation, deleteMarketingAutomation } = useData();
+  const { marketingAutomations, addMarketingAutomation, updateMarketingAutomation, deleteMarketingAutomation, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const automations = (marketingAutomations || []) as Automation[];
 
   const [search, setSearch] = useState("");

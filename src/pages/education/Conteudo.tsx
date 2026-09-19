@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { readKanbanConfig, KANBAN_KEYS, KANBAN_COR_DOT } from "../../hooks/useKanbanConfig";
 import { Layers, FileSearch, Star, Download, Plus } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -34,7 +34,8 @@ function rowToContent(r: any): ContentItem {
 }
 
 export default function Conteudo() {
-  const { educationContent, addEducationContent, updateEducationContent, appSettings } = useData();
+  const { educationContent, addEducationContent, updateEducationContent, appSettings, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const [viewMode, setViewMode] = useState<"Table" | "Kanban">("Kanban");
   const content: ContentItem[] = educationContent.map(rowToContent);
   const [search, setSearch] = useState("");

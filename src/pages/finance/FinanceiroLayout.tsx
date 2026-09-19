@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { useData } from "../../contexts/DataContext";
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -116,6 +117,12 @@ const PAGINAS_COM_BOTAO_PROPRIO = [
 export default function FinanceiroLayout() {
   const location = useLocation();
   const [novaOperacaoOpen, setNovaOperacaoOpen] = useState(false);
+  const { ensureNicheModulesLoaded } = useData();
+
+  // Bancos/transferências/centros de custo/anexos/categorias/auditoria não
+  // entram na carga inicial do app (módulo de nicho) — busca sob demanda ao
+  // entrar em qualquer tela do Financeiro.
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
 
   const mostrarFab = !PAGINAS_COM_BOTAO_PROPRIO.some(p => location.pathname.startsWith(p));
   const tipoPadrao = location.pathname.includes("recebimento") ? "Receber" : "Pagar";

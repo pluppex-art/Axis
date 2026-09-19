@@ -176,6 +176,12 @@ export interface DataContextType {
   updateTenantPrimaryColor: (hex: string) => Promise<{ success: boolean; error?: string }>;
   saveAppSetting: (key: string, value: any) => Promise<void>;
   appSettings: Record<string, any>;
+  // Financeiro (bancos/transferências/centros de custo/anexos/categorias/
+  // auditoria), Marketing (automações/formulários/conteúdo) e Educação/Aurora
+  // não entram na carga inicial (são módulos de nicho, não usados por toda
+  // empresa) — cada tela desses módulos chama isso no mount pra buscar sob
+  // demanda, uma única vez (idempotente).
+  ensureNicheModulesLoaded: () => void;
   appSettingsLoaded: boolean;
   getSmartInsight: (context: string, data: any) => Promise<string>;
   addFinanceEntry: (entry: Omit<FinanceEntry, 'id'>, options?: { silent?: boolean }) => void;

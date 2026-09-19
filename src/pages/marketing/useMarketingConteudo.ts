@@ -54,9 +54,11 @@ function taskToRow(task: any, tenantId?: string) {
 }
 
 export function useMarketingConteudo() {
-  const { marketingContent: contentRows, appSettings } = useData();
+  const { marketingContent: contentRows, appSettings, ensureNicheModulesLoaded } = useData();
   const { activeTenantId } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
+
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
 
   useEffect(() => {
     setTasks(contentRows.map(mapRowToTask));

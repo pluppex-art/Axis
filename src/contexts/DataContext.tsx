@@ -824,8 +824,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           { name: 'appointments', promise: fetchAllRowsForTenant('appointments', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setAppointments(res.data.map(mapAppointmentRow)); } },
           { name: 'squads', promise: fetchAllRowsForTenant('squads', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setSquads(res.data.map(mapSquadRow)); } },
           { name: 'notifications', promise: fetchAllRowsForTenant('notifications', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setNotifications(res.data as Notification[]); } },
-          { name: 'marketing_campaigns', promise: fetchAllRowsForTenant('marketing_campaigns', tenantId), apply: (res) => { if (res.data) setMarketingCampaigns(res.data); } },
-          { name: 'marketing_content', promise: fetchAllRowsForTenant('marketing_content', tenantId, (q: any) => q.is('deleted_at', null)), apply: (res) => { if (res.data) setMarketingContent(res.data); } },
           { name: 'marketing_landing_pages', promise: fetchAllRowsForTenant('marketing_landing_pages', tenantId), apply: (res) => { if (res.data) setMarketingLandingPages(res.data); } },
           {
             name: 'app_settings',
@@ -881,10 +879,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           { name: 'financial_goals', promise: fetchAllRowsForTenant('financial_goals', tenantId), apply: (res) => { if (res.data) setFinancialGoals(res.data); } },
           { name: 'crm_funis', promise: fetchAllRowsForTenant('crm_funis', tenantId), apply: (res) => { if (res.data) setFunis(res.data.map(rowToFunil)); } },
           { name: 'empresa_filiais', promise: fetchAllRowsForTenant('empresa_filiais', tenantId), apply: (res) => { if (res.data) setEmpresaFiliais(res.data); } },
-          { name: 'finance_categories', promise: fetchAllRowsForTenant('finance_categories', tenantId), apply: (res) => { if (res.data) setFinanceCategories(res.data); } },
           { name: 'scheduled_exports', promise: fetchAllRowsForTenant('scheduled_exports', tenantId), apply: (res) => { if (res.data) setScheduledExports(res.data); } },
-          { name: 'education_content', promise: fetchAllRowsForTenant('education_content', tenantId), apply: (res) => { if (res.data) setEducationContent(res.data); } },
-          { name: 'marketing_forms', promise: fetchAllRowsForTenant('marketing_forms', tenantId), apply: (res) => { if (res.data) setMarketingForms(res.data); } },
           {
             name: 'nichos',
             // Nichos globais (tenant_id null) + os do tenant ativo, mesmo motivo do app_settings acima.
@@ -893,18 +888,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           },
           { name: 'finance_commission_entries', promise: fetchAllRowsForTenant('finance_commission_entries', tenantId), apply: (res) => { if (res.data) setFinanceCommissionEntries(res.data); } },
           { name: 'indicacoes', promise: fetchAllRowsForTenant('indicacoes', tenantId), apply: (res) => { if (res.data) setIndicacoes(res.data as Indicacao[]); } },
-          { name: 'marketing_automations', promise: fetchAllRowsForTenant('marketing_automations', tenantId), apply: (res) => { if (res.data) setMarketingAutomations(res.data); } },
-          { name: 'aurora_agents', promise: fetchAllRowsForTenant('aurora_agents', tenantId), apply: (res) => { if (res.data) setAuroraAgents(res.data as AuroraAgent[]); } },
-          { name: 'finance_bank_accounts', promise: fetchAllRowsForTenant('finance_bank_accounts', tenantId), apply: (res) => { if (res.data) setFinanceBankAccounts(res.data); } },
-          { name: 'finance_transfers', promise: fetchAllRowsForTenant('finance_transfers', tenantId), apply: (res) => { if (res.data) setFinanceTransfers(res.data); } },
-          { name: 'finance_period_locks', promise: fetchAllRowsForTenant('finance_period_locks', tenantId), apply: (res) => { if (res.data) setFinancePeriodLocks(res.data); } },
-          {
-            name: 'finance_audit_log',
-            promise: dbLimit(() => supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500)),
-            apply: (res) => { if (res.data) setFinanceAuditLog(res.data); },
-          },
-          { name: 'finance_centros_custo', promise: fetchAllRowsForTenant('finance_centros_custo', tenantId), apply: (res) => { if (res.data) setFinanceCentrosCusto(res.data); } },
-          { name: 'finance_attachments', promise: fetchAllRowsForTenant('finance_attachments', tenantId), apply: (res) => { if (res.data) setFinanceAttachments(res.data); } },
         ];
 
         jobs.forEach(({ name, promise, apply }) => {
@@ -929,6 +912,49 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     loadInitialData();
     return () => { cancelled = true; };
   }, [authLoading, tenantId]);
+
+  // Financeiro (bancos/transferências/centros de custo/anexos/categorias/
+  // auditoria), Marketing (automações/formulários/conteúdo) e Educação/Aurora
+  // (conteúdo, agentes) não entram na carga inicial — são módulos de nicho,
+  // não usados por toda empresa que usa o Spy (verificado: nenhum consumidor
+  // fora das próprias telas desses módulos). Cada tela chama isso no mount;
+  // a ref evita disparar de novo se a tela remontar ou várias telas do mesmo
+  // módulo chamarem em sequência.
+  const nicheModulesRef = React.useRef<{ tenantId: string | null; started: boolean }>({ tenantId: null, started: false });
+  const ensureNicheModulesLoaded = React.useCallback(() => {
+    if (!supabase || !tenantId) return;
+    if (nicheModulesRef.current.started && nicheModulesRef.current.tenantId === tenantId) return;
+    nicheModulesRef.current = { tenantId, started: true };
+
+    const nicheJobs: Array<{ name: string; promise: Promise<any>; apply: (res: any) => void }> = [
+      { name: 'finance_bank_accounts', promise: fetchAllRowsForTenant('finance_bank_accounts', tenantId), apply: (res) => { if (res.data) setFinanceBankAccounts(res.data); } },
+      { name: 'finance_transfers', promise: fetchAllRowsForTenant('finance_transfers', tenantId), apply: (res) => { if (res.data) setFinanceTransfers(res.data); } },
+      { name: 'finance_period_locks', promise: fetchAllRowsForTenant('finance_period_locks', tenantId), apply: (res) => { if (res.data) setFinancePeriodLocks(res.data); } },
+      {
+        name: 'finance_audit_log',
+        promise: dbLimit(() => supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500)),
+        apply: (res) => { if (res.data) setFinanceAuditLog(res.data); },
+      },
+      { name: 'finance_centros_custo', promise: fetchAllRowsForTenant('finance_centros_custo', tenantId), apply: (res) => { if (res.data) setFinanceCentrosCusto(res.data); } },
+      { name: 'finance_attachments', promise: fetchAllRowsForTenant('finance_attachments', tenantId), apply: (res) => { if (res.data) setFinanceAttachments(res.data); } },
+      { name: 'finance_categories', promise: fetchAllRowsForTenant('finance_categories', tenantId), apply: (res) => { if (res.data) setFinanceCategories(res.data); } },
+      { name: 'marketing_automations', promise: fetchAllRowsForTenant('marketing_automations', tenantId), apply: (res) => { if (res.data) setMarketingAutomations(res.data); } },
+      { name: 'marketing_forms', promise: fetchAllRowsForTenant('marketing_forms', tenantId), apply: (res) => { if (res.data) setMarketingForms(res.data); } },
+      { name: 'marketing_content', promise: fetchAllRowsForTenant('marketing_content', tenantId, (q: any) => q.is('deleted_at', null)), apply: (res) => { if (res.data) setMarketingContent(res.data); } },
+      { name: 'marketing_campaigns', promise: fetchAllRowsForTenant('marketing_campaigns', tenantId), apply: (res) => { if (res.data) setMarketingCampaigns(res.data); } },
+      { name: 'education_content', promise: fetchAllRowsForTenant('education_content', tenantId), apply: (res) => { if (res.data) setEducationContent(res.data); } },
+      { name: 'aurora_agents', promise: fetchAllRowsForTenant('aurora_agents', tenantId), apply: (res) => { if (res.data) setAuroraAgents(res.data as AuroraAgent[]); } },
+    ];
+
+    nicheJobs.forEach(({ name, promise, apply }) => {
+      promise
+        .then((res: any) => {
+          if (nicheModulesRef.current.tenantId !== tenantId) return;
+          apply(res);
+        })
+        .catch((err: any) => console.error(`[DataContext] ❌ Falha ao carregar módulo de nicho "${name}":`, err));
+    });
+  }, [tenantId]);
 
   const notifiedRemindersRef = React.useRef<Record<string, boolean>>({});
 
@@ -2202,6 +2228,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       tenantPrimaryColor,
       updateTenantPrimaryColor,
       saveAppSetting,
+      ensureNicheModulesLoaded,
       appSettings,
       appSettingsLoaded,
       globalWebhooks,

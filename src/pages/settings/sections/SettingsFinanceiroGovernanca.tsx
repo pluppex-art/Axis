@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { Lock, Trash2, ShieldCheck, PlusCircle, Search } from "lucide-react";
@@ -10,7 +10,8 @@ import { confirmDialog } from "../../../components/ui/confirm-dialog";
 const fmtDate = (iso: string) => new Date(iso + "T12:00:00").toLocaleDateString("pt-BR");
 
 export function ConfigFinanceiroBloqueioPeriodo() {
-  const { financePeriodLocks, addFinancePeriodLock, deleteFinancePeriodLock } = useData();
+  const { financePeriodLocks, addFinancePeriodLock, deleteFinancePeriodLock, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const [dataInicial, setDataInicial] = useState("");
   const [dataFinal, setDataFinal] = useState("");
 
@@ -89,7 +90,8 @@ const ACAO_TONE: Record<string, string> = {
 };
 
 export function ConfigFinanceiroAuditoria() {
-  const { financeAuditLog } = useData();
+  const { financeAuditLog, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const { formatCurrency } = useLocalization();
   const [filtroAcao, setFiltroAcao] = useState<string>("TODAS");
   const [busca, setBusca] = useState("");

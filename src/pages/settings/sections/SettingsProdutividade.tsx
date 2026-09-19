@@ -194,7 +194,8 @@ export function ConfigProdutividadeCategorias() {
 export function ConfigFinanceiroCategorias() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editing, setEditing] = useState<{ id: string; nome: string; tipo: "Receita" | "Despesa"; subtipo: FinanceCategorySubtipo | null } | null>(null);
-    const { financeCategories, addFinanceCategory, updateFinanceCategory, deleteFinanceCategory, financeEntries } = useData();
+    const { financeCategories, addFinanceCategory, updateFinanceCategory, deleteFinanceCategory, financeEntries, ensureNicheModulesLoaded } = useData();
+    useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
     const categories: { id: string, nome: string, tipo: "Receita" | "Despesa", subtipo: FinanceCategorySubtipo | null }[] =
         financeCategories.map((c: any) => ({ id: c.id, nome: c.nome, tipo: c.tipo, subtipo: c.subtipo ?? null }));
 

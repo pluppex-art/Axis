@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Bot, Plus, Trash2, Pencil, Sparkles, UserSearch, Eye, Radar,
   Handshake, Briefcase, LineChart, Search, Headset, Wallet, Megaphone, ClipboardList,
@@ -58,7 +58,8 @@ function RoleIcon({ role }: { role?: string }) {
 type EditingState = { id?: string; name: string; role: string; description: string } | null;
 
 export function ConfigSistemaAuroraAgentes() {
-  const { auroraAgents, addAuroraAgent, updateAuroraAgent, deleteAuroraAgent, toggleAuroraAgent } = useData();
+  const { auroraAgents, addAuroraAgent, updateAuroraAgent, deleteAuroraAgent, toggleAuroraAgent, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const [editing, setEditing] = useState<EditingState>(null);
 
   const hasCustomAgents = auroraAgents.length > 0;
