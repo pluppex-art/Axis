@@ -822,9 +822,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             promise: fetchAllRowsForTenant('leads', tenantId),
             // `data` pode vir parcial (algumas páginas obtidas, uma falhou mesmo
             // após retry) — ainda assim é melhor que a lista vazia/anterior.
-            apply: (res) => { if (res.data && res.data.length > 0) setLeads((res.data as any[]).map(mapLeadRow) as Lead[]); },
+            apply: (res) => { if (res.data) setLeads((res.data as any[]).map(mapLeadRow) as Lead[]); },
           },
-          { name: 'tasks', promise: fetchAllRowsForTenant('tasks', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setTasks(res.data as Task[]); } },
+          { name: 'tasks', promise: fetchAllRowsForTenant('tasks', tenantId), apply: (res) => { if (res.data) setTasks(res.data as Task[]); } },
           // Faltava esse hidrate — `contracts` nunca era populado a partir do
           // Supabase na carga inicial (só via evento realtime de escrita na
           // tabela), então a cada refresh da página o estado local começava
@@ -832,11 +832,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           // achar "nenhum contrato existente" toda vez e recriar um duplicado
           // + disparar notificação de novo contrato a cada entrada na tela.
           { name: 'contracts', promise: fetchAllRowsForTenant('contracts', tenantId), apply: (res) => { if (res.data) setContracts(res.data.map(rowToContract)); setContractsLoaded(true); } },
-          { name: 'lead_activities', promise: fetchAllRowsForTenant('lead_activities', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setLeadActivities(res.data as LeadActivity[]); } },
-          { name: 'finance_entries', promise: fetchAllRowsForTenant('finance_entries', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setFinanceEntries(res.data as FinanceEntry[]); } },
-          { name: 'appointments', promise: fetchAllRowsForTenant('appointments', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setAppointments(res.data.map(mapAppointmentRow)); } },
-          { name: 'squads', promise: fetchAllRowsForTenant('squads', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setSquads(res.data.map(mapSquadRow)); } },
-          { name: 'notifications', promise: fetchAllRowsForTenant('notifications', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setNotifications(res.data as Notification[]); } },
+          { name: 'lead_activities', promise: fetchAllRowsForTenant('lead_activities', tenantId), apply: (res) => { if (res.data) setLeadActivities(res.data as LeadActivity[]); } },
+          { name: 'finance_entries', promise: fetchAllRowsForTenant('finance_entries', tenantId), apply: (res) => { if (res.data) setFinanceEntries(res.data as FinanceEntry[]); } },
+          { name: 'appointments', promise: fetchAllRowsForTenant('appointments', tenantId), apply: (res) => { if (res.data) setAppointments(res.data.map(mapAppointmentRow)); } },
+          { name: 'squads', promise: fetchAllRowsForTenant('squads', tenantId), apply: (res) => { if (res.data) setSquads(res.data.map(mapSquadRow)); } },
+          { name: 'notifications', promise: fetchAllRowsForTenant('notifications', tenantId), apply: (res) => { if (res.data) setNotifications(res.data as Notification[]); } },
           { name: 'marketing_landing_pages', promise: fetchAllRowsForTenant('marketing_landing_pages', tenantId), apply: (res) => { if (res.data) setMarketingLandingPages(res.data); } },
           {
             name: 'app_settings',
