@@ -67,11 +67,14 @@ function createLimiter(concurrency: number) {
     });
   };
 }
-// 15 é um meio-termo: o banco tem 60 conexões no total e já tinha 39 em uso
-// por outras coisas (Realtime, outras sessões) na hora que medi — dar mais
-// concorrência do que isso por sessão arrisca estourar o teto quando vários
-// usuários carregam o app ao mesmo tempo.
-const dbLimit = createLimiter(15);
+// Testado em produção: com 15, um erro real apareceu — log do Postgres
+// mostrou "canceling statement due to statement timeout" numa query de
+// reunioes (que sozinha leva 21ms) batendo no timeout de 8s do papel
+// `authenticated`. Isso só acontece com contenção real (CPU/locks) sob carga
+// simultânea alta, não é hipotético. Volta pro nível anterior (10), que não
+// teve nenhum erro reportado — a fila fica um pouco mais longa, mas sem
+// arriscar falhar operações reais.
+const dbLimit = createLimiter(10);
 
 async function fetchPageWithRetry(
   table: string,
@@ -322,6 +325,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [tasksRaw, setTasks] = useState<Task[]>(defaultTasks);
 
   const [contractsRaw, setContracts] = useState<Contract[]>(defaultContracts);
+  // A reconciliação de propostas aceitas (mais abaixo) precisa saber se a
+  // carga REAL de `contracts` já terminou, não só olhar pra `contracts` —
+  // esse array nunca é null/undefined (começa com defaultContracts, não
+  // vazio de verdade), então um guard tipo `!contracts` nunca segura nada.
+  // Sem essa flag, `proposals` podia terminar de carregar antes de
+  // `contracts` (agora que cada tabela aplica de forma independente) e a
+  // reconciliação achava "nenhum contrato existente" e recriava um
+  // duplicado — rejeitado pela constraint única do banco (erro 409 visto
+  // em produção), mas ainda assim uma falha real toda vez que acontecia.
+  const [contractsLoaded, setContractsLoaded] = useState(false);
 
   const [leadActivities, setLeadActivities] = useState<LeadActivity[]>([]);
 
@@ -818,7 +831,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           // vazio. Isso fazia a reconciliação de propostas aceitas (Propostas.tsx)
           // achar "nenhum contrato existente" toda vez e recriar um duplicado
           // + disparar notificação de novo contrato a cada entrada na tela.
-          { name: 'contracts', promise: fetchAllRowsForTenant('contracts', tenantId), apply: (res) => { if (res.data) setContracts(res.data.map(rowToContract)); } },
+          { name: 'contracts', promise: fetchAllRowsForTenant('contracts', tenantId), apply: (res) => { if (res.data) setContracts(res.data.map(rowToContract)); setContractsLoaded(true); } },
           { name: 'lead_activities', promise: fetchAllRowsForTenant('lead_activities', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setLeadActivities(res.data as LeadActivity[]); } },
           { name: 'finance_entries', promise: fetchAllRowsForTenant('finance_entries', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setFinanceEntries(res.data as FinanceEntry[]); } },
           { name: 'appointments', promise: fetchAllRowsForTenant('appointments', tenantId), apply: (res) => { if (res.data && res.data.length > 0) setAppointments(res.data.map(mapAppointmentRow)); } },
@@ -2113,12 +2126,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // assim que os dados do tenant carregam, não depende de nenhuma página
   // específica estar montada.
   useEffect(() => {
-    if (!proposals || proposals.length === 0 || !contracts) return;
+    if (!proposals || proposals.length === 0 || !contractsLoaded) return;
     (proposals as any[])
       .filter((p) => p.status === "Aceita")
       .forEach((p) => syncAcceptedProposal(p, { silent: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proposals, contracts]);
+  }, [proposals, contracts, contractsLoaded]);
 
   const deleteFinanceEntry = async (id: string) => {
     const before = financeEntries.find(f => f.id === id);
