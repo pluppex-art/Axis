@@ -34,6 +34,41 @@ export type { DataContextType, LeadActivity, Notification, Appointment, GlobalWe
 // primeiros 1000 registros na tela. Pagina com `.range()` até esgotar.
 const PAGE_STEP = 1000;
 
+// A carga inicial busca ~44 tabelas (mais páginas extras de leads/reunioes
+// quando precisam paginar) — sem limite, isso disparava 50+ requisições
+// simultâneas competindo pelo pool de conexões do Postgres (Supavisor), e
+// esse projeto fica em us-west-2: cada requisição individual já carrega
+// ~150-250ms de latência de rede sozinha pra quem acessa do Brasil. Mais
+// concorrência do que o pool aguenta vira fila, e a fila conta como tempo de
+// carregamento pro usuário. Este limitador bota um teto (10 requisições ao
+// Supabase por vez) em TODA a carga inicial — inclusive nas páginas extras de
+// leads/reunioes, que passam pela mesma fila.
+function createLimiter(concurrency: number) {
+  let active = 0;
+  const queue: (() => void)[] = [];
+  const runNext = () => {
+    if (active >= concurrency || queue.length === 0) return;
+    active++;
+    const task = queue.shift()!;
+    task();
+  };
+  // `fn` retorna o builder do Supabase (PostgrestFilterBuilder), que é
+  // "thenable" mas não uma Promise de verdade (falta .catch/.finally) —
+  // aceita PromiseLike e normaliza com Promise.resolve.
+  return function limit<T>(fn: () => PromiseLike<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      queue.push(() => {
+        Promise.resolve(fn()).then(resolve, reject).finally(() => {
+          active--;
+          runNext();
+        });
+      });
+      runNext();
+    });
+  };
+}
+const dbLimit = createLimiter(10);
+
 async function fetchPageWithRetry(
   table: string,
   tenantId: string,
@@ -45,9 +80,11 @@ async function fetchPageWithRetry(
   let error: any = null;
   let count: number | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    let query = supabase!.from(table).select('*', withCount ? { count: 'exact' } : undefined).eq('tenant_id', tenantId);
-    if (extraFilter) query = extraFilter(query);
-    const res: any = await query.range(from, from + PAGE_STEP - 1);
+    const res: any = await dbLimit(() => {
+      let query = supabase!.from(table).select('*', withCount ? { count: 'exact' } : undefined).eq('tenant_id', tenantId);
+      if (extraFilter) query = extraFilter(query);
+      return query.range(from, from + PAGE_STEP - 1);
+    });
     data = res.data;
     error = res.error;
     count = res.count ?? null;
@@ -779,7 +816,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               // sem esse filtro, contas master/parceiro (has_tenant_access verdadeiro pra vários
               // tenants) recebiam via RLS configurações de TODOS os tenants acessíveis misturadas
               // num único mapa por key (ver merge abaixo), fazendo "configs grudarem" ao trocar de empresa.
-              supabase.from('app_settings').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`),
+              dbLimit(() => supabase.from('app_settings').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`)),
               fetchAllRowsForTenant('products', tenantId),
               fetchAllRowsForTenant('proposals', tenantId),
               fetchAllRowsForTenant('proposal_items', tenantId),
@@ -799,7 +836,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               fetchAllRowsForTenant('education_content', tenantId),
               fetchAllRowsForTenant('marketing_forms', tenantId),
               // Nichos globais (tenant_id null) + os do tenant ativo, mesmo motivo do app_settings acima.
-              supabase.from('nichos').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`),
+              dbLimit(() => supabase.from('nichos').select('*').or(`tenant_id.eq.${tenantId},tenant_id.is.null`)),
               fetchAllRowsForTenant('finance_commission_entries', tenantId),
               fetchAllRowsForTenant('indicacoes', tenantId),
               fetchAllRowsForTenant('marketing_automations', tenantId),
@@ -807,7 +844,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               fetchAllRowsForTenant('finance_bank_accounts', tenantId),
               fetchAllRowsForTenant('finance_transfers', tenantId),
               fetchAllRowsForTenant('finance_period_locks', tenantId),
-              supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500),
+              dbLimit(() => supabase.from('finance_audit_log').select('*').eq('tenant_id', tenantId).order('data_hora', { ascending: false }).limit(500)),
               fetchAllRowsForTenant('finance_centros_custo', tenantId),
               fetchAllRowsForTenant('finance_attachments', tenantId),
             ]);
