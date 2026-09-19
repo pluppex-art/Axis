@@ -335,6 +335,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // duplicado — rejeitado pela constraint única do banco (erro 409 visto
   // em produção), mas ainda assim uma falha real toda vez que acontecia.
   const [contractsLoaded, setContractsLoaded] = useState(false);
+  // Mesmo motivo do contractsLoaded acima, pro lado de `proposals`: sem
+  // isso, a reconciliação podia rodar com `proposals` ainda contendo dados
+  // do tenant ANTERIOR (troca de tenant, carregamento independente).
+  const [proposalsLoaded, setProposalsLoaded] = useState(false);
 
   const [leadActivities, setLeadActivities] = useState<LeadActivity[]>([]);
 
@@ -801,6 +805,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // reroda (tenant mudou) ou desmonta, e barra os setState tardios.
     let cancelled = false;
 
+    // BUG real (reportado: 409 "contracts_proposal_id_unique" toda vez que o
+    // master troca pro tenant to na pista): `contractsLoaded` fica `true`
+    // depois do PRIMEIRO carregamento (tenant A) e nunca era resetado ao
+    // trocar de tenant — então ao entrar no tenant B, a flag já dizia "pronto"
+    // mesmo com `contracts` ainda contendo os dados do tenant A (ou vazio),
+    // e a reconciliação de propostas aceitas rodava cedo demais, achava
+    // "nenhum contrato existente" e tentava recriar um duplicado. Reseta
+    // aqui, toda vez que o efeito reroda (ou seja, toda troca de tenant).
+    setContractsLoaded(false);
+    setProposalsLoaded(false);
+
     async function loadInitialData() {
       // Aguarda a sessão resolver e o tenant ser conhecido antes de buscar
       // dados — evita disparar a carga como "anon" (RLS devolveria tudo
@@ -872,7 +887,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             },
           },
           { name: 'products', promise: fetchAllRowsForTenant('products', tenantId), apply: (res) => { if (res.data) setProducts(res.data.map(mapProductRow)); } },
-          { name: 'proposals', promise: fetchAllRowsForTenant('proposals', tenantId), apply: (res) => { if (res.data) setProposals(res.data); } },
+          { name: 'proposals', promise: fetchAllRowsForTenant('proposals', tenantId), apply: (res) => { if (res.data) setProposals(res.data); setProposalsLoaded(true); } },
           { name: 'proposal_items', promise: fetchAllRowsForTenant('proposal_items', tenantId), apply: (res) => { if (res.data) setProposalItems(res.data); } },
           { name: 'turmas', promise: fetchAllRowsForTenant('turmas', tenantId), apply: (res) => { if (res.data) setTurmas(res.data); } },
           { name: 'students', promise: fetchAllRowsForTenant('students', tenantId), apply: (res) => { if (res.data) setStudents(res.data); } },
@@ -2126,12 +2141,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // assim que os dados do tenant carregam, não depende de nenhuma página
   // específica estar montada.
   useEffect(() => {
-    if (!proposals || proposals.length === 0 || !contractsLoaded) return;
+    if (!proposals || proposals.length === 0 || !contractsLoaded || !proposalsLoaded) return;
     (proposals as any[])
       .filter((p) => p.status === "Aceita")
       .forEach((p) => syncAcceptedProposal(p, { silent: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proposals, contracts, contractsLoaded]);
+  }, [proposals, contracts, contractsLoaded, proposalsLoaded]);
 
   const deleteFinanceEntry = async (id: string) => {
     const before = financeEntries.find(f => f.id === id);
