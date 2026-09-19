@@ -58,6 +58,12 @@ export default function AgendaCRM() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("Todos");
   const [selectedCloser, setSelectedCloser] = useState<string>("Todos");
+  // "Lista Geral de Agendamentos" renderizava TODOS os agendamentos filtrados
+  // de uma vez (base tem +4 mil, histórico migrado do to na pista) — muito
+  // pesado. Só limita o que é desenhado; contadores continuam usando a lista
+  // filtrada completa.
+  const LIST_PAGE_SIZE = 50;
+  const [listVisibleCount, setListVisibleCount] = useState(LIST_PAGE_SIZE);
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedDayDate, setSelectedDayDate] = useState<Date>(() => new Date());
@@ -94,6 +100,15 @@ export default function AgendaCRM() {
       return matchesStatus && matchesCloser && matchesSearch;
     });
   }, [all, statusFilter, selectedCloser, search]);
+
+  useEffect(() => {
+    setListVisibleCount(LIST_PAGE_SIZE);
+  }, [statusFilter, selectedCloser, search]);
+
+  const visibleReunioes = useMemo(
+    () => filteredReunioes.slice(0, listVisibleCount),
+    [filteredReunioes, listVisibleCount]
+  );
 
   // Today metrics
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -826,7 +841,7 @@ export default function AgendaCRM() {
               />
             ) : (
               <div className="space-y-2.5">
-                {filteredReunioes.map((r) => {
+                {visibleReunioes.map((r) => {
                   const isGoogle = !!r.googleEventId || r.companyName === "Google Calendar";
                   const isMeet = r.meetLink && r.meetLink.includes("meet.google.com");
 
@@ -908,6 +923,17 @@ export default function AgendaCRM() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {listVisibleCount < filteredReunioes.length && (
+              <div className="flex justify-center pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setListVisibleCount((c) => c + LIST_PAGE_SIZE)}
+                >
+                  Carregar mais ({filteredReunioes.length - listVisibleCount} restantes)
+                </Button>
               </div>
             )}
           </Card>

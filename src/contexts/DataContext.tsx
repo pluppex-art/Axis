@@ -32,13 +32,33 @@ export type { DataContextType, LeadActivity, Notification, Appointment, GlobalWe
 // mais de 1000 linhas numa tabela (ex.: leads/reunioes de uma integração que
 // sincroniza um volume grande de uma vez), sem erro nenhum, só mostrando os
 // primeiros 1000 registros na tela. Pagina com `.range()` até esgotar.
+//
+// Tabelas grandes (leads/reunioes) agora precisam de várias requisições
+// sequenciais (4-5+) pra trazer tudo. Antes, se QUALQUER uma delas desse um
+// erro transitório de rede, a função inteira abortava e devolvia `data: null`
+// — o chamador então não atualizava o estado, fazendo a tela mostrar tudo
+// (leads antigos em memória) ou nada (primeira carga), nunca "quase tudo".
+// Agora cada página tenta de novo até 3x antes de desistir, e se mesmo assim
+// falhar, devolve o que já foi buscado com sucesso até ali em vez de jogar
+// tudo fora — melhor mostrar 90% dos registros do que zerar a tela inteira.
 async function fetchAllRowsForTenant(table: string, tenantId: string) {
   let all: any[] = [];
   let from = 0;
   const step = 1000;
   while (true) {
-    const { data, error } = await supabase!.from(table).select('*').eq('tenant_id', tenantId).range(from, from + step - 1);
-    if (error) return { data: null as any[] | null, error };
+    let data: any[] | null = null;
+    let error: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await supabase!.from(table).select('*').eq('tenant_id', tenantId).range(from, from + step - 1);
+      data = res.data;
+      error = res.error;
+      if (!error) break;
+      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    }
+    if (error) {
+      console.error(`[fetchAllRowsForTenant] Falha ao buscar página de "${table}" após 3 tentativas — retornando ${all.length} linha(s) já obtida(s).`, error);
+      return { data: all, error };
+    }
     if (!data || data.length === 0) break;
     all = all.concat(data);
     if (data.length < step) break;
@@ -733,7 +753,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               supabase.from('finance_attachments').select('*').eq('tenant_id', tenantId),
             ]);
 
-            if (!leadsRes.error && leadsRes.data && leadsRes.data.length > 0) {
+            // `leadsRes.data` pode vir parcial (algumas páginas obtidas, uma
+            // falhou mesmo após retry) — ainda assim é melhor que a lista
+            // vazia/anterior. `error` aqui só indica que faltou parte, não
+            // que não há nada aproveitável.
+            if (leadsRes.data && leadsRes.data.length > 0) {
               setLeads((leadsRes.data as any[]).map(mapLeadRow) as Lead[]);
             }
             if (!tasksRes.error && tasksRes.data && tasksRes.data.length > 0) setTasks(tasksRes.data as Task[]);
@@ -764,7 +788,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             if (!certRes.error && certRes.data) setCertificates(certRes.data);
             if (!cargosRes.error && cargosRes.data) setCargos(cargosRes.data);
             if (!clienteBaseRes.error && clienteBaseRes.data) setClienteBase(clienteBaseRes.data);
-            if (!reunioesRes.error && reunioesRes.data) setReunioes(reunioesRes.data as Reuniao[]);
+            if (reunioesRes.data) setReunioes(reunioesRes.data as Reuniao[]);
             if (!funisRes.error && funisRes.data) setFunis(funisRes.data.map(rowToFunil));
             if (!filiaisRes.error && filiaisRes.data) setEmpresaFiliais(filiaisRes.data);
             if (!nichosRes.error && nichosRes.data) setNichos(nichosRes.data);

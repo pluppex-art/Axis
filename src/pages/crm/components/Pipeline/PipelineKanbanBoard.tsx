@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 import { LeadCard } from "./LeadCard";
 import { Task } from "../../../../types";
@@ -60,6 +60,16 @@ export function PipelineKanbanBoard({
 }: PipelineKanbanBoardProps) {
   const { products, proposals } = useData();
   const { formatCurrency } = useLocalization();
+
+  // Colunas com centenas de cards (base migrada tem +3 mil leads distribuídos
+  // pelas etapas) deixavam o board muito pesado pra montar/arrastar. Os
+  // totais/contadores de cada coluna continuam somando TODOS os leads da
+  // etapa — só a quantidade de cards desenhados é limitada, com "carregar
+  // mais" por coluna.
+  const CARDS_PAGE_SIZE = 40;
+  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
+  const showMore = (stageId: string) =>
+    setVisibleCounts((prev) => ({ ...prev, [stageId]: (prev[stageId] ?? CARDS_PAGE_SIZE) + CARDS_PAGE_SIZE }));
 
   // Mesma regra do LeadCard: quando o lead tem produtos vinculados, o valor
   // exibido vem da soma dos preços dos produtos, não do campo value/valor —
@@ -149,6 +159,8 @@ export function PipelineKanbanBoard({
         const isMinimized = minimizedColumns.has(stage.id);
         const stageLeads = filteredItemsList.filter((l: any) => matchesStage(l, stage));
         if (stageIdx === 0) stageLeads.push(...unmatchedLeads);
+        const visibleCount = visibleCounts[stage.id] ?? CARDS_PAGE_SIZE;
+        const visibleStageLeads = stageLeads.slice(0, visibleCount);
 
         return (
           <div
@@ -198,7 +210,7 @@ export function PipelineKanbanBoard({
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pb-3 scrollbar-none">
-                  {stageLeads.map((item: any) => (
+                  {visibleStageLeads.map((item: any) => (
                     <div key={item.id}>
                       <LeadCard
                         item={item} tasks={tasks} stageName={stage.name} draggedLeadId={draggedLeadId} setDraggedLeadId={setDraggedLeadId}
@@ -210,6 +222,15 @@ export function PipelineKanbanBoard({
                       />
                     </div>
                   ))}
+                  {stageLeads.length > visibleCount && (
+                    <button
+                      type="button"
+                      onClick={() => showMore(stage.id)}
+                      className="w-full py-2 border border-dashed border-[var(--color-border-default)] rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)] transition-all text-xs font-bold cursor-pointer bg-transparent"
+                    >
+                      Carregar mais ({stageLeads.length - visibleCount})
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setIsModalOpen(true)}
