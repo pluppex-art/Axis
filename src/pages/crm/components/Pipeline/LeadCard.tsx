@@ -4,7 +4,7 @@ import { Card } from '../../../../components/ui/card';
 import {
   Flame, MoreVertical, Calendar, FileText,
   History, ArrowRight, FileDown, Activity,
-  Zap, Package, Globe, MapPin, Users,
+  Zap, Package, Globe, MapPin, Users, CalendarClock,
 } from 'lucide-react';
 import { cn, parseCurrencyBR } from '../../../../lib/utils';
 
@@ -126,6 +126,11 @@ export function LeadCard({
   const createdLabel = formatCreatedAt(item.created_at ?? item.createdAt);
   const source = item.source as string | undefined;
   const SourceIcon = source ? (SOURCE_ICON[source] ?? Globe) : null;
+  // Histórico de reservas sincronizado (ex.: to na pista) — mostra a
+  // contagem direto no card, sem precisar abrir o modal de detalhes.
+  const reservationsCount: number = Array.isArray(item.customFields?.reservationsHistory)
+    ? item.customFields.reservationsHistory.length
+    : 0;
 
   return (
     <Card
@@ -260,6 +265,15 @@ export function LeadCard({
             <span className="inline-flex items-center gap-1 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] text-[var(--color-text-muted)] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
               <SourceIcon className="w-2.5 h-2.5" />
               {source}
+            </span>
+          )}
+          {reservationsCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider"
+              title={`${reservationsCount} reserva${reservationsCount > 1 ? 's' : ''} no histórico`}
+            >
+              <CalendarClock className="w-2.5 h-2.5" />
+              {reservationsCount} reserva{reservationsCount > 1 ? 's' : ''}
             </span>
           )}
         </div>
