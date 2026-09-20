@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "../../components/ui/dropdown-menu";
 import { Printer, Download, Calendar, Check, Inbox, Wallet, Scale, Repeat2, TrendingUp, TrendingDown, AlertTriangle, Waves, Landmark } from "lucide-react";
@@ -18,6 +18,26 @@ import { useLocalization } from "../../contexts/LocalizationContext";
 import { getMRR, getActiveCustomers, getChurnRate, getRevenueProjection } from "../../lib/revenueMetrics";
 import { parseEntryDate } from "./lib/financeDates";
 import { saldoDaConta, transferenciasDaConta, previstoRealizado, comparativoMesAnterior, categoriesById, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
+import { apiFetch } from "../../lib/apiClient";
+import { useAuth } from "../../contexts/AuthContext";
+
+interface VisaoGeralServerSummary {
+  kpis: {
+    receitaMes: number; receitaMesAnt: number; despesaMes: number; despesaMesAnt: number;
+    resultadoMes: number; resultadoMesAnt: number; mrrAtual: number;
+    abertoReceber: { value: number; count: number };
+    abertoPagar: { value: number; count: number };
+    vencidoReceber: { value: number; count: number };
+    previstoReceber30: number; previstoPagar30: number; fluxoProjetado30: number;
+  };
+  alertas: {
+    hoje: { entradas: number; saidas: number };
+    proximos7: { aReceber: number; aPagar: number };
+    vencidasPagar: { value: number; count: number };
+    vencidasReceber: { value: number; count: number };
+    vencendoEm3: { value: number; count: number };
+  };
+}
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
@@ -58,7 +78,25 @@ function pctChange(curr: number, prev: number): number | null {
 export default function FinanceiroVisaoGeral() {
   const { financeEntries, contracts, leads, financeBankAccounts, financeTransfers, financeCategories, financeAttachments } = useData();
   const { formatCurrency } = useLocalization();
+  const { activeTenantId } = useAuth();
   const [ciclo, setCiclo] = useState<Ciclo>("mes");
+
+  // Cards do topo (exceto "Saldo em Contas", que depende do financeEngine.ts
+  // e fica só client-side) + resumo de alertas vêm de um cache no Redis-SPY
+  // quando disponível — mesmo padrão de src/pages/dashboard/useDashboard.ts.
+  // Puramente aditivo: se a chamada falhar/não tiver voltado, os useMemo
+  // abaixo (client-side, inalterados) continuam sendo a fonte.
+  const [serverSummary, setServerSummary] = useState<VisaoGeralServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/finance/visao-geral-summary?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
 
   const cicloEntries = useMemo(() => {
     if (ciclo === "tudo") return financeEntries;
@@ -99,36 +137,43 @@ export default function FinanceiroVisaoGeral() {
     const inCurMonth = (f: typeof financeEntries[number]) => isInMonth(parseEntryDate(f.date), curY, curM);
     const inPrevMonth = (f: typeof financeEntries[number]) => isInMonth(parseEntryDate(f.date), prevY, prevM);
 
-    const receitaMes = financeEntries.filter(f => f.type === "Receber" && f.status === "Pago" && inCurMonth(f)).reduce((s, f) => s + f.value, 0);
-    const receitaMesAnt = financeEntries.filter(f => f.type === "Receber" && f.status === "Pago" && inPrevMonth(f)).reduce((s, f) => s + f.value, 0);
-    const despesaMes = financeEntries.filter(f => f.type === "Pagar" && f.status === "Pago" && inCurMonth(f)).reduce((s, f) => s + f.value, 0);
-    const despesaMesAnt = financeEntries.filter(f => f.type === "Pagar" && f.status === "Pago" && inPrevMonth(f)).reduce((s, f) => s + f.value, 0);
-    const resultadoMes = receitaMes - despesaMes;
-    const resultadoMesAnt = receitaMesAnt - despesaMesAnt;
+    // Cada métrica abaixo usa o valor cacheado do servidor (GET
+    // /api/finance/visao-geral-summary) quando disponível, senão cai pro
+    // cálculo client-side de sempre — mesma fórmula, nunca modificada.
+    const k = serverSummary?.kpis;
 
-    const abertoReceber = financeEntries.filter(f => f.type === "Receber" && (f.status === "A Vencer" || f.status === "Atrasado"));
-    const abertoPagar = financeEntries.filter(f => f.type === "Pagar" && (f.status === "A Vencer" || f.status === "Atrasado"));
-    const vencidoReceber = financeEntries.filter(f => f.type === "Receber" && f.status === "Atrasado");
+    const receitaMes = k?.receitaMes ?? financeEntries.filter(f => f.type === "Receber" && f.status === "Pago" && inCurMonth(f)).reduce((s, f) => s + f.value, 0);
+    const receitaMesAnt = k?.receitaMesAnt ?? financeEntries.filter(f => f.type === "Receber" && f.status === "Pago" && inPrevMonth(f)).reduce((s, f) => s + f.value, 0);
+    const despesaMes = k?.despesaMes ?? financeEntries.filter(f => f.type === "Pagar" && f.status === "Pago" && inCurMonth(f)).reduce((s, f) => s + f.value, 0);
+    const despesaMesAnt = k?.despesaMesAnt ?? financeEntries.filter(f => f.type === "Pagar" && f.status === "Pago" && inPrevMonth(f)).reduce((s, f) => s + f.value, 0);
+    const resultadoMes = k ? k.resultadoMes : receitaMes - despesaMes;
+    const resultadoMesAnt = k ? k.resultadoMesAnt : receitaMesAnt - despesaMesAnt;
+
+    const abertoReceberClient = financeEntries.filter(f => f.type === "Receber" && (f.status === "A Vencer" || f.status === "Atrasado"));
+    const abertoPagarClient = financeEntries.filter(f => f.type === "Pagar" && (f.status === "A Vencer" || f.status === "Atrasado"));
+    const vencidoReceberClient = financeEntries.filter(f => f.type === "Receber" && f.status === "Atrasado");
+    const abertoReceber = k?.abertoReceber ?? { value: abertoReceberClient.reduce((s, f) => s + f.value, 0), count: abertoReceberClient.length };
+    const abertoPagar = k?.abertoPagar ?? { value: abertoPagarClient.reduce((s, f) => s + f.value, 0), count: abertoPagarClient.length };
+    const vencidoReceber = k?.vencidoReceber ?? { value: vencidoReceberClient.reduce((s, f) => s + f.value, 0), count: vencidoReceberClient.length };
 
     const next30 = new Date(now); next30.setDate(next30.getDate() + 30);
-    const previstoReceber30 = financeEntries.filter(f => {
+    const previstoReceber30 = k?.previstoReceber30 ?? financeEntries.filter(f => {
       const d = parseEntryDate(f.date);
       return f.type === "Receber" && f.status === "A Vencer" && d && d >= now && d <= next30;
     }).reduce((s, f) => s + f.value, 0);
-    const previstoPagar30 = financeEntries.filter(f => {
+    const previstoPagar30 = k?.previstoPagar30 ?? financeEntries.filter(f => {
       const d = parseEntryDate(f.date);
       return f.type === "Pagar" && f.status === "A Vencer" && d && d >= now && d <= next30;
     }).reduce((s, f) => s + f.value, 0);
-    const fluxoProjetado30 = previstoReceber30 - previstoPagar30;
+    const fluxoProjetado30 = k ? k.fluxoProjetado30 : previstoReceber30 - previstoPagar30;
 
     // MRR não tem snapshot histórico por mês salvo em banco — sem isso não dá
     // pra calcular a variação vs. mês anterior sem inventar número, então o
     // card de MRR fica sem delta (deltaPct: null) até essa série existir.
-    const mrrAtual = getMRR(contracts);
+    const mrrAtual = k?.mrrAtual ?? getMRR(contracts);
 
-    // Saldo real de caixa: soma o saldo de cada conta bancária ativa (saldo
-    // inicial + pagos). Sem contas cadastradas o card mostra R$ 0 — nunca um
-    // saldo inventado.
+    // Saldo real de caixa (financeEngine.ts) — sempre client-side, não faz
+    // parte do resumo cacheado (ver server.ts pro motivo).
     const contasAtivas = (financeBankAccounts as any[]).filter(c => !c.arquivada);
     const saldoTotalContas = contasAtivas.reduce((soma, conta) => {
       const entriesDaConta = (financeEntries as FinanceEntryLike[]).filter((e: any) => e.conta_bancaria_id === conta.id);
@@ -142,12 +187,12 @@ export default function FinanceiroVisaoGeral() {
       { label: "Despesas do Mês", value: despesaMes, format: "currency", deltaPct: pctChange(despesaMes, despesaMesAnt), deltaGoodWhenUp: false, icon: TrendingDown, href: "/app/financeiro/despesas" },
       { label: "Resultado do Mês", value: resultadoMes, format: "currency", deltaPct: pctChange(resultadoMes, resultadoMesAnt), deltaGoodWhenUp: true, danger: resultadoMes < 0, icon: Scale, href: "/app/financeiro/transacoes" },
       { label: "MRR Ativo", value: mrrAtual, format: "currency", deltaPct: null, deltaGoodWhenUp: true, icon: Repeat2, href: "/app/financeiro/mrr" },
-      { label: "Contas a Receber", value: abertoReceber.reduce((s, f) => s + f.value, 0), format: "currency", count: abertoReceber.length, deltaPct: null, deltaGoodWhenUp: null, icon: TrendingUp, href: "/app/financeiro/receber" },
-      { label: "Contas a Pagar", value: abertoPagar.reduce((s, f) => s + f.value, 0), format: "currency", count: abertoPagar.length, deltaPct: null, deltaGoodWhenUp: null, icon: Wallet, href: "/app/financeiro/pagar" },
-      { label: "Vencido (Inadimplência)", value: vencidoReceber.reduce((s, f) => s + f.value, 0), format: "currency", count: vencidoReceber.length, deltaPct: null, deltaGoodWhenUp: null, danger: vencidoReceber.length > 0, icon: AlertTriangle, href: "/app/financeiro/inadimplencia" },
+      { label: "Contas a Receber", value: abertoReceber.value, format: "currency", count: abertoReceber.count, deltaPct: null, deltaGoodWhenUp: null, icon: TrendingUp, href: "/app/financeiro/receber" },
+      { label: "Contas a Pagar", value: abertoPagar.value, format: "currency", count: abertoPagar.count, deltaPct: null, deltaGoodWhenUp: null, icon: Wallet, href: "/app/financeiro/pagar" },
+      { label: "Vencido (Inadimplência)", value: vencidoReceber.value, format: "currency", count: vencidoReceber.count, deltaPct: null, deltaGoodWhenUp: null, danger: vencidoReceber.count > 0, icon: AlertTriangle, href: "/app/financeiro/inadimplencia" },
       { label: "Fluxo Projetado (30d)", value: fluxoProjetado30, format: "currency", deltaPct: null, deltaGoodWhenUp: null, danger: fluxoProjetado30 < 0, icon: Waves, href: "/app/financeiro/projecao" },
     ];
-  }, [financeEntries, contracts, financeBankAccounts, financeTransfers]);
+  }, [financeEntries, contracts, financeBankAccounts, financeTransfers, serverSummary]);
 
   // Previsto × Realizado e Comparativo com mês anterior vêm direto do motor
   // de cálculo central — nunca recalculados aqui, pra não divergir do que a
@@ -159,46 +204,51 @@ export default function FinanceiroVisaoGeral() {
 
   const alertasResumo = useMemo(() => {
     const now = new Date();
-    const hojeEntradas = financeEntries.filter(f => {
+    const a = serverSummary?.alertas;
+
+    const hojeEntradas = a?.hoje.entradas ?? financeEntries.filter(f => {
       const d = parseEntryDate(f.date);
       return f.type === "Receber" && f.status === "Pago" && d && isSameDay(d, now);
     }).reduce((s, f) => s + f.value, 0);
-    const hojeSaidas = financeEntries.filter(f => {
+    const hojeSaidas = a?.hoje.saidas ?? financeEntries.filter(f => {
       const d = parseEntryDate(f.date);
       return f.type === "Pagar" && f.status === "Pago" && d && isSameDay(d, now);
     }).reduce((s, f) => s + f.value, 0);
 
     const next7 = new Date(now); next7.setDate(next7.getDate() + 7);
-    const aReceber7 = financeEntries.filter(f => {
+    const aReceber7 = a?.proximos7.aReceber ?? financeEntries.filter(f => {
       const d = parseEntryDate(f.date);
       return f.type === "Receber" && f.status === "A Vencer" && d && d >= now && d <= next7;
     }).reduce((s, f) => s + f.value, 0);
-    const aPagar7 = financeEntries.filter(f => {
+    const aPagar7 = a?.proximos7.aPagar ?? financeEntries.filter(f => {
       const d = parseEntryDate(f.date);
       return f.type === "Pagar" && f.status === "A Vencer" && d && d >= now && d <= next7;
     }).reduce((s, f) => s + f.value, 0);
 
-    const vencidasReceber = financeEntries.filter(f => f.type === "Receber" && f.status === "Atrasado");
-    const vencidasPagar = financeEntries.filter(f => f.type === "Pagar" && f.status === "Atrasado");
-    const vencendoEm3 = financeEntries.filter(f => {
+    const vencidasReceberClient = financeEntries.filter(f => f.type === "Receber" && f.status === "Atrasado");
+    const vencidasPagarClient = financeEntries.filter(f => f.type === "Pagar" && f.status === "Atrasado");
+    const vencendoEm3Client = financeEntries.filter(f => {
       const d = parseEntryDate(f.date);
       const in3 = new Date(now); in3.setDate(in3.getDate() + 3);
       return f.status === "A Vencer" && d && d >= now && d <= in3;
     });
+    const vencidasReceber = a?.vencidasReceber ?? { value: vencidasReceberClient.reduce((s, f) => s + f.value, 0), count: vencidasReceberClient.length };
+    const vencidasPagar = a?.vencidasPagar ?? { value: vencidasPagarClient.reduce((s, f) => s + f.value, 0), count: vencidasPagarClient.length };
+    const vencendoEm3 = a?.vencendoEm3 ?? { value: vencendoEm3Client.reduce((s, f) => s + f.value, 0), count: vencendoEm3Client.length };
 
     const alertas: FinanceiroAlertaItem[] = [];
-    if (vencidasPagar.length > 0) {
-      alertas.push({ tone: "danger", href: "/app/financeiro/pagar", text: `${vencidasPagar.length} conta(s) a pagar vencida(s), somando ${formatCurrency(vencidasPagar.reduce((s, f) => s + f.value, 0))}.` });
+    if (vencidasPagar.count > 0) {
+      alertas.push({ tone: "danger", href: "/app/financeiro/pagar", text: `${vencidasPagar.count} conta(s) a pagar vencida(s), somando ${formatCurrency(vencidasPagar.value)}.` });
     }
-    if (vencidasReceber.length > 0) {
-      alertas.push({ tone: "danger", href: "/app/financeiro/inadimplencia", text: `${vencidasReceber.length} cobrança(s) vencida(s), somando ${formatCurrency(vencidasReceber.reduce((s, f) => s + f.value, 0))}.` });
+    if (vencidasReceber.count > 0) {
+      alertas.push({ tone: "danger", href: "/app/financeiro/inadimplencia", text: `${vencidasReceber.count} cobrança(s) vencida(s), somando ${formatCurrency(vencidasReceber.value)}.` });
     }
-    if (vencendoEm3.length > 0) {
-      alertas.push({ tone: "warning", href: "/app/financeiro/transacoes", text: `${formatCurrency(vencendoEm3.reduce((s, f) => s + f.value, 0))} em lançamentos vencem nos próximos 3 dias.` });
+    if (vencendoEm3.count > 0) {
+      alertas.push({ tone: "warning", href: "/app/financeiro/transacoes", text: `${formatCurrency(vencendoEm3.value)} em lançamentos vencem nos próximos 3 dias.` });
     }
 
     return { hoje: { entradas: hojeEntradas, saidas: hojeSaidas }, proximos7: { aReceber: aReceber7, aPagar: aPagar7 }, alertas };
-  }, [financeEntries, formatCurrency]);
+  }, [financeEntries, formatCurrency, serverSummary]);
 
   const upcomingEntries = useMemo(() =>
     financeEntries.filter(f => f.status === "A Vencer").slice(0, 4).map(f => ({

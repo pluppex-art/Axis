@@ -378,24 +378,39 @@ const TO_NA_PISTA_TENANT_ID = "65469cc6-5cc6-4115-a48b-782e7250a10c";
  * de divergir sutilmente do cálculo no cliente; continuam calculados lá,
  * sem mudança nesta rodada.
  */
+/**
+ * Resolve qual tenant um endpoint de resumo/KPI cacheado deve usar: o do
+ * próprio usuário por padrão, ou um `?tenantId=` explícito (necessário pra
+ * contas master/parceiro trocando de "empresa visualizada", ver
+ * AuthContext.tsx switchTenant()) — sempre revalidado no servidor via
+ * has_tenant_access (mesma função usada pela RLS) antes de aceitar. Retorna
+ * `null` e já responde 403 se a checagem falhar; o chamador deve checar
+ * `if (!tenantId) return;` logo em seguida.
+ */
+async function resolveRequestedTenantId(req: any, res: any): Promise<string | null> {
+  const { data: caller, error: callerError } = await req.supabase
+    .from("users").select("tenant_id").eq("id", req.user.id).maybeSingle();
+  if (callerError || !caller?.tenant_id) {
+    res.status(403).json({ error: "Não foi possível identificar o tenant do usuário." });
+    return null;
+  }
+  const requestedTenantId = typeof req.query.tenantId === "string" ? req.query.tenantId : null;
+  if (!requestedTenantId || requestedTenantId === caller.tenant_id) {
+    return caller.tenant_id as string;
+  }
+  const { data: allowed, error: accessError } = await req.supabase
+    .rpc("has_tenant_access", { target_tenant_id: requestedTenantId });
+  if (accessError || !allowed) {
+    res.status(403).json({ error: "Sem acesso a este tenant." });
+    return null;
+  }
+  return requestedTenantId;
+}
+
 app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
   try {
-    const { data: caller, error: callerError } = await req.supabase
-      .from("users").select("tenant_id").eq("id", req.user.id).maybeSingle();
-    if (callerError || !caller?.tenant_id) {
-      return res.status(403).json({ error: "Não foi possível identificar o tenant do usuário." });
-    }
-
-    const requestedTenantId = typeof req.query.tenantId === "string" ? req.query.tenantId : null;
-    let tenantId = caller.tenant_id as string;
-    if (requestedTenantId && requestedTenantId !== tenantId) {
-      const { data: allowed, error: accessError } = await req.supabase
-        .rpc("has_tenant_access", { target_tenant_id: requestedTenantId });
-      if (accessError || !allowed) {
-        return res.status(403).json({ error: "Sem acesso a este tenant." });
-      }
-      tenantId = requestedTenantId;
-    }
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
     const cacheKey = `dashboard:tenant:${tenantId}:summary`;
 
     const cached = await cacheGet<Record<string, unknown>>(cacheKey);
@@ -471,6 +486,108 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
   } catch (err: any) {
     console.error("[dashboard/summary]", err?.message);
     return res.status(500).json({ error: "Erro ao calcular resumo do dashboard." });
+  }
+});
+
+/**
+ * Resumo cacheado da Visão Geral do Financeiro (src/pages/finance/FinanceiroVisaoGeral.tsx)
+ * — os cards do topo + resumo de alertas. Mesma resolução/validação de
+ * tenant de /api/dashboard/summary (aceita ?tenantId=, revalidado via
+ * has_tenant_access). Usa `date_normalized` (coluna gerada — ver
+ * supabase/migrations/20260920_finance_entries_date_normalized.sql) em vez
+ * de reimplementar o parsing de data dupla-formato no servidor.
+ *
+ * Deixados de fora de propósito (ficam só no cliente): "Saldo em Contas"
+ * (depende de src/pages/finance/lib/financeEngine.ts — saldo corrente por
+ * conta bancária, incl. transferências, lógica não trivial o bastante pra
+ * arriscar divergência), Previsto×Realizado, Comparativo com mês anterior
+ * e gráfico de fluxo de caixa (mesmo motivo) — nenhum desses é recalculado
+ * aqui, todos continuam vindo do financeEngine.ts no navegador.
+ */
+app.get("/api/finance/visao-geral-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `finance-visao-geral:tenant:${tenantId}:summary`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const [{ data: entriesRows }, { data: contractsRows }] = await Promise.all([
+      sb.from("finance_entries").select("type,status,value,date_normalized,category").eq("tenant_id", tenantId),
+      sb.from("contracts").select("mrr_value,status").eq("tenant_id", tenantId),
+    ]);
+    const entries = (entriesRows || []) as { type: string; status: string; value: number; date_normalized: string | null; category: string | null }[];
+    const contracts = (contractsRows || []) as { mrr_value: number | null; status: string }[];
+
+    const sum = (rows: typeof entries) => rows.reduce((s, f) => s + (Number(f.value) || 0), 0);
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const now = new Date();
+    const todayIso = isoDate(now);
+    const curMonthPrefix = todayIso.slice(0, 7);
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthPrefix = isoDate(prevMonthDate).slice(0, 7);
+    const next3Iso = isoDate(new Date(now.getTime() + 3 * 86400000));
+    const next7Iso = isoDate(new Date(now.getTime() + 7 * 86400000));
+    const next30Iso = isoDate(new Date(now.getTime() + 30 * 86400000));
+    const inMonth = (d: string | null, prefix: string) => !!d && d.startsWith(prefix);
+    const inRange = (d: string | null, from: string, to: string) => !!d && d >= from && d <= to;
+
+    const receitaMes = sum(entries.filter(f => f.type === "Receber" && f.status === "Pago" && inMonth(f.date_normalized, curMonthPrefix)));
+    const receitaMesAnt = sum(entries.filter(f => f.type === "Receber" && f.status === "Pago" && inMonth(f.date_normalized, prevMonthPrefix)));
+    const despesaMes = sum(entries.filter(f => f.type === "Pagar" && f.status === "Pago" && inMonth(f.date_normalized, curMonthPrefix)));
+    const despesaMesAnt = sum(entries.filter(f => f.type === "Pagar" && f.status === "Pago" && inMonth(f.date_normalized, prevMonthPrefix)));
+
+    const abertoReceber = entries.filter(f => f.type === "Receber" && (f.status === "A Vencer" || f.status === "Atrasado"));
+    const abertoPagar = entries.filter(f => f.type === "Pagar" && (f.status === "A Vencer" || f.status === "Atrasado"));
+    const vencidoReceber = entries.filter(f => f.type === "Receber" && f.status === "Atrasado");
+    const vencidoPagar = entries.filter(f => f.type === "Pagar" && f.status === "Atrasado");
+
+    const previstoReceber30 = sum(entries.filter(f => f.type === "Receber" && f.status === "A Vencer" && inRange(f.date_normalized, todayIso, next30Iso)));
+    const previstoPagar30 = sum(entries.filter(f => f.type === "Pagar" && f.status === "A Vencer" && inRange(f.date_normalized, todayIso, next30Iso)));
+
+    const mrrAtual = contracts
+      .filter(c => c.status !== "Cancelado" && c.status !== "Perdido")
+      .reduce((s, c) => s + (Number(c.mrr_value) || 0), 0);
+
+    const hojeEntradas = sum(entries.filter(f => f.type === "Receber" && f.status === "Pago" && f.date_normalized === todayIso));
+    const hojeSaidas = sum(entries.filter(f => f.type === "Pagar" && f.status === "Pago" && f.date_normalized === todayIso));
+    const aReceber7 = sum(entries.filter(f => f.type === "Receber" && f.status === "A Vencer" && inRange(f.date_normalized, todayIso, next7Iso)));
+    const aPagar7 = sum(entries.filter(f => f.type === "Pagar" && f.status === "A Vencer" && inRange(f.date_normalized, todayIso, next7Iso)));
+    const vencendoEm3 = entries.filter(f => f.status === "A Vencer" && inRange(f.date_normalized, todayIso, next3Iso));
+
+    const summary = {
+      kpis: {
+        receitaMes, receitaMesAnt, despesaMes, despesaMesAnt,
+        resultadoMes: receitaMes - despesaMes, resultadoMesAnt: receitaMesAnt - despesaMesAnt,
+        mrrAtual,
+        abertoReceber: { value: sum(abertoReceber), count: abertoReceber.length },
+        abertoPagar: { value: sum(abertoPagar), count: abertoPagar.length },
+        vencidoReceber: { value: sum(vencidoReceber), count: vencidoReceber.length },
+        previstoReceber30, previstoPagar30, fluxoProjetado30: previstoReceber30 - previstoPagar30,
+      },
+      alertas: {
+        hoje: { entradas: hojeEntradas, saidas: hojeSaidas },
+        proximos7: { aReceber: aReceber7, aPagar: aPagar7 },
+        vencidasPagar: { value: sum(vencidoPagar), count: vencidoPagar.length },
+        vencidasReceber: { value: sum(vencidoReceber), count: vencidoReceber.length },
+        vencendoEm3: { value: sum(vencendoEm3), count: vencendoEm3.length },
+      },
+      cachedAt: new Date().toISOString(),
+    };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[finance/visao-geral-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular resumo financeiro." });
   }
 });
 
