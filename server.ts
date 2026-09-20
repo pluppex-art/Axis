@@ -1045,6 +1045,69 @@ app.get("/api/finance/fluxo-caixa-summary", requireUser, async (req: any, res) =
   }
 });
 
+/**
+ * Marketing Analytics (src/pages/marketing/MarketingAnalytics.tsx) — cacheia
+ * só os KPIs e o donut por canal, que são bem definidos. O gráfico de
+ * evolução mensal (performanceData) fica de fora de propósito: agrupa só
+ * pelo NOME do mês (sem ano, via toLocaleDateString) na ordem de primeira
+ * ocorrência no array de leads — não é uma agregação determinística pra
+ * replicar fielmente no servidor (dependeria de bater a mesma ordem de
+ * iteração E a mesma formatação de locale do Node), então continua 100%
+ * client-side, igual já era antes do cache.
+ */
+app.get("/api/marketing/analytics-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `marketing-analytics:tenant:${tenantId}:summary`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const [{ data: leadsRows }, { data: entriesRows }] = await Promise.all([
+      sb.from("leads").select("status,value,source").eq("tenant_id", tenantId),
+      sb.from("finance_entries").select("type,status,value,category").eq("tenant_id", tenantId),
+    ]);
+    const leadsAll = (leadsRows || []) as { status: string; value: number; source: string | null }[];
+    const entries = (entriesRows || []) as { type: string; status: string; value: number; category: string | null }[];
+
+    const closedLeadsRows = leadsAll.filter((l) => l.status === "Fechado");
+    const totalRevenue = closedLeadsRows.reduce((s, l) => s + (Number(l.value) || 0), 0);
+    const totalSpent = entries
+      .filter((f) => f.type === "Pagar" && f.status === "Pago" && (f.category?.toLowerCase().includes("marketing") || f.category?.toLowerCase().includes("anúncio")))
+      .reduce((s, f) => s + (Number(f.value) || 0), 0);
+
+    const totalLeads = leadsAll.length;
+    const closedLeads = closedLeadsRows.length;
+    const cac = totalLeads > 0 ? totalSpent / totalLeads : 0;
+    const avgDeal = closedLeads > 0 ? totalRevenue / closedLeads : 0;
+    const roi = totalSpent > 0 ? totalRevenue / totalSpent : 0;
+
+    const srcMap = new Map<string, number>();
+    for (const l of closedLeadsRows) {
+      const src = l.source || "Orgânico";
+      srcMap.set(src, (srcMap.get(src) || 0) + (Number(l.value) || 0));
+    }
+    const sourceData = Array.from(srcMap.entries())
+      .filter(([, revenue]) => revenue > 0)
+      .map(([name, revenue]) => ({ name, revenue }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    const summary = { totalRevenue, totalSpent, totalLeads, closedLeads, cac, avgDeal, roi, sourceData, cachedAt: new Date().toISOString() };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[marketing/analytics-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular resumo de analytics de marketing." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

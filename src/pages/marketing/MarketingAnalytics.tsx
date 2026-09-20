@@ -3,28 +3,60 @@ import { Card } from "../../components/ui/card";
 import { BarChart2, TrendingUp, Users, Target, Activity, DollarSign, Inbox } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { useData } from "../../contexts/DataContext";
-import { useMemo } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+import { useMemo, useState, useEffect } from "react";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { parseCurrencyBR } from "../../lib/utils";
+import { apiFetch } from "../../lib/apiClient";
 
 const COLORS = ['#3b82f6', '#f43f5e', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4'];
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+interface AnalyticsServerSummary {
+  totalRevenue: number; totalSpent: number; totalLeads: number; closedLeads: number;
+  cac: number; avgDeal: number; roi: number;
+  sourceData: { name: string; revenue: number }[];
+}
+
 export default function MarketingAnalytics() {
   const { leads, financeEntries } = useData();
+  const { activeTenantId } = useAuth();
   const { formatCurrency } = useLocalization();
+
+  // KPIs + receita por canal vêm de um cache no Redis-SPY quando disponível
+  // (GET /api/marketing/analytics-summary), mesma fórmula. O gráfico de
+  // evolução mensal (performanceData, abaixo) continua 100% client-side —
+  // agrupa só por nome do mês sem determinismo de ordem, não dá pra
+  // replicar fielmente no servidor.
+  const [serverSummary, setServerSummary] = useState<AnalyticsServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/marketing/analytics-summary?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
 
   // Receita vinda de Marketing (simplificado como Total Recebido ou leads com status Fechado * valor)
   // Como as despesas de marketing também não têm flag clara, pegamos tudo do tipo Pagar/Receber ou usamos apenas baseados em leads
-  const totalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + parseCurrencyBR(l.value), 0);
-  const totalSpent = financeEntries.filter(f => f.type === 'Pagar' && (f.category?.toLowerCase().includes('marketing') || f.category?.toLowerCase().includes('anúncio')) && f.status === 'Pago').reduce((s, f) => s + f.value, 0);
-  
-  const totalLeads = leads.length;
-  const closedLeads = leads.filter(l => l.status === 'Fechado').length;
-  
-  const cac = totalLeads > 0 ? (totalSpent / totalLeads) : 0;
-  const avgDeal = closedLeads > 0 ? (totalRevenue / closedLeads) : 0;
-  const roi = totalSpent > 0 ? (totalRevenue / totalSpent) : 0;
+  const clientTotalRevenue = leads.filter(l => l.status === 'Fechado').reduce((s, l) => s + parseCurrencyBR(l.value), 0);
+  const clientTotalSpent = financeEntries.filter(f => f.type === 'Pagar' && (f.category?.toLowerCase().includes('marketing') || f.category?.toLowerCase().includes('anúncio')) && f.status === 'Pago').reduce((s, f) => s + f.value, 0);
+
+  const clientTotalLeads = leads.length;
+  const clientClosedLeads = leads.filter(l => l.status === 'Fechado').length;
+
+  const clientCac = clientTotalLeads > 0 ? (clientTotalSpent / clientTotalLeads) : 0;
+  const clientAvgDeal = clientClosedLeads > 0 ? (clientTotalRevenue / clientClosedLeads) : 0;
+  const clientRoi = clientTotalSpent > 0 ? (clientTotalRevenue / clientTotalSpent) : 0;
+
+  const totalRevenue = serverSummary?.totalRevenue ?? clientTotalRevenue;
+  const totalSpent = serverSummary?.totalSpent ?? clientTotalSpent;
+  const cac = serverSummary?.cac ?? clientCac;
+  const avgDeal = serverSummary?.avgDeal ?? clientAvgDeal;
+  const roi = serverSummary?.roi ?? clientRoi;
 
   // Evolução mensal (agrupado por mês)
   const performanceData = useMemo(() => {
@@ -67,7 +99,7 @@ export default function MarketingAnalytics() {
   }, [leads, financeEntries]);
 
   // Receita por Origem (Canais)
-  const sourceData = useMemo(() => {
+  const clientSourceData = useMemo(() => {
     const srcMap: Record<string, number> = {};
     leads.forEach(l => {
       if (l.status === 'Fechado') {
@@ -75,16 +107,14 @@ export default function MarketingAnalytics() {
         srcMap[src] = (srcMap[src] || 0) + parseCurrencyBR(l.value);
       }
     });
-    
+
     return Object.entries(srcMap)
       .filter(([, revenue]) => revenue > 0)
-      .map(([name, revenue], i) => ({
-        name,
-        revenue,
-        color: COLORS[i % COLORS.length]
-      }))
+      .map(([name, revenue]) => ({ name, revenue }))
       .sort((a, b) => b.revenue - a.revenue);
   }, [leads]);
+
+  const sourceData = (serverSummary?.sourceData ?? clientSourceData).map((s, i) => ({ ...s, color: COLORS[i % COLORS.length] }));
 
   return (
     <PageContainer
