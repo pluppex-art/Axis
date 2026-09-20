@@ -91,19 +91,7 @@ export function useDashboard() {
   // todos os dashboards do sistema, não uma fórmula própria por tela.
   const totalRevenueClient = useMemo(() => getMRR(contracts), [contracts]);
   const conversionRateClient = useMemo(() => getConversionRate(leads).toFixed(1), [leads]);
-  // To Na Pista Boliche: pedido explícito do dono — "ativos" pra esse
-  // tenant é o total de leads cadastrados (base de clientes), não a
-  // definição padrão (aberto = nem Fechado nem Perdido). Faz sentido pro
-  // negócio deles: reserva resolve rápido (confirma/comparece ou cancela),
-  // então quase tudo termina Fechado/Perdido e sobra pouquíssimo "aberto"
-  // pela regra padrão. Exceção só pra esse tenant — outras empresas no
-  // Spy continuam com getActiveLeadsCount (aberto de verdade). Mesma
-  // exceção replicada em server.ts (TO_NA_PISTA_TENANT_ID).
-  const TO_NA_PISTA_TENANT_ID = '65469cc6-5cc6-4115-a48b-782e7250a10c';
-  const activeLeadsCountClient = useMemo(
-    () => activeTenantId === TO_NA_PISTA_TENANT_ID ? leads.length : getActiveLeadsCount(leads),
-    [leads, activeTenantId]
-  );
+  const activeLeadsCountClient = useMemo(() => getActiveLeadsCount(leads), [leads]);
   const churnRateClient = useMemo(() => {
     if (!appointments || appointments.length === 0) return getChurnRate(contracts);
     const patientMap = new Map<string, Date>();

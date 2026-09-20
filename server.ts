@@ -345,12 +345,6 @@ app.get("/api/health/redis", async (_req, res) => {
   res.json(status);
 });
 
-// Mesma exceção de negócio documentada em src/pages/dashboard/useDashboard.ts:
-// pra esse tenant, "leads ativos" é a base inteira de leads cadastrados, não
-// a definição padrão (aberto = nem Fechado nem Perdido) — reserva resolve
-// rápido (confirma/comparece ou cancela), então quase tudo termina
-// Fechado/Perdido e sobraria pouquíssimo "aberto" pela regra padrão.
-const TO_NA_PISTA_TENANT_ID = "65469cc6-5cc6-4115-a48b-782e7250a10c";
 
 /**
  * Resumo agregado do dashboard executivo (mesmas 4 métricas "hero" de
@@ -459,7 +453,7 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
     const leadsWon = leadsAll.filter((l) => l.status === "Fechado").length;
     const leadsOpenRows = leadsAll.filter((l) => l.status !== "Fechado" && l.status !== "Perdido");
     const conversionRate = leadsTotal > 0 ? Math.round((leadsWon / leadsTotal) * 1000) / 10 : 0;
-    const activeLeadsCount = tenantId === TO_NA_PISTA_TENANT_ID ? leadsTotal : leadsOpenRows.length;
+    const activeLeadsCount = leadsOpenRows.length;
     const valorPipelineAberto = leadsOpenRows.reduce((s, l) => s + (Number(l.value) || 0), 0);
     const leadsQuentes = leadsOpenRows.filter((l) => (l.scoreIA ?? 0) > 80).length;
 
