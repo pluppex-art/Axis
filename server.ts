@@ -1288,6 +1288,60 @@ app.get("/api/crm/dashboard-performance-summary", requireUser, async (req: any, 
   }
 });
 
+/**
+ * BI Clínico (src/pages/clinica/Estatisticas.tsx) — cacheia só
+ * totalPacientes/occupancy/specialtyData, que são agregações
+ * order-independent (dão o mesmo resultado não importa a ordem das linhas).
+ * patientGrowth fica de fora de propósito: é uma classificação "novo vs.
+ * recorrente" stateful que depende da ordem cronológica completa do
+ * histórico de agendamentos (primeira ocorrência de cada paciente, por
+ * NOME, ever), sem cota de segurança contra empate de data — qualquer
+ * divergência de ordenação entre o array já carregado no cliente e uma
+ * nova query no servidor pode classificar um agendamento diferente, então
+ * não é seguro replicar fielmente aqui.
+ */
+app.get("/api/clinica/estatisticas-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `clinica-estatisticas:tenant:${tenantId}:summary`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const { data: rows } = await sb.from("appointments").select("patient,specialty,status").eq("tenant_id", tenantId);
+    const appointmentsAll = (rows || []) as { patient: string; specialty: string | null; status: string }[];
+
+    const totalPacientes = new Set(appointmentsAll.map((a) => a.patient)).size;
+    const total = appointmentsAll.length;
+    const occupancyPct = total > 0
+      ? Math.round((appointmentsAll.filter((a) => a.status === "Confirmado" || a.status === "Em Atendimento" || a.status === "Finalizado").length / total) * 100)
+      : 0;
+
+    const specs = new Map<string, number>();
+    for (const a of appointmentsAll) {
+      const s = a.specialty || "Clínico Geral";
+      specs.set(s, (specs.get(s) || 0) + 1);
+    }
+    const specialtyData = Array.from(specs.entries())
+      .map(([name, count]) => ({ name, value: total > 0 ? Math.round((count / total) * 100) : 0 }))
+      .sort((a, b) => b.value - a.value);
+
+    const summary = { totalPacientes, total, occupancyPct, specialtyData, cachedAt: new Date().toISOString() };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[clinica/estatisticas-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular estatísticas da clínica." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

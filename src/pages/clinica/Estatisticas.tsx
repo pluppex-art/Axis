@@ -1,11 +1,11 @@
-import { useMemo } from 'react';
-import { 
-  TrendingUp, Users, Activity, 
+import { useMemo, useState, useEffect } from 'react';
+import {
+  TrendingUp, Users, Activity,
   Calendar, PieChart as PieIcon,
   Star, Clock, Download, Inbox
 } from 'lucide-react';
-import { 
-  AreaChart, Area, XAxis, YAxis, 
+import {
+  AreaChart, Area, XAxis, YAxis,
   Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
@@ -13,12 +13,36 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { toast } from "sonner";
+import { apiFetch } from "../../lib/apiClient";
 
 const COLORS = ['#2563EB', '#10B981', '#8B5CF6', '#F59E0B', '#64748B'];
 
+interface EstatisticasServerSummary {
+  totalPacientes: number; total: number; occupancyPct: number;
+  specialtyData: { name: string; value: number }[];
+}
+
 export default function EstatisticasClinicas() {
   const { appointments } = useData();
+  const { activeTenantId } = useAuth();
+
+  // totalPacientes/occupancy/distribuição por especialidade vêm de um cache
+  // no Redis-SPY quando disponível (GET /api/clinica/estatisticas-summary),
+  // mesma fórmula. patientGrowth (evolução novo x recorrente) continua
+  // 100% client-side — ver comentário no endpoint.
+  const [serverSummary, setServerSummary] = useState<EstatisticasServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/clinica/estatisticas-summary?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
 
   const patientGrowth = useMemo(() => {
     const months: Record<string, { novos: number, recorrentes: number }> = {};
@@ -50,7 +74,7 @@ export default function EstatisticasClinicas() {
     }));
   }, [appointments]);
 
-  const specialtyData = useMemo(() => {
+  const clientSpecialtyData = useMemo(() => {
     const specs: Record<string, number> = {};
     appointments.forEach(a => {
       const s = a.specialty || 'Clínico Geral';
@@ -59,22 +83,26 @@ export default function EstatisticasClinicas() {
 
     const total = appointments.length;
     return Object.entries(specs)
-      .map(([name, count], i) => ({
-        name,
-        value: total > 0 ? Math.round((count / total) * 100) : 0,
-        color: COLORS[i % COLORS.length]
-      }))
+      .map(([name, count]) => ({ name, value: total > 0 ? Math.round((count / total) * 100) : 0 }))
       .sort((a, b) => b.value - a.value);
   }, [appointments]);
 
-  const totalPacientes = new Set(appointments.map(a => a.patient)).size;
+  // Cor atribuída pela posição final (pós-ordenação), não pela ordem de
+  // encontro no array original — puramente cosmético, sem impacto nos
+  // números exibidos.
+  const specialtyData = (serverSummary?.specialtyData ?? clientSpecialtyData).map((s, i) => ({ ...s, color: COLORS[i % COLORS.length] }));
+
+  const clientTotalPacientes = new Set(appointments.map(a => a.patient)).size;
+  const totalPacientes = serverSummary?.totalPacientes ?? clientTotalPacientes;
   // Tempo médio de espera e NPS exigiriam dados que o app ainda não coleta
   // (timestamps reais de check-in/atendimento e respostas de pesquisa de
   // satisfação) — sem tabela para isso, mostramos vazio em vez de inventar.
   const avgWaitTime = "—";
-  const occupancy = appointments.length > 0
-    ? `${Math.round((appointments.filter(a => a.status === 'Confirmado' || a.status === 'Em Atendimento' || a.status === 'Finalizado').length / appointments.length) * 100)}%`
-    : "0%";
+  const occupancy = serverSummary
+    ? `${serverSummary.occupancyPct}%`
+    : appointments.length > 0
+      ? `${Math.round((appointments.filter(a => a.status === 'Confirmado' || a.status === 'Em Atendimento' || a.status === 'Finalizado').length / appointments.length) * 100)}%`
+      : "0%";
 
   return (
     <PageContainer 
