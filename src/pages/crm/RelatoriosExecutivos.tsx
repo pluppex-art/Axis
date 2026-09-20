@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
-import { 
-  FileText, Download, Printer, Filter, Calendar, 
-  TrendingUp, DollarSign, Users, CheckSquare, 
+import { useState, useMemo, useEffect } from "react";
+import {
+  FileText, Download, Printer, Filter, Calendar,
+  TrendingUp, DollarSign, Users, CheckSquare,
   Target, BarChart3, Briefcase, ArrowUpRight
 } from "lucide-react";
 import { Card } from "../../components/ui/card";
@@ -9,22 +9,49 @@ import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
 import { getMRR } from "../../lib/revenueMetrics";
 import { toast } from "sonner";
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   LineChart, Line
 } from "recharts";
+import { apiFetch } from "../../lib/apiClient";
 
 type Periodo = "30dias" | "mes" | "trimestre" | "ano" | "todos";
 
+interface SellerRow { name: string; leads: number; closed: number; revenue: number; rate: number }
+interface RelatoriosExecutivosServerSummary {
+  totalLeads: number; closedLeads: number; leadConversion: number;
+  totalReceitas: number; totalDespesas: number; resultadoLiquido: number;
+  tasksCompleted: number; tasksTotal: number; taskCompletionRate: number;
+  salesBySeller: SellerRow[]; contratosAtivosCount: number; mrrContratado: number;
+}
+
 export default function RelatoriosExecutivos() {
   const { leads, financeEntries, contracts, tasks, colaboradores } = useData();
+  const { activeTenantId } = useAuth();
   const { formatCurrency } = useLocalization();
   const [periodo, setPeriodo] = useState<Periodo>("mes");
   const [moduloFiltro, setModuloFiltro] = useState<"todos" | "comercial" | "financeiro" | "operacoes">("todos");
+
+  // KPIs consolidados + desempenho por vendedor vêm de um cache no
+  // Redis-SPY quando disponível (GET /api/crm/relatorios-executivos-summary),
+  // mesma fórmula (isWithin replicado igual no servidor). Cálculo client-side
+  // abaixo é o fallback.
+  const [serverSummary, setServerSummary] = useState<RelatoriosExecutivosServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/crm/relatorios-executivos-summary?tenantId=${encodeURIComponent(activeTenantId)}&periodo=${periodo}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId, periodo]);
 
   // Filtra dados pelo período
   const filteredData = useMemo(() => {
@@ -69,27 +96,27 @@ export default function RelatoriosExecutivos() {
   }, [leads, financeEntries, tasks, periodo]);
 
   // Indicadores Consolidados
-  const totalLeads = filteredData.leads.length;
-  const closedLeads = filteredData.leads.filter(l => l.status === "Fechado" || l.status === "Ganho").length;
-  const leadConversion = totalLeads > 0 ? Math.round((closedLeads / totalLeads) * 100) : 0;
+  const clientTotalLeads = filteredData.leads.length;
+  const clientClosedLeads = filteredData.leads.filter(l => l.status === "Fechado" || l.status === "Ganho").length;
+  const clientLeadConversion = clientTotalLeads > 0 ? Math.round((clientClosedLeads / clientTotalLeads) * 100) : 0;
 
-  const totalReceitas = filteredData.finance
+  const clientTotalReceitas = filteredData.finance
     .filter(f => f.type === "Receber" && f.status === "Pago")
     .reduce((s, f) => s + f.value, 0);
 
-  const totalDespesas = filteredData.finance
+  const clientTotalDespesas = filteredData.finance
     .filter(f => f.type === "Pagar" && f.status === "Pago")
     .reduce((s, f) => s + f.value, 0);
 
-  const resultadoLiquido = totalReceitas - totalDespesas;
+  const clientResultadoLiquido = clientTotalReceitas - clientTotalDespesas;
 
-  const tasksCompleted = filteredData.tasks.filter(t => t.status === "Concluída").length;
-  const taskCompletionRate = filteredData.tasks.length > 0
-    ? Math.round((tasksCompleted / filteredData.tasks.length) * 100)
+  const clientTasksCompleted = filteredData.tasks.filter(t => t.status === "Concluída").length;
+  const clientTaskCompletionRate = filteredData.tasks.length > 0
+    ? Math.round((clientTasksCompleted / filteredData.tasks.length) * 100)
     : 0;
 
   // Performance por Vendedor / Responsável
-  const salesBySeller = useMemo(() => {
+  const clientSalesBySeller = useMemo(() => {
     const map: Record<string, { leads: number; closed: number; revenue: number }> = {};
     filteredData.leads.forEach(l => {
       const seller = l.seller || "Sem atribuição";
@@ -111,6 +138,19 @@ export default function RelatoriosExecutivos() {
     })).sort((a, b) => b.revenue - a.revenue);
   }, [filteredData.leads]);
 
+  const totalLeads = serverSummary?.totalLeads ?? clientTotalLeads;
+  const closedLeads = serverSummary?.closedLeads ?? clientClosedLeads;
+  const leadConversion = serverSummary?.leadConversion ?? clientLeadConversion;
+  const totalReceitas = serverSummary?.totalReceitas ?? clientTotalReceitas;
+  const totalDespesas = serverSummary?.totalDespesas ?? clientTotalDespesas;
+  const resultadoLiquido = serverSummary?.resultadoLiquido ?? clientResultadoLiquido;
+  const tasksCompleted = serverSummary?.tasksCompleted ?? clientTasksCompleted;
+  const tasksTotal = serverSummary?.tasksTotal ?? filteredData.tasks.length;
+  const taskCompletionRate = serverSummary?.taskCompletionRate ?? clientTaskCompletionRate;
+  const salesBySeller = serverSummary?.salesBySeller ?? clientSalesBySeller;
+  const contratosAtivosCount = serverSummary?.contratosAtivosCount ?? contracts.filter(c => c.status === "Ativo").length;
+  const mrrContratado = serverSummary?.mrrContratado ?? getMRR(contracts);
+
   const fmt = (v: number) => formatCurrency(v);
 
   const handleExportCSV = () => {
@@ -123,7 +163,7 @@ export default function RelatoriosExecutivos() {
       ["Receitas Liquidadas", fmt(totalReceitas)],
       ["Despesas Liquidadas", fmt(totalDespesas)],
       ["Resultado Líquido Operacional", fmt(resultadoLiquido)],
-      ["Tarefas Concluídas", `${tasksCompleted}/${filteredData.tasks.length} (${taskCompletionRate}%)`],
+      ["Tarefas Concluídas", `${tasksCompleted}/${tasksTotal} (${taskCompletionRate}%)`],
       [],
       ["VENDEDOR / RESPONSÁVEL", "LEADS", "FECHAMENTOS", "CONVERSÃO (%)", "RECEITA (R$)"],
       ...salesBySeller.map(s => [s.name, String(s.leads), String(s.closed), `${s.rate}%`, fmt(s.revenue)]),
@@ -280,7 +320,7 @@ export default function RelatoriosExecutivos() {
             <div className="space-y-4">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-400">Tarefas Concluídas no Prazo</span>
-                <span className="font-bold text-white">{tasksCompleted} de {filteredData.tasks.length}</span>
+                <span className="font-bold text-white">{tasksCompleted} de {tasksTotal}</span>
               </div>
               <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
                 <div 
@@ -301,12 +341,12 @@ export default function RelatoriosExecutivos() {
             <div className="space-y-3">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-400">Total de Contratos Ativos</span>
-                <span className="font-bold text-white">{contracts.filter(c => c.status === "Ativo").length}</span>
+                <span className="font-bold text-white">{contratosAtivosCount}</span>
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-400">MRR Contratado</span>
                 <span className="font-bold text-emerald-400">
-                  {fmt(getMRR(contracts))}
+                  {fmt(mrrContratado)}
                 </span>
               </div>
             </div>

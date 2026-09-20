@@ -1108,6 +1108,124 @@ app.get("/api/marketing/analytics-summary", requireUser, async (req: any, res) =
   }
 });
 
+/**
+ * Relatórios Executivos (src/pages/crm/RelatoriosExecutivos.tsx) — porta a
+ * função isWithin() exatamente como está no cliente, campo a campo e quirk a
+ * quirk (data ausente ou não-parseável SEMPRE conta no período, "30dias" não
+ * tem limite superior — replicados de propósito, não são bugs a corrigir
+ * aqui). leads/finance_entries/tasks são buscados só por tenant_id (sem
+ * filtro de data na query) porque leads.date é texto em formato misto sem
+ * coluna normalizada — o filtro de período roda em JS, igual ao cliente.
+ */
+app.get("/api/crm/relatorios-executivos-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const periodoParam = typeof req.query.periodo === "string" ? req.query.periodo : "mes";
+    const periodo = ["30dias", "mes", "trimestre", "ano", "todos"].includes(periodoParam) ? periodoParam : "mes";
+    const cacheKey = `crm-relatorios-executivos:tenant:${tenantId}:periodo:${periodo}`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const [{ data: leadsRows }, { data: financeRows }, { data: tasksRows }, { data: contractsRows }] = await Promise.all([
+      sb.from("leads").select("status,value,seller,date").eq("tenant_id", tenantId),
+      sb.from("finance_entries").select("type,status,value,date").eq("tenant_id", tenantId),
+      sb.from("tasks").select("status,due_date").eq("tenant_id", tenantId),
+      sb.from("contracts").select("status,mrr_value,value").eq("tenant_id", tenantId),
+    ]);
+
+    const now = new Date();
+    const isWithin = (dateStr?: string | null): boolean => {
+      if (!dateStr || periodo === "todos") return true;
+      try {
+        let d: Date;
+        if (dateStr.includes("/")) {
+          const parts = dateStr.split("/");
+          d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        } else {
+          d = new Date(dateStr);
+        }
+        if (isNaN(d.getTime())) return true;
+        if (periodo === "30dias") return now.getTime() - d.getTime() <= 30 * 24 * 3600 * 1000;
+        if (periodo === "mes") return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+        if (periodo === "trimestre") {
+          const qNow = Math.floor(now.getMonth() / 3);
+          const qD = Math.floor(d.getMonth() / 3);
+          return d.getFullYear() === now.getFullYear() && qNow === qD;
+        }
+        if (periodo === "ano") return d.getFullYear() === now.getFullYear();
+        return true;
+      } catch {
+        return true;
+      }
+    };
+
+    const leadsAll = (leadsRows || []) as { status: string; value: any; seller: string | null; date: string | null }[];
+    const financeAll = (financeRows || []) as { type: string; status: string; value: number; date: string | null }[];
+    const tasksAll = (tasksRows || []) as { status: string; due_date: string | null }[];
+    const contractsAll = (contractsRows || []) as { status: string; mrr_value: number | null; value: number | null }[];
+
+    const pLeads = leadsAll.filter((l) => isWithin(l.date));
+    const pFinance = financeAll.filter((f) => isWithin(f.date));
+    const pTasks = tasksAll.filter((t) => isWithin(t.due_date));
+
+    const totalLeads = pLeads.length;
+    const closedLeads = pLeads.filter((l) => l.status === "Fechado" || l.status === "Ganho").length;
+    const leadConversion = totalLeads > 0 ? Math.round((closedLeads / totalLeads) * 100) : 0;
+
+    const totalReceitas = pFinance.filter((f) => f.type === "Receber" && f.status === "Pago").reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const totalDespesas = pFinance.filter((f) => f.type === "Pagar" && f.status === "Pago").reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const resultadoLiquido = totalReceitas - totalDespesas;
+
+    const tasksCompleted = pTasks.filter((t) => t.status === "Concluída").length;
+    const taskCompletionRate = pTasks.length > 0 ? Math.round((tasksCompleted / pTasks.length) * 100) : 0;
+
+    const parseValLike = (v: any): number => {
+      if (typeof v === "number") return v;
+      const n = parseFloat(String(v || "0").replace(/[^0-9.,]/g, "").replace(",", "."));
+      return isNaN(n) ? 0 : n;
+    };
+    const sellerMap = new Map<string, { leads: number; closed: number; revenue: number }>();
+    for (const l of pLeads) {
+      const seller = l.seller || "Sem atribuição";
+      const cur = sellerMap.get(seller) || { leads: 0, closed: 0, revenue: 0 };
+      cur.leads += 1;
+      if (l.status === "Fechado" || l.status === "Ganho") {
+        cur.closed += 1;
+        cur.revenue += parseValLike(l.value);
+      }
+      sellerMap.set(seller, cur);
+    }
+    const salesBySeller = Array.from(sellerMap.entries())
+      .map(([name, d]) => ({ name, leads: d.leads, closed: d.closed, revenue: d.revenue, rate: d.leads > 0 ? Math.round((d.closed / d.leads) * 100) : 0 }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    const isCancelled = (c: { status: string }) => c.status === "Cancelado";
+    const isActive = (c: { status: string }) => !isCancelled(c) && c.status !== "Perdido";
+    const contratosAtivosCount = contractsAll.filter((c) => c.status === "Ativo").length;
+    const mrrContratado = contractsAll.filter(isActive).reduce((s, c) => s + parseValLike(c.mrr_value ?? c.value ?? 0), 0);
+
+    const summary = {
+      totalLeads, closedLeads, leadConversion, totalReceitas, totalDespesas, resultadoLiquido,
+      tasksCompleted, tasksTotal: pTasks.length, taskCompletionRate,
+      salesBySeller, contratosAtivosCount, mrrContratado,
+      cachedAt: new Date().toISOString(),
+    };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[crm/relatorios-executivos-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular relatório executivo." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma
