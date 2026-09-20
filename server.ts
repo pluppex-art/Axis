@@ -1342,6 +1342,74 @@ app.get("/api/clinica/estatisticas-summary", requireUser, async (req: any, res) 
   }
 });
 
+/**
+ * Faturamento Clínico (src/pages/clinica/Faturamento.tsx) — replica os KPIs,
+ * a evolução mensal (revenueData, agrupada por ano+mês via sortKey, então
+ * order-independent) e o mix por categoria. revenueData usa `new Date(f.date)`
+ * puro igual ao cliente (não parseEntryDate) — lançamento com data em
+ * formato BR (DD/MM/AAAA) falha o parse e é silenciosamente excluído do
+ * gráfico, igual já acontece hoje; replicado de propósito, não corrigido.
+ */
+app.get("/api/clinica/faturamento-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `clinica-faturamento:tenant:${tenantId}:summary`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const [{ data: entryRows }, { count: appointmentsCount }] = await Promise.all([
+      sb.from("finance_entries").select("status,value,date,category").eq("tenant_id", tenantId).eq("type", "Receber"),
+      sb.from("appointments").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
+    ]);
+    const receivables = (entryRows || []) as { status: string; value: number; date: string | null; category: string | null }[];
+
+    const totalBilled = receivables.reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const totalReceived = receivables.filter((f) => f.status === "Pago").reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const totalLate = receivables.filter((f) => f.status === "Atrasado").reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const glosaRate = totalBilled > 0 ? ((totalLate / totalBilled) * 100).toFixed(1) + "%" : "0%";
+    const avgTicket = (appointmentsCount || 0) > 0 ? totalReceived / (appointmentsCount as number) : 0;
+
+    const months = new Map<string, { month: string; faturado: number; recebido: number; glosas: number }>();
+    for (const f of receivables) {
+      const d = new Date(f.date || "");
+      if (isNaN(d.getTime())) continue;
+      const sortKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const month = d.toLocaleDateString("pt-BR", { month: "short" });
+      const cur = months.get(sortKey) || { month, faturado: 0, recebido: 0, glosas: 0 };
+      cur.faturado += Number(f.value) || 0;
+      if (f.status === "Pago") cur.recebido += Number(f.value) || 0;
+      if (f.status === "Atrasado") cur.glosas += Number(f.value) || 0;
+      months.set(sortKey, cur);
+    }
+    const revenueData = Array.from(months.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([, v]) => v);
+
+    const categories = new Map<string, number>();
+    for (const f of receivables) {
+      const c = f.category || "Consultas";
+      categories.set(c, (categories.get(c) || 0) + (Number(f.value) || 0));
+    }
+    const catTotal = Array.from(categories.values()).reduce((a, b) => a + b, 0);
+    const insuranceData = Array.from(categories.entries())
+      .map(([name, val]) => ({ name, value: catTotal > 0 ? Math.round((val / catTotal) * 100) : 0 }))
+      .sort((a, b) => b.value - a.value);
+
+    const summary = { totalBilled, totalReceived, totalLate, glosaRate, avgTicket, revenueData, insuranceData, cachedAt: new Date().toISOString() };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[clinica/faturamento-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular faturamento clínico." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

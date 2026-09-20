@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
-import { 
-  TrendingUp, ArrowUpRight, ArrowDownRight, 
-  Download, FileText, AlertCircle, 
+import { useMemo, useState, useEffect } from 'react';
+import {
+  TrendingUp, ArrowUpRight, ArrowDownRight,
+  Download, FileText, AlertCircle,
   CreditCard, Wallet, Landmark, PieChart as PieIcon,
   Inbox
 } from 'lucide-react';
@@ -10,27 +10,51 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { exportToCSV } from "../../lib/exportCsv";
 import { toast } from "sonner";
 import { useLocalization } from "../../contexts/LocalizationContext";
+import { apiFetch } from "../../lib/apiClient";
 
 const COLORS = ['#2563EB', '#10B981', '#8B5CF6', '#F59E0B', '#64748B'];
+
+interface MesFaturamento { month: string; faturado: number; recebido: number; glosas: number }
+interface FaturamentoServerSummary {
+  totalBilled: number; totalReceived: number; totalLate: number; glosaRate: string; avgTicket: number;
+  revenueData: MesFaturamento[]; insuranceData: { name: string; value: number }[];
+}
 
 export default function FaturamentoClinico() {
   const { formatCurrency } = useLocalization();
   const { financeEntries, appointments } = useData();
+  const { activeTenantId } = useAuth();
+
+  // KPIs + evolução mensal + mix por categoria vêm de um cache no Redis-SPY
+  // quando disponível (GET /api/clinica/faturamento-summary), mesma fórmula.
+  // Cálculo client-side abaixo é o fallback.
+  const [serverSummary, setServerSummary] = useState<FaturamentoServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/clinica/faturamento-summary?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
 
   const receivables = financeEntries.filter(f => f.type === 'Receber');
-  
-  const totalBilled = receivables.reduce((sum, f) => sum + f.value, 0);
-  const totalReceived = receivables.filter(f => f.status === 'Pago').reduce((sum, f) => sum + f.value, 0);
-  
-  const totalLate = receivables.filter(f => f.status === 'Atrasado').reduce((sum, f) => sum + f.value, 0);
-  const glosaRate = totalBilled > 0 ? ((totalLate / totalBilled) * 100).toFixed(1) + '%' : '0%';
-  
-  const avgTicket = appointments.length > 0 ? (totalReceived / appointments.length) : 0;
 
-  const revenueData = useMemo(() => {
+  const clientTotalBilled = receivables.reduce((sum, f) => sum + f.value, 0);
+  const clientTotalReceived = receivables.filter(f => f.status === 'Pago').reduce((sum, f) => sum + f.value, 0);
+
+  const clientTotalLate = receivables.filter(f => f.status === 'Atrasado').reduce((sum, f) => sum + f.value, 0);
+  const clientGlosaRate = clientTotalBilled > 0 ? ((clientTotalLate / clientTotalBilled) * 100).toFixed(1) + '%' : '0%';
+
+  const clientAvgTicket = appointments.length > 0 ? (clientTotalReceived / appointments.length) : 0;
+
+  const clientRevenueData = useMemo(() => {
     const months: Record<string, { faturado: number, recebido: number, glosas: number, sortKey: string }> = {};
     receivables.forEach(f => {
       try {
@@ -52,6 +76,12 @@ export default function FaturamentoClinico() {
       .map(({ sortKey, ...rest }) => rest as { month: string, faturado: number, recebido: number, glosas: number });
   }, [receivables]);
 
+  const totalBilled = serverSummary?.totalBilled ?? clientTotalBilled;
+  const totalReceived = serverSummary?.totalReceived ?? clientTotalReceived;
+  const glosaRate = serverSummary?.glosaRate ?? clientGlosaRate;
+  const avgTicket = serverSummary?.avgTicket ?? clientAvgTicket;
+  const revenueData = serverSummary?.revenueData ?? clientRevenueData;
+
   const trend = (curr: number, prev: number): string | null => {
     if (revenueData.length < 2) return null;
     if (prev === 0) return curr > 0 ? '+100%' : null;
@@ -67,7 +97,7 @@ export default function FaturamentoClinico() {
     ? trend((last.glosas / last.faturado) * 100, (prevM.glosas / prevM.faturado) * 100)
     : null;
 
-  const insuranceData = useMemo(() => {
+  const clientInsuranceData = useMemo(() => {
     const categories: Record<string, number> = {};
     receivables.forEach(f => {
       const c = f.category || 'Consultas';
@@ -76,13 +106,13 @@ export default function FaturamentoClinico() {
 
     const total = Object.values(categories).reduce((a,b) => a + b, 0);
     return Object.entries(categories)
-      .map(([name, val], i) => ({
-        name,
-        value: total > 0 ? Math.round((val / total) * 100) : 0,
-        color: COLORS[i % COLORS.length]
-      }))
+      .map(([name, val]) => ({ name, value: total > 0 ? Math.round((val / total) * 100) : 0 }))
       .sort((a, b) => b.value - a.value);
   }, [receivables]);
+
+  // Cor atribuída pela posição final (pós-ordenação) — cosmético, sem
+  // impacto nos números exibidos.
+  const insuranceData = (serverSummary?.insuranceData ?? clientInsuranceData).map((d, i) => ({ ...d, color: COLORS[i % COLORS.length] }));
 
   const fmt = (n: number) => formatCurrency(n);
 
