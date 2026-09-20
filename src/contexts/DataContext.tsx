@@ -2153,6 +2153,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // pra qualquer tela que use `contracts`/`proposals` — a mesma fonte de
   // verdade em vez de cada página reimplementar (ou esquecer) essa sincronização.
   const syncAcceptedProposal = (prop: any, { silent = false }: { silent?: boolean } = {}) => {
+    // BUG real (visto em produção: contrato/lançamento de "Casa Sao Paulo" e
+    // "To Na Pista Boliche" — clientes REAIS da Pluppex — aparecendo com
+    // tenant_id do To Na Pista): essa reconciliação roda automaticamente
+    // sempre que `proposals`/`contracts` mudam, sem checar se `prop` de fato
+    // pertence ao tenant ativo. Numa conta master/parceiro trocando de
+    // tenant, uma janela onde `proposals` ainda tinha dados do tenant
+    // ANTERIOR (antes do fix de limpar estado na troca) deixava essa função
+    // processar uma proposta de um tenant enquanto `tenantId` (ambiente) já
+    // era outro — daí `addContract`/`addFinanceEntry` carimbavam o registro
+    // novo com o tenant ERRADO, e os lookups de `contracts`/`leads` abaixo
+    // (também escopados pro tenant ativo) nunca encontravam o contrato já
+    // existente, recriando o lançamento financeiro a cada re-execução.
+    // Bloqueia aqui a causa raiz: nunca processa proposta de outro tenant.
+    if (prop.tenant_id && tenantId && prop.tenant_id !== tenantId) return false;
     const linkedItems = (proposalItems || []).filter((pi: any) => pi.proposal_id === prop.id);
 
     // Idempotência real: vínculo estável por proposal_id (trava também no
