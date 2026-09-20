@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState } from "react";
 import { Card } from "../../../../components/ui/card";
 import { Input } from "../../../../components/ui/input";
 import { Badge } from "../../../../components/ui/badge";
@@ -62,7 +62,6 @@ const STATUS_CONFIG = {
   Recusada: { variant: "destructive" as const, icon: XCircle },
 };
 const DEFAULT_STATUS = { variant: "secondary" as const, icon: History };
-const PAGE_SIZE = 50;
 
 interface PropostasTableProps {
   propostas: Proposta[];
@@ -74,6 +73,9 @@ interface PropostasTableProps {
   updateProposal?: (id: string, updates: any) => Promise<void> | void;
 }
 
+// `propostas` já chega paginada/filtrada do servidor (ver
+// src/pages/crm/usePropostasList.ts) — este componente só renderiza a
+// página atual, sem filtrar/paginar de novo no cliente.
 export function PropostasTable({ propostas, proposalItems, search, onSearchChange, onUpdateStatus, onDelete, updateProposal }: PropostasTableProps) {
   const [editingProposal, setEditingProposal] = useState<PropostaEditorData | null>(null);
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
@@ -82,14 +84,7 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
   const { formatCurrency } = useLocalization();
   const empresaDados = appSettings?.empresa_dados || {};
 
-  const filtered = propostas.filter(p =>
-    (p.cliente || "").toLowerCase().includes(search.toLowerCase()) ||
-    p.titulo.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [search]);
-  const paged = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const paged = propostas;
 
   return (
     <>
@@ -114,7 +109,7 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
         </div>
       </Card>
 
-      {filtered.length === 0 ? (
+      {paged.length === 0 ? (
         <EmptyState
           icon={FileText}
           title="Nenhuma proposta encontrada"
@@ -264,13 +259,6 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
             </TableBody>
           </Table>
         )}
-      {visibleCount < filtered.length && (
-        <div className="flex justify-center py-4">
-          <Button variant="outline" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
-            Carregar mais ({filtered.length - visibleCount} restantes)
-          </Button>
-        </div>
-      )}
       <PropostaEditorWordModal
         isOpen={isWordModalOpen}
         onClose={() => setIsWordModalOpen(false)}

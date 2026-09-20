@@ -1,25 +1,32 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "../../../../components/ui/button";
+import { Button } from "./button";
 
-interface LeadsPaginationProps {
+interface PaginationProps {
   page: number;
   totalPages: number;
   total: number;
   pageSize: number;
-  loading: boolean;
+  loading?: boolean;
   onPageChange: (page: number) => void;
+  itemLabel?: string;
 }
 
-export function LeadsPagination({ page, totalPages, total, pageSize, loading, onPageChange }: LeadsPaginationProps) {
+/**
+ * Paginação server-side genérica — usada por qualquer tela que busca uma
+ * página por vez direto do Supabase (ver src/pages/crm/useLeadsList.ts como
+ * referência de hook). `page` é 0-indexed.
+ */
+export function Pagination({ page, totalPages, total, pageSize, loading, onPageChange, itemLabel = "item" }: PaginationProps) {
   if (total === 0) return null;
 
   const from = page * pageSize + 1;
   const to = Math.min(total, from + pageSize - 1);
+  const plural = total === 1 ? "" : "s";
 
   return (
     <div className="flex items-center justify-between gap-3 mt-4 text-xs text-[var(--color-text-muted)]">
       <span>
-        {from}–{to} de {total} lead{total === 1 ? "" : "s"}
+        {from}–{to} de {total} {itemLabel}{plural}
       </span>
       <div className="flex items-center gap-2">
         <Button

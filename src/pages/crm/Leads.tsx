@@ -8,7 +8,7 @@ import { PageContainer } from "../../components/PageContainer";
 import { LeadsKpis } from "./components/Leads/LeadsKPIs";
 import { LeadsFiltersBar } from "./components/Leads/LeadsFiltersBar";
 import { LeadsTable } from "./components/Leads/LeadsTable";
-import { LeadsPagination } from "./components/Leads/LeadsPagination";
+import { Pagination } from "../../components/ui/Pagination";
 import { useLeadsList } from "./useLeadsList";
 
 export default function Leads() {
@@ -67,13 +67,14 @@ export default function Leads() {
         onSelectLead={setSelectedLead}
       />
 
-      <LeadsPagination
+      <Pagination
         page={page}
         totalPages={totalPages}
         total={total}
         pageSize={pageSize}
         loading={loading}
         onPageChange={setPage}
+        itemLabel="lead"
       />
 
       <NewLeadModal isOpen={isModalOpen} onClose={handleCloseModal} />

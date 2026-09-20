@@ -15,15 +15,16 @@ import { PropostasKPIs } from "./components/Propostas/PropostasKPIs";
 import { PropostasTable } from "./components/Propostas/PropostasTable";
 import { ContractsKPIs } from "./components/Contracts/ContractsKPIs";
 import { ContractsTable } from "./components/Contracts/ContractsTable";
+import { Pagination } from "../../components/ui/Pagination";
 import { handleDownloadPdf } from "./utils/proposalPdf";
 import { cn } from "../../lib/utils";
 import { getMRR } from "../../lib/revenueMetrics";
 import type { Contract } from "../../types";
+import { usePropostasList } from "./usePropostasList";
 
 export default function Propostas() {
   const {
     proposals: propostas,
-    proposalItems,
     updateProposal,
     deleteProposal,
     createProposalWithItems,
@@ -36,7 +37,6 @@ export default function Propostas() {
   const { user, activeTenantName } = useAuth();
 
   const [activeTab, setActiveTab] = useState<"propostas" | "contratos">("propostas");
-  const [search, setSearch] = useState("");
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [editClient, setEditClient] = useState("");
   const [editPlan, setEditPlan] = useState("");
@@ -50,6 +50,16 @@ export default function Propostas() {
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
 
+  // Busca/pagina propostas direto no Supabase (50 por vez) em vez de filtrar
+  // o array `proposals` inteiro do DataContext no cliente — ver
+  // src/pages/crm/usePropostasList.ts. Aba de Contratos continua como estava.
+  const {
+    propostas: pagedPropostas, proposalItems: pagedProposalItems, kpis: propostasKpis,
+    page: propostasPage, setPage: setPropostasPage, totalPages: propostasTotalPages,
+    pageSize: propostasPageSize, total: propostasTotal, loading: propostasLoading,
+    searchQuery: propostasSearch, setSearchQuery: setPropostasSearch, refetch: refetchPropostas,
+  } = usePropostasList({ dateFrom, dateTo });
+
   // Contracts guarda a data como "dd/mm/aaaa" (rowToContract) — converte pra
   // ISO só pra comparar com o filtro, sem mudar o formato de exibição.
   const toIsoBR = (br?: string | null) => {
@@ -62,11 +72,6 @@ export default function Propostas() {
     if (to && iso > to) return false;
     return true;
   };
-
-  const filteredPropostas = useMemo(() => {
-    if (!dateFrom && !dateTo) return propostas;
-    return (propostas as any[]).filter((p) => inRange((p.created_at || "").slice(0, 10) || null, dateFrom, dateTo));
-  }, [propostas, dateFrom, dateTo]);
 
   const filteredContracts = useMemo(() => {
     if (!dateFrom && !dateTo) return contracts;
@@ -88,6 +93,7 @@ export default function Propostas() {
     });
     toast.success("✨ Proposta criada com sucesso! Pronta para envio.");
     setIsPropostaModalOpen(false);
+    refetchPropostas();
   };
 
   // Sincronização de contrato/fatura + reconciliação de propostas "Aceita" sem
@@ -96,6 +102,7 @@ export default function Propostas() {
   // só enquanto esta página está aberta (ver comentário lá pra detalhes).
   const handleUpdateStatus = (id: string, newStatus: any) => {
     updateProposal(id, { status: newStatus });
+    setTimeout(refetchPropostas, 300);
 
     if (newStatus === "Aceita") {
       const prop = (propostas || []).find((p: any) => p.id === id);
@@ -207,16 +214,33 @@ export default function Propostas() {
 
       {activeTab === "propostas" ? (
         <div className="space-y-6">
-          <PropostasKPIs propostas={filteredPropostas as any} allPropostas={propostas as any} />
+          <PropostasKPIs kpis={propostasKpis} />
 
           <PropostasTable
-            propostas={filteredPropostas as any}
-            proposalItems={proposalItems as any}
-            search={search}
-            onSearchChange={setSearch}
+            propostas={pagedPropostas as any}
+            proposalItems={pagedProposalItems as any}
+            search={propostasSearch}
+            onSearchChange={setPropostasSearch}
             onUpdateStatus={handleUpdateStatus}
-            onDelete={(id) => { deleteProposal(id); toast.success("Proposta de venda excluída."); }}
-            updateProposal={updateProposal}
+            onDelete={(id) => {
+              deleteProposal(id);
+              toast.success("Proposta de venda excluída.");
+              setTimeout(refetchPropostas, 300);
+            }}
+            updateProposal={async (id, updates) => {
+              await updateProposal(id, updates);
+              refetchPropostas();
+            }}
+          />
+
+          <Pagination
+            page={propostasPage}
+            totalPages={propostasTotalPages}
+            total={propostasTotal}
+            pageSize={propostasPageSize}
+            loading={propostasLoading}
+            onPageChange={setPropostasPage}
+            itemLabel="proposta"
           />
         </div>
       ) : (
@@ -253,6 +277,7 @@ export default function Propostas() {
           });
           toast.success("Proposta comercial criada com sucesso!");
           setIsModalOpen(false);
+          refetchPropostas();
         }}
       />
 
