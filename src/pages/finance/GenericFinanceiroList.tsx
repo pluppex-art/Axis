@@ -15,6 +15,8 @@ import { useLocalization } from "../../contexts/LocalizationContext";
 import { RateioModal, type RateioDivisao } from "./components/RateioModal";
 import { FinanceiroAnexosTab } from "./components/FinanceiroAnexosTab";
 import { parseEntryDate } from "./lib/financeDates";
+import { useFinanceEntriesList } from "./useFinanceEntriesList";
+import { Pagination } from "../../components/ui/Pagination";
 
 type Frequencia = "semanal" | "quinzenal" | "mensal" | "bimestral" | "trimestral" | "semestral" | "anual";
 type RepeatMode = "none" | "recorrente" | "parcelado";
@@ -172,11 +174,8 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     await deleteFinanceEntry(parentId);
     setEditingItem(null);
     toast.success(`Lançamento dividido em ${divisoes.length} linhas.`);
+    setTimeout(refetchEntries, 300);
   };
-
-  const data = useMemo(() => {
-    return financeEntries.filter(f => f.type === type && (!statusFilter || f.status === statusFilter));
-  }, [financeEntries, type, statusFilter]);
 
   // Filtros do usuário — busca, categoria, contraparte, conta, centro de
   // custo, período e (quando a tela mostra todos os status) status. Sem
@@ -196,29 +195,26 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     setFiltroContaBancariaId(""); setFiltroCentroCustoId(""); setFiltroDataInicio(""); setFiltroDataFim("");
   };
 
-  const filteredData = useMemo(() => {
-    const q = filtroBusca.trim().toLowerCase();
-    const inicio = filtroDataInicio ? new Date(filtroDataInicio + "T00:00:00") : null;
-    const fim = filtroDataFim ? new Date(filtroDataFim + "T23:59:59") : null;
-    return data.filter(item => {
-      if (q && !item.description.toLowerCase().includes(q) && !(item.category || "").toLowerCase().includes(q) && !(item.counterparty || "").toLowerCase().includes(q)) return false;
-      if (filtroCategoriaId && (item as any).category_id !== filtroCategoriaId) return false;
-      if (filtroStatus && item.status !== filtroStatus) return false;
-      if (filtroContaBancariaId && (item as any).conta_bancaria_id !== filtroContaBancariaId) return false;
-      if (filtroCentroCustoId && (item as any).centro_custo_id !== filtroCentroCustoId) return false;
-      if (inicio || fim) {
-        const d = parseEntryDate(item.date);
-        if (!d) return false;
-        if (inicio && d < inicio) return false;
-        if (fim && d > fim) return false;
-      }
-      return true;
-    });
-  }, [data, filtroBusca, filtroCategoriaId, filtroStatus, filtroContaBancariaId, filtroCentroCustoId, filtroDataInicio, filtroDataFim]);
-
-  const totalValue = useMemo(() => {
-    return filteredData.reduce((acc, item) => acc + item.value, 0);
-  }, [filteredData]);
+  // Busca/pagina direto no Supabase (50 por vez), ordenado/filtrado por
+  // date_normalized (coluna gerada — ver
+  // supabase/migrations/20260920_finance_entries_date_normalized.sql) em vez
+  // de carregar todo o array `financeEntries` do DataContext e filtrar no
+  // navegador. `filtroDataInicio`/`filtroDataFim` já vêm de <input
+  // type="date"> em formato YYYY-MM-DD, comparável direto com date_normalized.
+  const {
+    entries: filteredData, total: filteredTotal, totalValue,
+    page, setPage, totalPages, pageSize, loading: entriesLoading,
+    refetch: refetchEntries, fetchAllForExport,
+  } = useFinanceEntriesList({
+    type, statusFilter,
+    search: filtroBusca,
+    categoriaId: filtroCategoriaId,
+    status: filtroStatus,
+    contaBancariaId: filtroContaBancariaId,
+    centroCustoId: filtroCentroCustoId,
+    dataInicio: filtroDataInicio,
+    dataFim: filtroDataFim,
+  });
 
   const [formErrors, setFormErrors] = useState<{ desc?: string; value?: string; category?: string }>({});
 
@@ -326,26 +322,31 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
 
     setIsModalOpen(false);
     resetAddForm();
+    setTimeout(refetchEntries, 300);
   };
 
-  const handleExport = () => {
+  // Exportação precisa de TODOS os lançamentos que batem o filtro, não só a
+  // página atual visível na tela — busca à parte, sem paginação.
+  const handleExport = async () => {
+    const allFiltered = await fetchAllForExport();
     downloadCsv(
       `${type === 'Pagar' ? 'contas_a_pagar' : 'contas_a_receber'}_${Date.now()}.csv`,
       ["Nome", "Categoria", "Cliente/Fornecedor", "Forma de Pagamento", "Vencimento", "Status", "Valor"],
-      filteredData.map(item => [item.description, item.category, item.counterparty || "", item.payment_method || "", item.date, item.status, item.value])
+      allFiltered.map((item: any) => [item.description, item.category, item.counterparty || "", item.payment_method || "", item.date, item.status, item.value])
     );
   };
 
-  const handleDelete = async (item: (typeof data)[number]) => {
+  const handleDelete = async (item: (typeof financeEntries)[number]) => {
     if (!(await confirmDialog({
       title: "Excluir lançamento",
       description: `Excluir "${item.description}"? Essa ação não pode ser desfeita.`,
     }))) return;
     deleteFinanceEntry(item.id);
     toast.success("Lançamento excluído.");
+    setTimeout(refetchEntries, 300);
   };
 
-  const openEdit = (item: (typeof data)[number]) => {
+  const openEdit = (item: (typeof financeEntries)[number]) => {
     setEditingItem(item);
     setEditModalTab("detalhes");
     setEditDesc(item.description);
@@ -399,6 +400,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     });
     toast.success("Lançamento atualizado.");
     setEditingItem(null);
+    setTimeout(refetchEntries, 300);
   };
 
   const getStatusIcon = (status: string) => {
@@ -422,7 +424,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     }
   };
 
-  const RepeatBadge = ({ item }: { item: (typeof data)[number] }) => {
+  const RepeatBadge = ({ item }: { item: (typeof financeEntries)[number] }) => {
     if (item.is_recurring) {
       return (
         <span title={`Recorrente (${item.recurring_frequency})`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25">
@@ -539,7 +541,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
         <div className="p-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)] flex items-center justify-between">
           <div className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
             Fluxo de Caixa / {type === 'Pagar' ? 'Contas a Pagar' : 'Contas a Receber'}
-            {temFiltrosAtivos && <span className="ml-2 normal-case font-medium text-[var(--color-primary-blue)]">· {filteredData.length} de {data.length} lançamento(s)</span>}
+            {temFiltrosAtivos && <span className="ml-2 normal-case font-medium text-[var(--color-primary-blue)]">· {filteredTotal} lançamento(s) encontrado(s)</span>}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-[var(--color-primary-blue)] font-semibold">
             <Calendar className="w-3.5 h-3.5" /> Ciclo Atual
@@ -690,6 +692,16 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
           </div>
         </div>
       </Card>
+
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={filteredTotal}
+        pageSize={pageSize}
+        loading={entriesLoading}
+        onPageChange={setPage}
+        itemLabel="lançamento"
+      />
 
       {/* Creation Modal */}
       <Modal
