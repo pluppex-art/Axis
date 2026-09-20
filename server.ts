@@ -674,6 +674,90 @@ app.get("/api/marketing/campanhas-summary", requireUser, async (req: any, res) =
   }
 });
 
+const AGING_BUCKETS = [
+  { id: "1-7", label: "1–7 dias", min: 1, max: 7 },
+  { id: "8-30", label: "8–30 dias", min: 8, max: 30 },
+  { id: "31-60", label: "31–60 dias", min: 31, max: 60 },
+  { id: "61-90", label: "61–90 dias", min: 61, max: 90 },
+  { id: "90+", label: "+90 dias", min: 91, max: Infinity },
+];
+function bucketFor(dias: number) {
+  return AGING_BUCKETS.find((b) => dias >= b.min && dias <= b.max) ?? AGING_BUCKETS[AGING_BUCKETS.length - 1];
+}
+
+/**
+ * Resumo cacheado de Inadimplência (src/pages/finance/FinanceiroInadimplencia.tsx)
+ * — KPIs + aging buckets + agrupamento por cliente (não lançamento
+ * individual, só link pra tela de Cobranças). Usa date_normalized (coluna
+ * gerada) pra calcular dias de atraso — mesma semântica de
+ * daysBetween()/parseEntryDate() em financeDates.ts, sem reimplementar
+ * parsing de texto: dias = diferença em dias UTC entre hoje e a data de
+ * vencimento, calculado a partir dos componentes y/m/d, igual ao cliente.
+ */
+app.get("/api/finance/inadimplencia-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `finance-inadimplencia:tenant:${tenantId}:summary`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const { data: rows } = await sb.from("finance_entries")
+      .select("value,counterparty,date_normalized")
+      .eq("tenant_id", tenantId).eq("type", "Receber").eq("status", "Atrasado");
+    const vencidosRaw = (rows || []) as { value: number; counterparty: string | null; date_normalized: string | null }[];
+
+    const now = new Date();
+    const nowUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const vencidos = vencidosRaw.map((f) => {
+      let dias = 0;
+      if (f.date_normalized) {
+        const [y, m, d] = f.date_normalized.split("-").map(Number);
+        dias = Math.max(0, Math.round((nowUTC - Date.UTC(y, m - 1, d)) / 86400000));
+      }
+      return { value: Number(f.value) || 0, cliente: f.counterparty || "Sem cliente identificado", dias };
+    });
+
+    const totalVencido = vencidos.reduce((s, f) => s + f.value, 0);
+    const clientesUnicos = new Set(vencidos.map((f) => f.cliente)).size;
+    const atrasoMedio = vencidos.length > 0 ? vencidos.reduce((s, f) => s + f.dias, 0) / vencidos.length : 0;
+
+    const buckets = AGING_BUCKETS.map((b) => {
+      const items = vencidos.filter((f) => bucketFor(f.dias).id === b.id);
+      return { id: b.id, label: b.label, count: items.length, value: items.reduce((s, f) => s + f.value, 0) };
+    });
+
+    const byClient = new Map<string, { titulos: number; valor: number; maiorAtraso: number }>();
+    for (const f of vencidos) {
+      const cur = byClient.get(f.cliente) || { titulos: 0, valor: 0, maiorAtraso: 0 };
+      cur.titulos += 1;
+      cur.valor += f.value;
+      cur.maiorAtraso = Math.max(cur.maiorAtraso, f.dias);
+      byClient.set(f.cliente, cur);
+    }
+    const porCliente = Array.from(byClient.entries())
+      .map(([cliente, v]) => ({ cliente, ...v }))
+      .sort((a, b) => b.valor - a.valor);
+
+    const summary = {
+      vencidosCount: vencidos.length, totalVencido, clientesUnicos, atrasoMedio,
+      buckets, porCliente, cachedAt: new Date().toISOString(),
+    };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[finance/inadimplencia-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular resumo de inadimplência." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

@@ -1,12 +1,20 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { AlertTriangle, Users, Receipt, Clock } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { parseEntryDate, daysBetween } from "./lib/financeDates";
 import { StatCell, StatCellRow } from "./components/StatCell";
+import { apiFetch } from "../../lib/apiClient";
+
+interface InadimplenciaServerSummary {
+  vencidosCount: number; totalVencido: number; clientesUnicos: number; atrasoMedio: number;
+  buckets: { id: string; label: string; count: number; value: number }[];
+  porCliente: { cliente: string; titulos: number; valor: number; maiorAtraso: number }[];
+}
 
 const AGING_BUCKETS = [
   { id: "1-7", label: "1–7 dias", min: 1, max: 7 },
@@ -22,9 +30,25 @@ function bucketFor(dias: number) {
 
 export default function FinanceiroInadimplencia() {
   const { financeEntries } = useData();
+  const { activeTenantId } = useAuth();
   const { formatCurrency } = useLocalization();
 
-  const { vencidos, totalVencido, clientesUnicos, atrasoMedio, buckets, porCliente } = useMemo(() => {
+  // KPIs + aging + agrupamento por cliente vêm de um cache no Redis-SPY
+  // quando disponível (GET /api/finance/inadimplencia-summary) — mesma
+  // fórmula. Puramente aditivo: cálculo client-side abaixo é o fallback.
+  const [serverSummary, setServerSummary] = useState<InadimplenciaServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/finance/inadimplencia-summary?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
+
+  const clientSide = useMemo(() => {
     const now = new Date();
     const vencidos = financeEntries
       .filter(f => f.type === "Receber" && f.status === "Atrasado")
@@ -56,8 +80,10 @@ export default function FinanceiroInadimplencia() {
       .map(([cliente, v]) => ({ cliente, ...v }))
       .sort((a, b) => b.valor - a.valor);
 
-    return { vencidos, totalVencido, clientesUnicos, atrasoMedio, buckets, porCliente };
+    return { vencidosCount: vencidos.length, totalVencido, clientesUnicos, atrasoMedio, buckets, porCliente };
   }, [financeEntries]);
+
+  const { vencidosCount, totalVencido, clientesUnicos, atrasoMedio, buckets, porCliente } = serverSummary ?? clientSide;
 
   const maxBucketValue = Math.max(1, ...buckets.map(b => b.value));
 
@@ -70,14 +96,14 @@ export default function FinanceiroInadimplencia() {
       <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
         <StatCellRow>
           <StatCell label="Total Vencido" value={formatCurrency(totalVencido)} icon={AlertTriangle} tone={totalVencido > 0 ? "danger" : "neutral"} />
-          <StatCell label="Cobranças Vencidas" value={vencidos.length} icon={Receipt} />
+          <StatCell label="Cobranças Vencidas" value={vencidosCount} icon={Receipt} />
           <StatCell label="Clientes Inadimplentes" value={clientesUnicos} icon={Users} />
           <StatCell label="Atraso Médio" value={`${atrasoMedio.toFixed(0)} dias`} icon={Clock} />
         </StatCellRow>
 
         <Card className="p-6">
           <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4">Aging de Recebimento</h3>
-          {vencidos.length === 0 ? (
+          {vencidosCount === 0 ? (
             <p className="text-xs text-[var(--color-text-faint)]">Nenhuma cobrança vencida no momento.</p>
           ) : (
             <div className="space-y-3">
