@@ -758,6 +758,80 @@ app.get("/api/finance/inadimplencia-summary", requireUser, async (req: any, res)
   }
 });
 
+// DRE — regime de competência, mesmo cálculo de calcularDRE() em
+// src/pages/finance/lib/financeEngine.ts. O intervalo [startDate, endDate]
+// vem pronto do cliente (periodoRange() em FinanceiroDRE.tsx) pra evitar
+// qualquer divergência de fuso horário entre o cálculo de "período atual"
+// no servidor e no navegador do usuário.
+app.get("/api/finance/dre-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+
+    const startDate = typeof req.query.startDate === "string" ? req.query.startDate : null;
+    const endDate = typeof req.query.endDate === "string" ? req.query.endDate : null;
+    const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!startDate || !endDate || !isoDateRe.test(startDate) || !isoDateRe.test(endDate)) {
+      return res.status(400).json({ error: "Parâmetros startDate/endDate (YYYY-MM-DD) são obrigatórios." });
+    }
+    const cacheKey = `finance-dre:tenant:${tenantId}:${startDate}:${endDate}`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const [{ data: entriesRows }, { data: categoryRows }] = await Promise.all([
+      sb.from("finance_entries")
+        .select("type,status,value,category_id")
+        .eq("tenant_id", tenantId)
+        .gte("date_normalized", startDate)
+        .lte("date_normalized", endDate),
+      sb.from("finance_categories")
+        .select("id,subtipo")
+        .eq("tenant_id", tenantId),
+    ]);
+
+    const entries = (entriesRows || []) as { type: string; status: string; value: number; category_id: string | null }[];
+    const categoriesMap = new Map((categoryRows || []).map((c: any) => [c.id, c]));
+
+    const dreTipoDe = (e: (typeof entries)[number]) => {
+      if (e.type === "Receber") return "RECEBIMENTO";
+      const cat = e.category_id ? categoriesMap.get(e.category_id) : undefined;
+      return (cat as any)?.subtipo ?? "DESPESA_VARIAVEL";
+    };
+    const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+    const somaPorTipo = (tipo: string) =>
+      round2(entries.filter((e) => e.type === "Pagar" && dreTipoDe(e) === tipo).reduce((s, e) => s + (Number(e.value) || 0), 0));
+
+    const receitaBruta = round2(entries.filter((e) => e.type === "Receber").reduce((s, e) => s + (Number(e.value) || 0), 0));
+    const impostos = somaPorTipo("IMPOSTOS");
+    const lucroBruto = round2(receitaBruta - impostos);
+    const despesasVariaveis = somaPorTipo("DESPESA_VARIAVEL");
+    const lucroOperacional = round2(lucroBruto - despesasVariaveis);
+    const despesasFixas = somaPorTipo("DESPESA_FIXA");
+    const gastosComPessoal = somaPorTipo("PESSOAS");
+    const lucroLiquido = round2(lucroOperacional - despesasFixas - gastosComPessoal);
+
+    const summary = {
+      receitaBruta, impostos, lucroBruto, despesasVariaveis, lucroOperacional,
+      despesasFixas, gastosComPessoal, lucroLiquido,
+      entriesCount: entries.length,
+      entriesPendentesCount: entries.filter((e) => e.status !== "Pago").length,
+      cachedAt: new Date().toISOString(),
+    };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[finance/dre-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular DRE." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

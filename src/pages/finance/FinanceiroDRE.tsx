@@ -1,16 +1,31 @@
 import { Card } from "../../components/ui/card";
 import { Download, Calendar, BarChart3 } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
-import { useMemo, useState } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+import { useMemo, useState, useEffect } from "react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { PageContainer } from "../../components/PageContainer";
 import { Button } from "../../components/ui/button";
 import { toast } from "sonner";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { parseEntryDate } from "./lib/financeDates";
-import { calcularDRE, categoriesById, type FinanceCategoryLike } from "./lib/financeEngine";
+import { calcularDRE, categoriesById, type FinanceCategoryLike, type DreResult } from "./lib/financeEngine";
+import { apiFetch } from "../../lib/apiClient";
 
 type Periodo = "mensal" | "trimestral" | "semestral" | "anual" | "personalizado";
+
+interface DreServerSummary extends DreResult {
+  entriesCount: number;
+  entriesPendentesCount: number;
+}
+
+/** YYYY-MM-DD no fuso local — nunca toISOString() (converte pra UTC e pode
+ * mudar o dia). Precisa bater exatamente com o dia calendário que
+ * periodoRange() calculou. */
+function toLocalISODate(d: Date): string {
+  const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
 
 /** Intervalo [início, fim] real do período — nunca "mês atual × 3/6/12".
  * O DRE trimestral/semestral/anual soma os lançamentos que de fato caem
@@ -29,6 +44,7 @@ function periodoRange(periodo: Periodo, hoje: Date, customStart: string, customE
 
 export default function FinanceiroDRE() {
   const { financeEntries, financeCategories } = useData();
+  const { activeTenantId } = useAuth();
   const { formatCurrency } = useLocalization();
 
   const [periodo, setPeriodo] = useState<Periodo>("mensal");
@@ -40,7 +56,7 @@ export default function FinanceiroDRE() {
 
   const catMap = useMemo(() => categoriesById(financeCategories as FinanceCategoryLike[]), [financeCategories]);
 
-  const { entriesDoPeriodo, dre } = useMemo(() => {
+  const { entriesDoPeriodo, dre: clientDre, rangeStart, rangeEnd } = useMemo(() => {
     const { start, end } = periodoRange(periodo, new Date(), customStartDate, customEndDate);
     const entriesDoPeriodo = financeEntries.filter(e => {
       const d = parseEntryDate(e.date);
@@ -48,8 +64,28 @@ export default function FinanceiroDRE() {
     });
     // DRE do dashboard é sempre regime de competência puro: inclui pendentes.
     const dre = calcularDRE(entriesDoPeriodo, catMap);
-    return { entriesDoPeriodo, dre };
+    return { entriesDoPeriodo, dre, rangeStart: toLocalISODate(start), rangeEnd: toLocalISODate(end) };
   }, [financeEntries, catMap, periodo, customStartDate, customEndDate]);
+
+  // O cálculo em si (calcularDRE, com o array financeEntries já carregado
+  // no cliente) é a fonte de verdade e o fallback. GET /api/finance/dre-summary
+  // faz a mesma soma no servidor, com Redis-SPY (60s), pra telas repetidas
+  // no mesmo período não precisarem reprocessar o array inteiro no navegador.
+  const [serverSummary, setServerSummary] = useState<DreServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/finance/dre-summary?tenantId=${encodeURIComponent(activeTenantId)}&startDate=${rangeStart}&endDate=${rangeEnd}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side acima já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId, rangeStart, rangeEnd]);
+
+  const dre = serverSummary ?? clientDre;
+  const entriesCount = serverSummary?.entriesCount ?? entriesDoPeriodo.length;
+  const entriesPendentesCount = serverSummary?.entriesPendentesCount ?? entriesDoPeriodo.filter(e => e.status !== "Pago").length;
 
   const fmt = (v: number) => formatCurrency(v);
 
@@ -159,7 +195,7 @@ export default function FinanceiroDRE() {
             </div>
             <div className="pt-4 mt-4 border-t border-[var(--color-border-subtle)]">
               <p className="text-[11px] text-[var(--color-text-faint)]">
-                {entriesDoPeriodo.length} lançamento(s) no período · {entriesDoPeriodo.filter(e => e.status !== "Pago").length} pendente(s) incluído(s) — regime de competência
+                {entriesCount} lançamento(s) no período · {entriesPendentesCount} pendente(s) incluído(s) — regime de competência
               </p>
             </div>
           </Card>
