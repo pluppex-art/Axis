@@ -7,11 +7,13 @@ import { ConfirmModal } from "../../components/ui/modals/shared/ConfirmModal";
 import { NovaPautaModal } from "../../components/ui/modals/productivity/NovaPautaModal";
 
 import { useTarefas } from "./tarefas/useTarefas";
+import { useTarefasList } from "./tarefas/useTarefasList";
 import { PerformanceMetrics } from "./tarefas/PerformanceMetrics";
 import { WorkloadBento } from "./tarefas/WorkloadBento";
 import { TasksFilter } from "./tarefas/TasksFilter";
 import { TasksListMode } from "./tarefas/TasksListMode";
 import { TasksKanbanMode } from "./tarefas/TasksKanbanMode";
+import { Pagination } from "../../components/ui/Pagination";
 
 export default function Tarefas() {
   const {
@@ -61,6 +63,23 @@ export default function Tarefas() {
   } = useTarefas();
 
   const [isPautaModalOpen, setIsPautaModalOpen] = useState(false);
+
+  // Modo Lista pagina de verdade no servidor (só ativo quando viewMode ===
+  // 'list', pra não disparar uma busca à toa enquanto o usuário está no
+  // Kanban). O Kanban continua em `filteredTasks` (array completo do
+  // DataContext) porque precisa mostrar todas as colunas/status juntas —
+  // ver useTarefasList.ts.
+  const {
+    tasks: pagedTasks, total: pagedTotal, page: tasksPage, setPage: setTasksPage,
+    totalPages: tasksTotalPages, pageSize: tasksPageSize, loading: tasksLoading,
+    refetch: refetchTasksList,
+  } = useTarefasList({ searchQuery, selectedPriorities, deadlineFilter, active: viewMode === "list" });
+
+  const refetchIfList = () => { if (viewMode === "list") setTimeout(refetchTasksList, 300); };
+
+  const listToggleTaskStatus = (id: string, status: string) => { toggleTaskStatus(id, status); refetchIfList(); };
+  const listMoveTaskStatus = (id: string, newStatus: any) => { moveTaskStatus(id, newStatus); refetchIfList(); };
+  const listUpdateTask = (id: string, updates: any) => { updateTask(id, updates); refetchIfList(); };
 
   return (
     <PageContainer
@@ -139,16 +158,27 @@ export default function Tarefas() {
 
         {/* Views */}
         {viewMode === 'list' ? (
-          <TasksListMode
-            filteredTasks={filteredTasks}
-            toggleTaskStatus={toggleTaskStatus}
-            getPriorityColor={getPriorityColor}
-            updateTask={updateTask}
-            columns={columns}
-            moveTaskStatus={moveTaskStatus}
-            openEditTaskModal={openEditTaskModal}
-            handleDeleteTask={handleDeleteTask}
-          />
+          <>
+            <TasksListMode
+              filteredTasks={pagedTasks}
+              toggleTaskStatus={listToggleTaskStatus}
+              getPriorityColor={getPriorityColor}
+              updateTask={listUpdateTask}
+              columns={columns}
+              moveTaskStatus={listMoveTaskStatus}
+              openEditTaskModal={openEditTaskModal}
+              handleDeleteTask={handleDeleteTask}
+            />
+            <Pagination
+              page={tasksPage}
+              totalPages={tasksTotalPages}
+              total={pagedTotal}
+              pageSize={tasksPageSize}
+              loading={tasksLoading}
+              onPageChange={setTasksPage}
+              itemLabel="tarefa"
+            />
+          </>
         ) : (
           <TasksKanbanMode
             columns={columns}
@@ -178,7 +208,7 @@ export default function Tarefas() {
           setIsModalOpen(false);
           setEditingTask(null);
         }}
-        onSave={handleSaveTask}
+        onSave={(data: any) => { handleSaveTask(data); refetchIfList(); }}
         initialValue={editingTask ? {
           nome: editingTask.title,
           prioridade: editingTask.priority,
@@ -194,6 +224,7 @@ export default function Tarefas() {
         onConfirm={() => {
           if (taskToDelete) {
             deleteTask(taskToDelete);
+            refetchIfList();
           }
         }}
         title="Confirmar Exclusão de Tarefa"
