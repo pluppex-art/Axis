@@ -397,55 +397,6 @@ async function syncReuniaoFromReservation(
   if (error) console.error("[API v1] Falha ao sincronizar reunião/agenda:", error.message);
 }
 
-// Cria uma proposta "Aceita" (+ item avulso vinculado ao produto) quando uma
-// reserva chega já como negócio fechado (status === 'Fechado', calculado
-// pelo chamador a partir do status bruto da reserva). A reconciliação já
-// existente no frontend (DataContext.tsx, syncAcceptedProposal) pega essa
-// proposta aceita na próxima carga do Spy pra esse tenant e gera
-// contrato + lançamento financeiro sozinha — não precisa duplicar essa
-// lógica aqui, só garantir que a proposta exista. Best-effort: falha aqui
-// nunca derruba a criação/atualização do lead (mesma garantia que
-// syncReuniaoFromReservation já tem).
-async function syncProposalFromReservation(
-  reservation: any, tenantId: string, leadId: string, leadName: string, productIds: string[]
-) {
-  if (!reservation?.id || reservation.totalValue == null) return;
-  const createdAt = reservation.createdAt || new Date().toISOString();
-
-  // Idempotência: a mesma reserva reprocessada (retry, reenvio) não deve
-  // criar uma segunda proposta/contrato/lançamento — usa o par
-  // lead_id + created_at (== reservation.createdAt) como chave natural,
-  // já que a tabela não tem uma coluna própria pra guardar o id externo
-  // da reserva.
-  const { data: existingProposal } = await supabaseService!.from("proposals")
-    .select("id").eq("tenant_id", tenantId).eq("lead_id", leadId).eq("created_at", createdAt).maybeSingle();
-  if (existingProposal) return;
-
-  const productId = productIds?.[0] ?? null;
-  let productName = "Produto";
-  if (productId) {
-    const { data: product } = await supabaseService!.from("products").select("name").eq("id", productId).maybeSingle();
-    if (product?.name) productName = product.name;
-  }
-
-  const titulo = `Reserva de Boliche${reservation.eventType ? " - " + reservation.eventType : ""}`;
-  const proposalId = randomUUID();
-  const { error: propError } = await supabaseService!.from("proposals").insert({
-    id: proposalId, tenant_id: tenantId, lead_id: leadId,
-    titulo, valor: reservation.totalValue, status: "Aceita",
-    cliente: leadName, vendedor: "Sistema", tipo: "itens",
-    created_at: createdAt,
-  });
-  if (propError) { console.error("[API v1] Falha ao criar proposta da reserva:", propError.message); return; }
-
-  const { error: itemError } = await supabaseService!.from("proposal_items").insert({
-    proposal_id: proposalId, tenant_id: tenantId,
-    product_id: productId, product_name: productName,
-    quantidade: 1, preco_unitario: reservation.totalValue, billing_type: "one_time",
-  });
-  if (itemError) console.error("[API v1] Falha ao criar item da proposta da reserva:", itemError.message);
-}
-
 app.post("/api/v1/leads", requireApiKey, async (req, res) => {
   const {
     name, company = "", email = "", phone = "", cnpj = "",
@@ -532,13 +483,16 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
       return res.status(500).json({ error: "Falha ao atualizar lead no banco." });
     }
     if (incomingReservation) await syncReuniaoFromReservation(incomingReservation, tenantId, existing.id, name, normalizedEmail, company);
-    // Só cria proposta quando a chamada realmente moveu status/produto pra
-    // "Fechado" (canAdvanceStage) — uma chamada que não pôde avançar (lead já
-    // tinha histórico e essa era sem reserva) nunca tem status recém-calculado
-    // como Fechado de propósito, mas o `&&` aqui é defesa extra explícita.
-    if (incomingReservation && canAdvanceStage && status === "Fechado") {
-      await syncProposalFromReservation(incomingReservation, tenantId, existing.id, name, productIds);
-    }
+    // syncProposalFromReservation foi REMOVIDO daqui (2026-09-19): a receita
+    // de reserva agora é mantida por um pipeline dedicado e determinístico
+    // (POST /api/v1/finance-entries, chamado por sync-to-spy a cada update de
+    // reserva — ver to-na-pista-boliche/supabase/functions/sync-to-spy). Criar
+    // uma "proposta" por reserva aqui duplicava a receita (via a reconciliação
+    // proposals→contracts→finance_entries do DataContext.tsx, rodando no
+    // browser de quem tiver o Spy aberto) E causava uma rajada de milhares de
+    // PATCH em `contracts` de uma vez só quando muitas reservas fechavam junto
+    // (ex.: sync em massa) — o mesmo padrão de storm já visto antes nesse
+    // arquivo, só que disparado por reserva em vez de por tenant cruzado.
     logApiKeyUsage(req, 200);
     return res.status(200).json({ success: true, lead: data, deduped: true });
   }
@@ -561,9 +515,8 @@ app.post("/api/v1/leads", requireApiKey, async (req, res) => {
     return res.status(500).json({ error: "Falha ao salvar lead no banco." });
   }
   if (incomingReservation) await syncReuniaoFromReservation(incomingReservation, tenantId, id, name, normalizedEmail, company);
-  if (incomingReservation && status === "Fechado") {
-    await syncProposalFromReservation(incomingReservation, tenantId, id, name, productIds);
-  }
+  // syncProposalFromReservation removido aqui também — mesmo motivo do bloco
+  // de update acima.
   logApiKeyUsage(req, 201);
   return res.status(201).json({ success: true, lead: data ?? newLead, deduped: false });
 });
