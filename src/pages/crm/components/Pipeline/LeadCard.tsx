@@ -128,9 +128,15 @@ export function LeadCard({
   const SourceIcon = source ? (SOURCE_ICON[source] ?? Globe) : null;
   // Histórico de reservas sincronizado (ex.: to na pista) — mostra a
   // contagem direto no card, sem precisar abrir o modal de detalhes.
-  const reservationsCount: number = Array.isArray(item.customFields?.reservationsHistory)
-    ? item.customFields.reservationsHistory.length
-    : 0;
+  // `reservationsHistory` guarda só as últimas 30 (server.ts limita o
+  // array pra não crescer sem fim) — pra clientes recorrentes com mais
+  // visitas que isso, `.length` mostrava um número capado/errado.
+  // `totalReservations` é o contador real, sem esse limite.
+  const reservationsCount: number = typeof item.customFields?.totalReservations === "number"
+    ? item.customFields.totalReservations
+    : Array.isArray(item.customFields?.reservationsHistory)
+      ? item.customFields.reservationsHistory.length
+      : 0;
 
   return (
     <Card
