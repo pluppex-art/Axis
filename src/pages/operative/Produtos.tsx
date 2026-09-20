@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Plus, Package, FileSpreadsheet } from "lucide-react";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { PageContainer } from "../../components/PageContainer";
+import { Pagination } from "../../components/ui/Pagination";
 import { useProdutoForm } from "./produtos/useProdutoForm";
 import { ProdutoModal } from "./produtos/ProdutoModal";
 import { ProdutosGrid } from "./produtos/ProdutosGrid";
@@ -16,6 +17,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { toast } from "sonner";
 import type { Product } from "../../types";
 import { downloadCsv } from "../../lib/csvExport";
+
+const PAGE_SIZE = 60;
 
 export default function Catalog() {
   const f = useProdutoForm();
@@ -67,6 +70,14 @@ export default function Catalog() {
         return 0;
       });
   }, [f.products, f.searchTerm, f.selectedCategories, f.selectedTypes, f.selectedStatus, f.sortBy]);
+
+  // Grid/Tabela renderizavam TODOS os produtos filtrados de uma vez —
+  // pagina só a exibição (os dados já estão em memória); export CSV e o
+  // contador do filtro continuam usando `filteredProducts` completo.
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [f.searchTerm, f.selectedCategories, f.selectedTypes, f.selectedStatus, f.sortBy]);
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  const pageProducts = filteredProducts.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   const totalSkuCount = f.products.length;
   const activeSkuCount = f.products.filter(p => p.active).length;
@@ -141,31 +152,36 @@ export default function Catalog() {
               Adicionar Primeiro Produto
             </Button>
           </Card>
-        ) : f.viewMode === "grid" ? (
-          <ProdutosGrid
-            filteredProducts={filteredProducts}
-            selectedIds={f.selectedIds}
-            handleToggleSelection={f.handleToggleSelection}
-            toggleActiveStatus={f.toggleActiveStatus}
-            handleOpenEditModal={f.handleOpenEditModal}
-            duplicateProduct={f.duplicateProduct}
-            deleteProduct={f.deleteProduct}
-            setSelectedCategories={f.setSelectedCategories}
-            setSearchTerm={f.setSearchTerm}
-            handleVender={handleVender}
-          />
         ) : (
-          <ProdutosTable
-            filteredProducts={filteredProducts}
-            selectedIds={f.selectedIds}
-            handleToggleSelection={f.handleToggleSelection}
-            handleSelectAll={f.handleSelectAll}
-            toggleActiveStatus={f.toggleActiveStatus}
-            handleOpenEditModal={f.handleOpenEditModal}
-            duplicateProduct={f.duplicateProduct}
-            deleteProduct={f.deleteProduct}
-            handleVender={handleVender}
-          />
+          <>
+            {f.viewMode === "grid" ? (
+              <ProdutosGrid
+                filteredProducts={pageProducts}
+                selectedIds={f.selectedIds}
+                handleToggleSelection={f.handleToggleSelection}
+                toggleActiveStatus={f.toggleActiveStatus}
+                handleOpenEditModal={f.handleOpenEditModal}
+                duplicateProduct={f.duplicateProduct}
+                deleteProduct={f.deleteProduct}
+                setSelectedCategories={f.setSelectedCategories}
+                setSearchTerm={f.setSearchTerm}
+                handleVender={handleVender}
+              />
+            ) : (
+              <ProdutosTable
+                filteredProducts={pageProducts}
+                selectedIds={f.selectedIds}
+                handleToggleSelection={f.handleToggleSelection}
+                handleSelectAll={f.handleSelectAll}
+                toggleActiveStatus={f.toggleActiveStatus}
+                handleOpenEditModal={f.handleOpenEditModal}
+                duplicateProduct={f.duplicateProduct}
+                deleteProduct={f.deleteProduct}
+                handleVender={handleVender}
+              />
+            )}
+            <Pagination page={page} totalPages={totalPages} total={filteredProducts.length} pageSize={PAGE_SIZE} onPageChange={setPage} itemLabel="produto" />
+          </>
         )}
 
         {sellingProduct && (

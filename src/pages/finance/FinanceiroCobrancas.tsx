@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Button } from "../../components/ui/button";
 import {
@@ -8,11 +8,14 @@ import {
 } from "lucide-react";
 import { Card } from "../../components/ui/card";
 import { Modal } from "../../components/ui/modal";
+import { Pagination } from "../../components/ui/Pagination";
 import { toast } from "sonner";
 import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+
+const PAGE_SIZE = 50;
 
 export default function FinanceiroCobrancas() {
   const { financeEntries, addFinanceEntry, updateFinanceEntry, deleteFinanceEntry, appSettings } = useData();
@@ -58,6 +61,15 @@ export default function FinanceiroCobrancas() {
       return matchQ && matchSt;
     });
   }, [cobrancas, search, statusFilter]);
+
+  // Tabela renderizava TODAS as cobranças filtradas de uma vez — com
+  // milhares de lançamentos "Receber", trava o navegador. Pagina só a
+  // renderização (os dados já estão em memória); exportação CSV continua
+  // usando `filtered` completo.
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [search, statusFilter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageItems = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   const handleCopyPix = (cliente: string, valor: number) => {
     const pixPayload = `00020126580014br.gov.bcb.pix0136${Math.random().toString(36).substring(2, 15)}520400005303986540${valor.toFixed(2)}5802BR5913SPY GESTAO6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`;
@@ -266,7 +278,7 @@ export default function FinanceiroCobrancas() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border-subtle)]">
-              {filtered.map(c => (
+              {pageItems.map(c => (
                 <tr key={c.id} className="hover:bg-[var(--color-surface-sunken)]/40 transition-colors">
                   <td className="px-5 py-3.5 font-bold text-[var(--color-text-primary)]">{c.cliente}</td>
                   <td className="px-4 py-3.5">
@@ -327,6 +339,8 @@ export default function FinanceiroCobrancas() {
           </table>
         </div>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} itemLabel="cobrança" />
 
       <Modal
         isOpen={showModal}

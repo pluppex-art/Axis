@@ -1,7 +1,9 @@
+import { useState, useEffect, useMemo } from "react";
 import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
 import { Input } from "../../../../components/ui/input";
 import { EmptyState } from "../../../../components/ui/empty-state";
+import { Pagination } from "../../../../components/ui/Pagination";
 import {
   Table,
   TableHeader,
@@ -11,6 +13,8 @@ import {
   TableCell,
 } from "../../../../components/ui/table";
 import { Search, Building2, MapPin, Phone, Mail, Trash2, FileText, Users } from "lucide-react";
+
+const PAGE_SIZE = 50;
 
 interface Cliente {
   id: string;
@@ -46,7 +50,7 @@ export function ClientesList({
   clientes, searchQuery, onSearchChange,
   sectorFilter, onSectorChange, statusFilter, onStatusChange, onDelete, onManageContatos,
 }: ClientesListProps) {
-  const filtered = clientes.filter(c => {
+  const filtered = useMemo(() => clientes.filter(c => {
     if (statusFilter !== "Todos as situações" && c.status !== statusFilter) return false;
     if (sectorFilter !== "Todos os setores" && c.industry !== sectorFilter) return false;
     if (searchQuery) {
@@ -56,7 +60,14 @@ export function ClientesList({
              c.industry?.toLowerCase().includes(term);
     }
     return true;
-  });
+  }), [clientes, statusFilter, sectorFilter, searchQuery]);
+
+  // Renderizava TODOS os clientes filtrados de uma vez — pagina só a
+  // exibição (os dados já estão em memória).
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [statusFilter, sectorFilter, searchQuery]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageItems = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   const selectClass = "bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-blue)] font-bold";
 
@@ -121,7 +132,7 @@ export function ClientesList({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((c) => (
+              {pageItems.map((c) => (
                 <TableRow key={c.id} className="cursor-pointer group">
                   <TableCell>
                     <div className="font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
@@ -180,7 +191,7 @@ export function ClientesList({
 
       {/* Mobile cards */}
       <div className="sm:hidden divide-y divide-[var(--color-border-subtle)]">
-        {filtered.map((c) => (
+        {pageItems.map((c) => (
           <div key={c.id} className="p-4 flex flex-col gap-3 hover:bg-[var(--color-surface-sunken)]/60 transition-all">
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-2 min-w-0">
@@ -225,6 +236,10 @@ export function ClientesList({
             className="border-none rounded-none"
           />
         )}
+      </div>
+
+      <div className="p-4 border-t border-[var(--color-border-subtle)]">
+        <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} itemLabel="cliente" />
       </div>
     </Card>
   );
