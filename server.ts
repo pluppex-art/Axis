@@ -407,6 +407,35 @@ async function resolveRequestedTenantId(req: any, res: any): Promise<string | nu
   return requestedTenantId;
 }
 
+// PostgREST (Supabase) limita cada resposta a um teto de linhas configurado
+// no projeto (db-max-rows), independente de qualquer `.limit()` maior pedido
+// pelo cliente — silencioso, sem erro, só devolve menos linhas que o real.
+// Confirmado ao vivo: "Leads Ativos" no dashboard mostrava 1000 pra um
+// tenant com 4.373 leads. Todo endpoint que precisa de um TOTAL EXATO
+// (soma/contagem sobre todas as linhas, não uma prévia) usa isso em vez de
+// um único `.select()` sem `.range()`. As prévias cacheadas (GET
+// /api/crm/leads-list e afins) são a exceção de propósito — já são
+// aproximações com cap explícito, não precisam de exatidão.
+const SERVER_PAGE_SIZE = 1000;
+async function fetchAllRowsPaginated(
+  sb: any,
+  table: string,
+  columns: string,
+  applyFilters: (query: any) => any,
+): Promise<any[]> {
+  const all: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await applyFilters(sb.from(table).select(columns)).range(from, from + SERVER_PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < SERVER_PAGE_SIZE) break;
+    from += SERVER_PAGE_SIZE;
+  }
+  return all;
+}
+
 app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
   try {
     const tenantId = await resolveRequestedTenantId(req, res);
@@ -423,10 +452,9 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
 
     // Leads: uma busca só (status, value, scoreIA) cobre conversão/ativos
     // (getConversionRate/getActiveLeadsCount em src/lib/revenueMetrics.ts)
-    // + pipeline em aberto/leads quentes (StrategicalView.tsx).
-    const { data: leadsRows } = await sb.from("leads")
-      .select('status,value,"scoreIA"').eq("tenant_id", tenantId);
-    const leadsAll = (leadsRows || []) as { status: string; value: number | null; scoreIA: number | null }[];
+    // + pipeline em aberto/leads quentes (StrategicalView.tsx). Paginada de
+    // verdade — sem isso, o PostgREST trunca silenciosamente em 1000 linhas.
+    const leadsAll = await fetchAllRowsPaginated(sb, "leads", 'status,value,"scoreIA"', (q) => q.eq("tenant_id", tenantId)) as { status: string; value: number | null; scoreIA: number | null }[];
     const leadsTotal = leadsAll.length;
     const leadsWon = leadsAll.filter((l) => l.status === "Fechado").length;
     const leadsOpenRows = leadsAll.filter((l) => l.status !== "Fechado" && l.status !== "Perdido");
@@ -440,9 +468,7 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
     // mesma regra de getMRR(). Reaproveitado pra MRR ativo/em risco e taxa
     // de inadimplência (CustomerSuccessView.tsx/StrategicalView.tsx — a
     // mesma métrica "taxaInadimplencia"/"taxaRisco" nos dois arquivos).
-    const { data: contractsRows } = await sb.from("contracts")
-      .select("mrr_value,status").eq("tenant_id", tenantId);
-    const contracts = (contractsRows || []) as { mrr_value: number | null; status: string }[];
+    const contracts = await fetchAllRowsPaginated(sb, "contracts", "mrr_value,status", (q) => q.eq("tenant_id", tenantId)) as { mrr_value: number | null; status: string }[];
     const totalRevenue = contracts
       .filter((c) => c.status !== "Cancelado" && c.status !== "Perdido")
       .reduce((sum, c) => sum + (Number(c.mrr_value) || 0), 0);
@@ -459,8 +485,7 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
 
     let churnRate = 0;
     if ((appointmentsCount ?? 0) > 0) {
-      const { data: apptRows } = await sb.from("appointments")
-        .select("patient,date").eq("tenant_id", tenantId);
+      const apptRows = await fetchAllRowsPaginated(sb, "appointments", "patient,date", (q) => q.eq("tenant_id", tenantId));
       const lastVisitByPatient = new Map<string, string>();
       for (const a of (apptRows || []) as { patient: string | null; date: string | null }[]) {
         if (!a.patient || !a.date) continue;
@@ -529,12 +554,10 @@ app.get("/api/finance/visao-geral-summary", requireUser, async (req: any, res) =
     }
 
     const sb = req.supabase;
-    const [{ data: entriesRows }, { data: contractsRows }] = await Promise.all([
-      sb.from("finance_entries").select("type,status,value,date_normalized,category").eq("tenant_id", tenantId),
-      sb.from("contracts").select("mrr_value,status").eq("tenant_id", tenantId),
+    const [entries, contracts] = await Promise.all([
+      fetchAllRowsPaginated(sb, "finance_entries", "type,status,value,date_normalized,category", (q) => q.eq("tenant_id", tenantId)) as Promise<{ type: string; status: string; value: number; date_normalized: string | null; category: string | null }[]>,
+      fetchAllRowsPaginated(sb, "contracts", "mrr_value,status", (q) => q.eq("tenant_id", tenantId)) as Promise<{ mrr_value: number | null; status: string }[]>,
     ]);
-    const entries = (entriesRows || []) as { type: string; status: string; value: number; date_normalized: string | null; category: string | null }[];
-    const contracts = (contractsRows || []) as { mrr_value: number | null; status: string }[];
 
     const sum = (rows: typeof entries) => rows.reduce((s, f) => s + (Number(f.value) || 0), 0);
 
@@ -630,12 +653,10 @@ app.get("/api/marketing/campanhas-summary", requireUser, async (req: any, res) =
     }
 
     const sb = req.supabase;
-    const [{ data: leadsRows }, { data: entriesRows }] = await Promise.all([
-      sb.from("leads").select("status,date,source").eq("tenant_id", tenantId),
-      sb.from("finance_entries").select("type,status,value").eq("tenant_id", tenantId),
+    const [leadsAll, entries] = await Promise.all([
+      fetchAllRowsPaginated(sb, "leads", "status,date,source", (q) => q.eq("tenant_id", tenantId)) as Promise<{ status: string; date: string | null; source: string | null }[]>,
+      fetchAllRowsPaginated(sb, "finance_entries", "type,status,value", (q) => q.eq("tenant_id", tenantId)) as Promise<{ type: string; status: string; value: number }[]>,
     ]);
-    const leadsAll = (leadsRows || []) as { status: string; date: string | null; source: string | null }[];
-    const entries = (entriesRows || []) as { type: string; status: string; value: number }[];
 
     const totalLeads = leadsAll.length;
     const closedLeads = leadsAll.filter(l => l.status === "Fechado").length;
@@ -707,10 +728,8 @@ app.get("/api/finance/inadimplencia-summary", requireUser, async (req: any, res)
     }
 
     const sb = req.supabase;
-    const { data: rows } = await sb.from("finance_entries")
-      .select("value,counterparty,date_normalized")
-      .eq("tenant_id", tenantId).eq("type", "Receber").eq("status", "Atrasado");
-    const vencidosRaw = (rows || []) as { value: number; counterparty: string | null; date_normalized: string | null }[];
+    const vencidosRaw = await fetchAllRowsPaginated(sb, "finance_entries", "value,counterparty,date_normalized",
+      (q) => q.eq("tenant_id", tenantId).eq("type", "Receber").eq("status", "Atrasado")) as { value: number; counterparty: string | null; date_normalized: string | null }[];
 
     const now = new Date();
     const nowUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
@@ -783,18 +802,12 @@ app.get("/api/finance/dre-summary", requireUser, async (req: any, res) => {
     }
 
     const sb = req.supabase;
-    const [{ data: entriesRows }, { data: categoryRows }] = await Promise.all([
-      sb.from("finance_entries")
-        .select("type,status,value,category_id")
-        .eq("tenant_id", tenantId)
-        .gte("date_normalized", startDate)
-        .lte("date_normalized", endDate),
-      sb.from("finance_categories")
-        .select("id,subtipo")
-        .eq("tenant_id", tenantId),
+    const [entries, categoryRows] = await Promise.all([
+      fetchAllRowsPaginated(sb, "finance_entries", "type,status,value,category_id",
+        (q) => q.eq("tenant_id", tenantId).gte("date_normalized", startDate).lte("date_normalized", endDate)) as Promise<{ type: string; status: string; value: number; category_id: string | null }[]>,
+      fetchAllRowsPaginated(sb, "finance_categories", "id,subtipo", (q) => q.eq("tenant_id", tenantId)),
     ]);
 
-    const entries = (entriesRows || []) as { type: string; status: string; value: number; category_id: string | null }[];
     const categoriesMap = new Map((categoryRows || []).map((c: any) => [c.id, c]));
 
     const dreTipoDe = (e: (typeof entries)[number]) => {
@@ -860,10 +873,8 @@ app.get("/api/finance/performance-mensal-summary", requireUser, async (req: any,
     const startDate = `${months[0].y}-${String(months[0].m + 1).padStart(2, "0")}-01`;
 
     const sb = req.supabase;
-    const { data: rows } = await sb.from("finance_entries")
-      .select("type,value,date_normalized")
-      .eq("tenant_id", tenantId).eq("status", "Pago")
-      .gte("date_normalized", startDate);
+    const rows = await fetchAllRowsPaginated(sb, "finance_entries", "type,value,date_normalized",
+      (q) => q.eq("tenant_id", tenantId).eq("status", "Pago").gte("date_normalized", startDate));
 
     const byMonth = new Map<string, { receita: number; despesa: number }>();
     for (const r of (rows || []) as { type: string; value: number; date_normalized: string | null }[]) {
@@ -917,17 +928,14 @@ app.get("/api/finance/performance-anual-summary", requireUser, async (req: any, 
     }
 
     const sb = req.supabase;
-    const [{ data: entryRows }, { data: categoryRows }] = await Promise.all([
-      sb.from("finance_entries")
-        .select("id,type,value,description,category,category_id,date_normalized")
-        .eq("tenant_id", tenantId).eq("status", "Pago")
-        .gte("date_normalized", `${ano - 1}-01-01`)
-        .lte("date_normalized", `${ano}-12-31`),
-      sb.from("finance_categories").select("id,subtipo").eq("tenant_id", tenantId),
+    type PerfEntry = { id: string; type: string; value: number; description: string | null; category: string | null; category_id: string | null; date_normalized: string | null };
+    const [entryRows, categoryRows] = await Promise.all([
+      fetchAllRowsPaginated(sb, "finance_entries", "id,type,value,description,category,category_id,date_normalized",
+        (q) => q.eq("tenant_id", tenantId).eq("status", "Pago").gte("date_normalized", `${ano - 1}-01-01`).lte("date_normalized", `${ano}-12-31`)) as Promise<PerfEntry[]>,
+      fetchAllRowsPaginated(sb, "finance_categories", "id,subtipo", (q) => q.eq("tenant_id", tenantId)),
     ]);
 
     const categoriesMap = new Map((categoryRows || []).map((c: any) => [c.id, c]));
-    type PerfEntry = { id: string; type: string; value: number; description: string | null; category: string | null; category_id: string | null; date_normalized: string | null };
     const dreTipoDe = (e: PerfEntry) => {
       if (e.type === "Receber") return "RECEBIMENTO";
       const cat = e.category_id ? categoriesMap.get(e.category_id) : undefined;
@@ -1007,10 +1015,8 @@ app.get("/api/finance/fluxo-caixa-summary", requireUser, async (req: any, res) =
     }
 
     const sb = req.supabase;
-    const { data: rows } = await sb.from("finance_entries")
-      .select("type,value,date_normalized")
-      .eq("tenant_id", tenantId).eq("status", "Pago")
-      .gte("date_normalized", startDate).lte("date_normalized", endDate);
+    const rows = await fetchAllRowsPaginated(sb, "finance_entries", "type,value,date_normalized",
+      (q) => q.eq("tenant_id", tenantId).eq("status", "Pago").gte("date_normalized", startDate).lte("date_normalized", endDate));
 
     const buckets = new Map<string, { entradas: number; saidas: number }>();
     for (const r of (rows || []) as { type: string; value: number; date_normalized: string | null }[]) {
@@ -1068,12 +1074,10 @@ app.get("/api/marketing/analytics-summary", requireUser, async (req: any, res) =
     }
 
     const sb = req.supabase;
-    const [{ data: leadsRows }, { data: entriesRows }] = await Promise.all([
-      sb.from("leads").select("status,value,source").eq("tenant_id", tenantId),
-      sb.from("finance_entries").select("type,status,value,category").eq("tenant_id", tenantId),
+    const [leadsAll, entries] = await Promise.all([
+      fetchAllRowsPaginated(sb, "leads", "status,value,source", (q) => q.eq("tenant_id", tenantId)) as Promise<{ status: string; value: number; source: string | null }[]>,
+      fetchAllRowsPaginated(sb, "finance_entries", "type,status,value,category", (q) => q.eq("tenant_id", tenantId)) as Promise<{ type: string; status: string; value: number; category: string | null }[]>,
     ]);
-    const leadsAll = (leadsRows || []) as { status: string; value: number; source: string | null }[];
-    const entries = (entriesRows || []) as { type: string; status: string; value: number; category: string | null }[];
 
     const closedLeadsRows = leadsAll.filter((l) => l.status === "Fechado");
     const totalRevenue = closedLeadsRows.reduce((s, l) => s + (Number(l.value) || 0), 0);
@@ -1132,11 +1136,11 @@ app.get("/api/crm/relatorios-executivos-summary", requireUser, async (req: any, 
     }
 
     const sb = req.supabase;
-    const [{ data: leadsRows }, { data: financeRows }, { data: tasksRows }, { data: contractsRows }] = await Promise.all([
-      sb.from("leads").select("status,value,seller,date").eq("tenant_id", tenantId),
-      sb.from("finance_entries").select("type,status,value,date").eq("tenant_id", tenantId),
-      sb.from("tasks").select("status,due_date").eq("tenant_id", tenantId),
-      sb.from("contracts").select("status,mrr_value,value").eq("tenant_id", tenantId),
+    const [leadsAll, financeAll, tasksAll, contractsAll] = await Promise.all([
+      fetchAllRowsPaginated(sb, "leads", "status,value,seller,date", (q) => q.eq("tenant_id", tenantId)) as Promise<{ status: string; value: any; seller: string | null; date: string | null }[]>,
+      fetchAllRowsPaginated(sb, "finance_entries", "type,status,value,date", (q) => q.eq("tenant_id", tenantId)) as Promise<{ type: string; status: string; value: number; date: string | null }[]>,
+      fetchAllRowsPaginated(sb, "tasks", "status,due_date", (q) => q.eq("tenant_id", tenantId)) as Promise<{ status: string; due_date: string | null }[]>,
+      fetchAllRowsPaginated(sb, "contracts", "status,mrr_value,value", (q) => q.eq("tenant_id", tenantId)) as Promise<{ status: string; mrr_value: number | null; value: number | null }[]>,
     ]);
 
     const now = new Date();
@@ -1164,11 +1168,6 @@ app.get("/api/crm/relatorios-executivos-summary", requireUser, async (req: any, 
         return true;
       }
     };
-
-    const leadsAll = (leadsRows || []) as { status: string; value: any; seller: string | null; date: string | null }[];
-    const financeAll = (financeRows || []) as { type: string; status: string; value: number; date: string | null }[];
-    const tasksAll = (tasksRows || []) as { status: string; due_date: string | null }[];
-    const contractsAll = (contractsRows || []) as { status: string; mrr_value: number | null; value: number | null }[];
 
     const pLeads = leadsAll.filter((l) => isWithin(l.date));
     const pFinance = financeAll.filter((f) => isWithin(f.date));
@@ -1249,8 +1248,7 @@ app.get("/api/crm/dashboard-performance-summary", requireUser, async (req: any, 
     }
 
     const sb = req.supabase;
-    const { data: rows } = await sb.from("leads").select('status,value,"scoreIA",created_at').eq("tenant_id", tenantId);
-    const leadsAll = (rows || []) as { status: string; value: any; scoreIA: number | null; created_at: string | null }[];
+    const leadsAll = await fetchAllRowsPaginated(sb, "leads", 'status,value,"scoreIA",created_at', (q) => q.eq("tenant_id", tenantId)) as { status: string; value: any; scoreIA: number | null; created_at: string | null }[];
 
     const now = new Date();
     const performanceData = Array.from({ length: 6 }, (_, i) => {
@@ -1313,8 +1311,7 @@ app.get("/api/clinica/estatisticas-summary", requireUser, async (req: any, res) 
     }
 
     const sb = req.supabase;
-    const { data: rows } = await sb.from("appointments").select("patient,specialty,status").eq("tenant_id", tenantId);
-    const appointmentsAll = (rows || []) as { patient: string; specialty: string | null; status: string }[];
+    const appointmentsAll = await fetchAllRowsPaginated(sb, "appointments", "patient,specialty,status", (q) => q.eq("tenant_id", tenantId)) as { patient: string; specialty: string | null; status: string }[];
 
     const totalPacientes = new Set(appointmentsAll.map((a) => a.patient)).size;
     const total = appointmentsAll.length;
@@ -1363,11 +1360,10 @@ app.get("/api/clinica/faturamento-summary", requireUser, async (req: any, res) =
     }
 
     const sb = req.supabase;
-    const [{ data: entryRows }, { count: appointmentsCount }] = await Promise.all([
-      sb.from("finance_entries").select("status,value,date,category").eq("tenant_id", tenantId).eq("type", "Receber"),
+    const [receivables, { count: appointmentsCount }] = await Promise.all([
+      fetchAllRowsPaginated(sb, "finance_entries", "status,value,date,category", (q) => q.eq("tenant_id", tenantId).eq("type", "Receber")) as Promise<{ status: string; value: number; date: string | null; category: string | null }[]>,
       sb.from("appointments").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
     ]);
-    const receivables = (entryRows || []) as { status: string; value: number; date: string | null; category: string | null }[];
 
     const totalBilled = receivables.reduce((s, f) => s + (Number(f.value) || 0), 0);
     const totalReceived = receivables.filter((f) => f.status === "Pago").reduce((s, f) => s + (Number(f.value) || 0), 0);
@@ -1433,8 +1429,7 @@ app.get("/api/clinica/painel-geral-summary", requireUser, async (req: any, res) 
     }
 
     const sb = req.supabase;
-    const { data: rows } = await sb.from("appointments").select("date,status,dr_name").eq("tenant_id", tenantId);
-    const appointmentsAll = (rows || []) as { date: string | null; status: string; dr_name: string | null }[];
+    const appointmentsAll = await fetchAllRowsPaginated(sb, "appointments", "date,status,dr_name", (q) => q.eq("tenant_id", tenantId)) as { date: string | null; status: string; dr_name: string | null }[];
 
     const totalAppointments = appointmentsAll.length;
     const confirmed = appointmentsAll.filter((a) => a.status === "Confirmado" || a.status === "Em Atendimento").length;
@@ -1496,8 +1491,7 @@ app.get("/api/education/mensalidades-summary", requireUser, async (req: any, res
     }
 
     const sb = req.supabase;
-    const { data: rows } = await sb.from("mensalidades").select("status,valor,data_pagamento").eq("tenant_id", tenantId);
-    const mensalidadesAll = (rows || []) as { status: string; valor: number; data_pagamento: string | null }[];
+    const mensalidadesAll = await fetchAllRowsPaginated(sb, "mensalidades", "status,valor,data_pagamento", (q) => q.eq("tenant_id", tenantId)) as { status: string; valor: number; data_pagamento: string | null }[];
 
     const currentMonth = new Date().toISOString().substring(0, 7);
     const totalPendente = mensalidadesAll.filter((m) => m.status === "Pendente").reduce((s, m) => s + (Number(m.valor) || 0), 0);
@@ -1535,14 +1529,21 @@ app.get("/api/education/mensalidades-summary", requireUser, async (req: any, res
  * gera ~7,6MB de JSON — acima do limite de resposta de função serverless da
  * Vercel (~4,5MB), o que faria a prévia FALHAR pra esse tenant exatamente
  * quando ele mais precisa dela. `customFields` sozinho é 70% desse peso.
- * Com as colunas abaixo (as que o board/lista de fato usa), os mesmos 4.373
- * leads caem pra ~2,7MB. TTL curto (20s, vs. 60s nos resumos de métricas —
- * esta tabela muda o tempo todo) e cap em 8000 leads mais recentes (cobre o
- * maior tenant hoje com ~80% de folga; a busca real, completa e sem cap,
- * preenche o resto em poucos segundos pro raro tenant que passar disso).
- * Nenhuma mutação passa por aqui — create/update/delete de lead continuam
- * indo direto pro Supabase com atualização otimista, então a sessão do
- * próprio usuário nunca depende deste cache pra ver a própria edição.
+ *
+ * O `.limit()` abaixo é só documentação da intenção — o projeto Supabase
+ * tem um teto de 1000 linhas por resposta (db-max-rows do PostgREST) que
+ * ignora silenciosamente qualquer limit/range maior (confirmado testando
+ * direto: pedindo 10.000 linhas, voltaram exatas 1000, sem erro nem aviso —
+ * foi esse teto que fez o "Leads Ativos" do dashboard mostrar 1000 em vez
+ * dos 4.373 reais). A prévia SEMPRE volta no máximo 1000 leads mais
+ * recentes — aceitável aqui porque é só isso mesmo, uma prévia descartável;
+ * a busca real (fetchAllRowsForTenant, paginada de verdade com múltiplas
+ * requisições) é quem tem a palavra final e não sofre desse teto.
+ * TTL curto (20s, vs. 60s nos resumos de métricas — esta tabela muda o
+ * tempo todo). Nenhuma mutação passa por aqui — create/update/delete de
+ * lead continuam indo direto pro Supabase com atualização otimista, então
+ * a sessão do próprio usuário nunca depende deste cache pra ver a própria
+ * edição.
  */
 // Colunas camelCase precisam vir entre aspas duplas no select do PostgREST
 // (mesma convenção já usada pra "scoreIA" nos resumos de dashboard acima).
@@ -1583,9 +1584,11 @@ app.get("/api/crm/leads-list", requireUser, async (req: any, res) => {
 
 /**
  * Preview cacheado de `clientes` pra src/pages/crm/Clientes.tsx — mesma
- * lógica do preview de leads acima (Redis, TTL curto de 20s, cap em 2000
- * mais recentes, nunca é a fonte de verdade). A tela continua com sua
- * própria busca completa sem cap, que sempre sobrescreve quando termina.
+ * lógica do preview de leads acima (Redis, TTL curto de 20s, nunca é a
+ * fonte de verdade). Na prática volta no máximo 1000 linhas — teto do
+ * projeto Supabase (db-max-rows), não do `.limit()` abaixo (ver comentário
+ * detalhado no preview de leads). A tela continua com sua própria busca
+ * completa sem esse teto, que sempre sobrescreve quando termina.
  */
 app.get("/api/crm/clientes-list", requireUser, async (req: any, res) => {
   try {
@@ -1623,7 +1626,9 @@ app.get("/api/crm/clientes-list", requireUser, async (req: any, res) => {
  * tenant e voltar na MESMA aba. Este preview cobre a lacuna que aquele não
  * cobre: o primeiro carregamento de uma aba/dispositivo novo, compartilhado
  * entre usuários do mesmo tenant. TTL um pouco mais folgado (30s) porque
- * catálogo de produto muda com menos frequência que lead.
+ * catálogo de produto muda com menos frequência que lead. Na prática volta
+ * no máximo 1000 linhas — teto do projeto Supabase (db-max-rows), não do
+ * `.limit()` abaixo (ver comentário detalhado no preview de leads).
  */
 app.get("/api/operative/produtos-list", requireUser, async (req: any, res) => {
   try {
@@ -1661,7 +1666,9 @@ app.get("/api/operative/produtos-list", requireUser, async (req: any, res) => {
  * reunião) que uma visão de agenda/calendário não precisa pra desenhar os
  * blocos de evento; excluídas aqui pela mesma razão do customFields em
  * leads (mesmo medindo ~2,9MB pra tudo hoje, essas colunas de texto livre
- * são as que mais podem crescer sem aviso).
+ * são as que mais podem crescer sem aviso). Na prática volta no máximo 1000
+ * linhas — teto do projeto Supabase (db-max-rows), não do `.limit()` abaixo
+ * (ver comentário detalhado no preview de leads).
  */
 const REUNIOES_PREVIEW_COLUMNS = [
   "id", "tenant_id", `"leadId"`, `"leadName"`, `"companyName"`, `"closerName"`,
@@ -1706,7 +1713,10 @@ app.get("/api/crm/reunioes-list", requireUser, async (req: any, res) => {
  * Exclui colunas de baixo uso em lista (notes, recurring_frequency,
  * recurring_group_id, is_recurring, competencia_date, division_group_id,
  * numero_documento) — nenhuma é volumosa hoje, mas reduz o overhead fixo de
- * nome de coluna repetido por linha e dá mais margem pra crescer.
+ * nome de coluna repetido por linha e dá mais margem pra crescer. Na
+ * prática volta no máximo 1000 linhas — teto do projeto Supabase
+ * (db-max-rows), não do `.limit()` abaixo (ver comentário detalhado no
+ * preview de leads).
  */
 const FINANCE_ENTRIES_PREVIEW_COLUMNS = [
   "id", "tenant_id", "description", "category", "category_id", "status", "value", "type",
