@@ -1524,6 +1524,48 @@ app.get("/api/education/mensalidades-summary", requireUser, async (req: any, res
   }
 });
 
+/**
+ * Preview cacheado de `leads` pro Pipeline/Kanban (src/contexts/DataContext.tsx).
+ * NÃO é a fonte de verdade — é só uma prévia rápida (Redis, TTL curto) pra
+ * pintar a tela antes da busca paginada real (fetchAllRowsForTenant, que
+ * continua rodando em paralelo e sempre sobrescreve isso quando termina).
+ * Por isso: (1) TTL curto (20s) em vez dos 60s usados nos resumos de
+ * métricas — esta tabela muda o tempo todo; (2) cap em 2000 leads mais
+ * recentes — cobre a esmagadora maioria dos tenants por completo, e pro
+ * raro tenant que passa disso, a prévia só fica incompleta por alguns
+ * segundos até a busca real (sem cap) preencher o resto; (3) nenhuma
+ * mutação passa por aqui — create/update/delete de lead continuam indo
+ * direto pro Supabase com atualização otimista, então a sessão do próprio
+ * usuário nunca depende deste cache pra ver a própria edição.
+ */
+app.get("/api/crm/leads-list", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `crm-leads-list:tenant:${tenantId}`;
+
+    const cached = await cacheGet<any[]>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json({ data: cached });
+    }
+
+    const sb = req.supabase;
+    const { data, error } = await sb.from("leads").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(2000);
+    if (error) {
+      console.error("[crm/leads-list]", error.message);
+      return res.status(500).json({ error: "Erro ao buscar leads." });
+    }
+
+    await cacheSet(cacheKey, data || [], 20);
+    res.setHeader("X-Cache", "MISS");
+    return res.json({ data: data || [] });
+  } catch (err: any) {
+    console.error("[crm/leads-list]", err?.message);
+    return res.status(500).json({ error: "Erro ao buscar leads." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

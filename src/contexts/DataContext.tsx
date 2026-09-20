@@ -874,6 +874,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [tenantId]);
 
+  // Marca quando a busca AUTORITATIVA de leads (fetchAllRowsForTenant,
+  // paginada, sem cap) já terminou — usado pela prévia cacheada abaixo pra
+  // nunca sobrescrever dado fresco com uma prévia potencialmente mais velha
+  // chegando atrasada.
+  const leadsAuthoritativeLoadedRef = React.useRef(false);
+
   useEffect(() => {
     // Agora que a carga pagina de verdade (várias requisições sequenciais
     // por tabela em vez de uma só), fica bem mais fácil um master trocar de
@@ -909,6 +915,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // de um tenant com a tela de outro, mesmo que a carga nova demore ou
     // falhe parcialmente.
     setLeads([]);
+    leadsAuthoritativeLoadedRef.current = false;
     setTasks([]);
     setContracts([]);
     setLeadActivities([]);
@@ -985,7 +992,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             promise: fetchAllRowsForTenant('leads', tenantId),
             // `data` pode vir parcial (algumas páginas obtidas, uma falhou mesmo
             // após retry) — ainda assim é melhor que a lista vazia/anterior.
-            apply: (res) => { if (res.data) setLeads((res.data as any[]).map(mapLeadRow) as Lead[]); },
+            apply: (res) => {
+              if (res.data) setLeads((res.data as any[]).map(mapLeadRow) as Lead[]);
+              leadsAuthoritativeLoadedRef.current = true;
+            },
           },
           { name: 'tasks', promise: fetchAllRowsForTenant('tasks', tenantId), apply: (res) => { if (res.data) setTasks(res.data as Task[]); } },
           // Faltava esse hidrate — `contracts` nunca era populado a partir do
@@ -1064,6 +1074,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           { name: 'finance_commission_entries', promise: fetchAllRowsForTenant('finance_commission_entries', tenantId), apply: (res) => { if (res.data) setFinanceCommissionEntries(res.data); } },
           { name: 'indicacoes', promise: fetchAllRowsForTenant('indicacoes', tenantId), apply: (res) => { if (res.data) setIndicacoes(res.data as Indicacao[]); } },
         ];
+
+        // Prévia rápida de `leads` via GET /api/crm/leads-list (cache Redis,
+        // TTL curto) — pinta o Pipeline/Kanban antes da busca paginada real
+        // (job 'leads' acima) terminar. Roda em paralelo, nunca substitui a
+        // busca real, e é descartada se a autoritativa já tiver chegado
+        // primeiro (mais comum em tenants pequenos, onde a busca real já é
+        // rápida) ou se o tenant tiver mudado nesse meio tempo.
+        apiFetch(`/api/crm/leads-list?tenantId=${encodeURIComponent(tenantId)}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((json) => {
+            if (cancelled || leadsAuthoritativeLoadedRef.current || !json?.data) return;
+            setLeads((json.data as any[]).map(mapLeadRow) as Lead[]);
+          })
+          .catch(() => { /* silencioso — a busca autoritativa (job 'leads' acima) segue normalmente */ });
 
         // Falha total (retries esgotados, ex.: timeout do banco sob carga)
         // resolvia silenciosamente com `data: []` — a tela ficava mostrando
