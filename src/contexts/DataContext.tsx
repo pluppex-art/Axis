@@ -813,12 +813,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           applyRealtimeUpsert(setLeads, payload, (r) => mapLeadRow(r) as Lead, tenantId);
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => debouncedRefetch('tasks', () => fetchTableData('tasks', setTasks)))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, (payload) => applyRealtimeUpsert(setContracts, payload, rowToContract, tenantId))
+        // NÃO usa applyRealtimeUpsert aqui de propósito: a reconciliação de
+        // propostas aceitas (syncAcceptedProposal, ~2177) depende de
+        // `contracts` no array de deps e roda um loop sobre TODAS as
+        // propostas aceitas (~3288 em produção) toda vez que essa referência
+        // muda. Patch incremental atualiza `contracts` instantaneamente a
+        // cada evento — cada UPDATE de contrato disparava a reconciliação de
+        // novo, que podia gerar OUTRO update, que disparava outro evento
+        // realtime, num loop de feedback quase instantâneo (visto em
+        // produção em 2026-09-20: centenas de PATCH simultâneos em
+        // /contracts, ERR_INSUFFICIENT_RESOURCES no navegador). O debounce
+        // de 1.5s do refetch completo é o que segura esse loop — mantém.
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => debouncedRefetch('contracts', fetchContracts))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_entries' }, (payload) => applyRealtimeUpsert(setFinanceEntries, payload, (r) => r as FinanceEntry, tenantId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'squads' }, () => debouncedRefetch('squads', fetchSquads))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => debouncedRefetch('appointments', fetchAppointments))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => debouncedRefetch('products', fetchProducts))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, (payload) => applyRealtimeUpsert(setProposals, payload, (r) => r, tenantId))
+        // Mesmo motivo do handler de `contracts` acima — `proposals` também
+        // está no array de deps da reconciliação.
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, () => debouncedRefetch('proposals', () => fetchTableData('proposals', setProposals)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'proposal_items' }, (payload) => applyRealtimeUpsert(setProposalItems, payload, (r) => r, tenantId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'turmas' }, () => debouncedRefetch('turmas', () => fetchTableData('turmas', setTurmas)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => debouncedRefetch('students', () => fetchTableData('students', setStudents)))
