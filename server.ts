@@ -1410,6 +1410,68 @@ app.get("/api/clinica/faturamento-summary", requireUser, async (req: any, res) =
   }
 });
 
+const PAINEL_WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+/**
+ * Painel Geral da Clínica (src/pages/clinica/PainelGeral.tsx) — KPIs,
+ * distribuição por dia da semana e ranking de médicos, todos
+ * order-independent (dia da semana vem de getDay(), não de nome
+ * localizado). activeToday (lista de agendamentos de hoje) fica de fora —
+ * são registros completos pro painel de "jornada do paciente", lista
+ * pequena, sem ganho real em cachear.
+ */
+app.get("/api/clinica/painel-geral-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `clinica-painel-geral:tenant:${tenantId}:summary`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const { data: rows } = await sb.from("appointments").select("date,status,dr_name").eq("tenant_id", tenantId);
+    const appointmentsAll = (rows || []) as { date: string | null; status: string; dr_name: string | null }[];
+
+    const totalAppointments = appointmentsAll.length;
+    const confirmed = appointmentsAll.filter((a) => a.status === "Confirmado" || a.status === "Em Atendimento").length;
+    const finalized = appointmentsAll.filter((a) => a.status === "Finalizado").length;
+    const late = appointmentsAll.filter((a) => a.status === "Atrasado").length;
+    const occupancyPct = totalAppointments > 0 ? Math.min(100, Math.round((confirmed / totalAppointments) * 100)) : 0;
+
+    const clinicData = PAINEL_WEEKDAYS.map((day, dayIdx) => {
+      const dayApts = appointmentsAll.filter((a) => {
+        if (!a.date) return false;
+        const d = new Date(a.date);
+        return !isNaN(d.getTime()) && d.getDay() === dayIdx;
+      });
+      return { name: day, consultas: dayApts.length, noShow: dayApts.filter((a) => a.status === "Atrasado").length };
+    });
+
+    const byDr = new Map<string, number>();
+    for (const a of appointmentsAll) {
+      const dr = a.dr_name || "Sem especialista";
+      byDr.set(dr, (byDr.get(dr) || 0) + 1);
+    }
+    const doctorRanking = Array.from(byDr.entries())
+      .map(([name, patients]) => ({ name, patients }))
+      .sort((a, b) => b.patients - a.patients)
+      .slice(0, 3);
+
+    const summary = { totalAppointments, confirmed, finalized, late, occupancyPct, clinicData, doctorRanking, cachedAt: new Date().toISOString() };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[clinica/painel-geral-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular painel geral da clínica." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

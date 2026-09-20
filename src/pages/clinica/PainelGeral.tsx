@@ -1,15 +1,17 @@
 import type { ComponentType } from 'react';
 import { Calendar, Users, TrendingUp, Star, ChevronDown } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from "../../components/ui/button";
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { BookingModal } from "./components/BookingModal";
 import { PainelKPIs } from "./components/PainelGeral/PainelKPIs";
 import { PainelCharts } from "./components/PainelGeral/PainelCharts";
 import { PainelRanking } from "./components/PainelGeral/PainelRanking";
 import { PainelInsights } from "./components/PainelGeral/PainelInsights";
 import { Plus } from 'lucide-react';
+import { apiFetch } from "../../lib/apiClient";
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -18,19 +20,41 @@ type Stat = {
   icon: ComponentType<{ className?: string }>; color: string; bg: string;
 };
 
+interface PainelGeralServerSummary {
+  totalAppointments: number; confirmed: number; finalized: number; late: number; occupancyPct: number;
+  clinicData: { name: string; consultas: number; noShow: number }[];
+  doctorRanking: { name: string; patients: number }[];
+}
+
 export default function ClinicasDashboard() {
   const { leads, addTask, appointments } = useData();
+  const { activeTenantId } = useAuth();
   const [view, setView] = useState<'geral' | 'unidades' | 'operacional'>('geral');
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
-  const totalAppointments = appointments.length;
-  const confirmed = appointments.filter(a => a.status === 'Confirmado' || a.status === 'Em Atendimento').length;
-  const finalized = appointments.filter(a => a.status === 'Finalizado').length;
-  const late = appointments.filter(a => a.status === 'Atrasado').length;
-  const occupancyPct = totalAppointments > 0 ? Math.min(100, Math.round((confirmed / totalAppointments) * 100)) : 0;
+  // KPIs + distribuição por dia da semana + ranking de médicos vêm de um
+  // cache no Redis-SPY quando disponível (GET /api/clinica/painel-geral-summary),
+  // mesma fórmula. activeToday (lista de agendamentos) continua client-side.
+  const [serverSummary, setServerSummary] = useState<PainelGeralServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/clinica/painel-geral-summary?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
 
-  const clinicData = useMemo(() => WEEKDAYS.map(day => {
+  const clientTotalAppointments = appointments.length;
+  const clientConfirmed = appointments.filter(a => a.status === 'Confirmado' || a.status === 'Em Atendimento').length;
+  const clientFinalized = appointments.filter(a => a.status === 'Finalizado').length;
+  const clientLate = appointments.filter(a => a.status === 'Atrasado').length;
+  const clientOccupancyPct = clientTotalAppointments > 0 ? Math.min(100, Math.round((clientConfirmed / clientTotalAppointments) * 100)) : 0;
+
+  const clientClinicData = useMemo(() => WEEKDAYS.map(day => {
     const dayApts = appointments.filter(a => {
       try { const d = new Date(a.date); return !isNaN(d.getTime()) && WEEKDAYS[d.getDay()] === day; }
       catch { return false; }
@@ -38,7 +62,7 @@ export default function ClinicasDashboard() {
     return { name: day, consultas: dayApts.length, noShow: dayApts.filter(a => a.status === 'Atrasado').length };
   }), [appointments]);
 
-  const doctorRanking = useMemo(() => {
+  const clientDoctorRanking = useMemo(() => {
     const byDr: Record<string, { name: string; patients: number }> = {};
     appointments.forEach(a => {
       const dr = a.drName || 'Sem especialista';
@@ -47,6 +71,14 @@ export default function ClinicasDashboard() {
     });
     return Object.values(byDr).sort((a, b) => b.patients - a.patients).slice(0, 3);
   }, [appointments]);
+
+  const totalAppointments = serverSummary?.totalAppointments ?? clientTotalAppointments;
+  const confirmed = serverSummary?.confirmed ?? clientConfirmed;
+  const finalized = serverSummary?.finalized ?? clientFinalized;
+  const late = serverSummary?.late ?? clientLate;
+  const occupancyPct = serverSummary?.occupancyPct ?? clientOccupancyPct;
+  const clinicData = serverSummary?.clinicData ?? clientClinicData;
+  const doctorRanking = serverSummary?.doctorRanking ?? clientDoctorRanking;
 
   const today = new Date().toISOString().split('T')[0];
   const activeToday = appointments.filter(a => a.date === today).slice(0, 4);
