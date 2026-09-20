@@ -897,6 +897,58 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setContractsLoaded(false);
     setProposalsLoaded(false);
 
+    // BUG real (reportado: dados financeiros de OUTRO tenant aparecendo na
+    // tela — conta master/parceiro trocando de empresa, ex.: Pluppex →
+    // To Na Pista): nada aqui limpava o estado das tabelas de negócio no
+    // INÍCIO da troca de tenant — cada `apply()` só sobrescrevia quando a
+    // busca daquela tabela específica terminava. Enquanto isso não
+    // acontecia (rede lenta, erro, retry), a tela continuava mostrando os
+    // dados do tenant ANTERIOR como se fossem do tenant atual — pior ainda
+    // se alguma busca falhasse de vez (o dado antigo nunca sumia). Zera
+    // tudo aqui, ANTES de disparar qualquer fetch, pra nunca misturar dado
+    // de um tenant com a tela de outro, mesmo que a carga nova demore ou
+    // falhe parcialmente.
+    setLeads([]);
+    setTasks([]);
+    setContracts([]);
+    setLeadActivities([]);
+    setFinanceEntries([]);
+    setAppointments([]);
+    setSquads([]);
+    setNotifications([]);
+    setMarketingLandingPages([]);
+    setProducts([]);
+    setProposals([]);
+    setProposalItems([]);
+    setTurmas([]);
+    setStudents([]);
+    setColaboradores([]);
+    setSquadMetas([]);
+    setCertificates([]);
+    setCargos([]);
+    setClienteBase([]);
+    setReunioes([]);
+    setFinancialGoals([]);
+    setFunis([]);
+    setEmpresaFiliais([]);
+    setScheduledExports([]);
+    setNichos([]);
+    nicheModulesRef.current = { tenantId: null, started: false };
+    setFinanceCategories([]);
+    setFinanceBankAccounts([]);
+    setFinanceCentrosCusto([]);
+    setFinanceAttachments([]);
+    setFinanceTransfers([]);
+    setFinancePeriodLocks([]);
+    setFinanceAuditLog([]);
+    setFinanceCommissionEntries([]);
+    setMarketingAutomations([]);
+    setMarketingForms([]);
+    setMarketingContent([]);
+    setMarketingCampaigns([]);
+    setEducationContent([]);
+    setAuroraAgents([]);
+
     async function loadInitialData() {
       // Aguarda a sessão resolver e o tenant ser conhecido antes de buscar
       // dados — evita disparar a carga como "anon" (RLS devolveria tudo
