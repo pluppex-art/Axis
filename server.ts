@@ -832,6 +832,157 @@ app.get("/api/finance/dre-summary", requireUser, async (req: any, res) => {
   }
 });
 
+const PERF_MONTH_NAMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+
+// Performance Mensal — mesma fórmula de FinanceiroPerformanceMensal.tsx:
+// regime de CAIXA (status "Pago"), últimos N meses (6/12/24) ancorados no
+// mês corrente do servidor.
+app.get("/api/finance/performance-mensal-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+
+    const janelaParam = Number(req.query.janela);
+    const janela = [6, 12, 24].includes(janelaParam) ? janelaParam : 12;
+    const cacheKey = `finance-performance-mensal:tenant:${tenantId}:janela:${janela}`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const now = new Date();
+    const months = Array.from({ length: janela }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (janela - 1 - i), 1);
+      return { y: d.getFullYear(), m: d.getMonth(), label: `${PERF_MONTH_NAMES[d.getMonth()]}/${String(d.getFullYear()).slice(2)}` };
+    });
+    const startDate = `${months[0].y}-${String(months[0].m + 1).padStart(2, "0")}-01`;
+
+    const sb = req.supabase;
+    const { data: rows } = await sb.from("finance_entries")
+      .select("type,value,date_normalized")
+      .eq("tenant_id", tenantId).eq("status", "Pago")
+      .gte("date_normalized", startDate);
+
+    const byMonth = new Map<string, { receita: number; despesa: number }>();
+    for (const r of (rows || []) as { type: string; value: number; date_normalized: string | null }[]) {
+      if (!r.date_normalized) continue;
+      const key = r.date_normalized.slice(0, 7);
+      const cur = byMonth.get(key) || { receita: 0, despesa: 0 };
+      if (r.type === "Receber") cur.receita += Number(r.value) || 0;
+      else if (r.type === "Pagar") cur.despesa += Number(r.value) || 0;
+      byMonth.set(key, cur);
+    }
+
+    const meses = months.map(({ y, m, label }) => {
+      const v = byMonth.get(`${y}-${String(m + 1).padStart(2, "0")}`) || { receita: 0, despesa: 0 };
+      return { label, receita: v.receita, despesa: v.despesa, resultado: v.receita - v.despesa };
+    });
+
+    const receitaTotal = meses.reduce((s, m) => s + m.receita, 0);
+    const despesaTotal = meses.reduce((s, m) => s + m.despesa, 0);
+    const melhorMes = meses.reduce((best, m) => (!best || m.resultado > best.resultado ? m : best), meses[0]);
+
+    const summary = { meses, receitaTotal, despesaTotal, resultadoTotal: receitaTotal - despesaTotal, melhorMes, cachedAt: new Date().toISOString() };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[finance/performance-mensal-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular performance mensal." });
+  }
+});
+
+const PERF_DRE_TIPO_LABEL: Record<string, string> = { DESPESA_FIXA: "Despesas Fixas", DESPESA_VARIAVEL: "Despesas Variáveis", PESSOAS: "Pessoal", IMPOSTOS: "Impostos" };
+
+// Performance Anual — mesma fórmula de FinanceiroPerformanceAnual.tsx:
+// regime de CAIXA, ano vs. ano anterior. Saldo das contas (saldosContas)
+// fica de fora, igual à Visão Geral — depende de financeBankAccounts +
+// financeTransfers, domínio à parte, sempre client-side.
+app.get("/api/finance/performance-anual-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+
+    const anoParam = Number(req.query.ano);
+    const ano = Number.isInteger(anoParam) && anoParam > 2000 && anoParam < 2100 ? anoParam : new Date().getFullYear();
+    const cacheKey = `finance-performance-anual:tenant:${tenantId}:ano:${ano}`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const [{ data: entryRows }, { data: categoryRows }] = await Promise.all([
+      sb.from("finance_entries")
+        .select("id,type,value,description,category,category_id,date_normalized")
+        .eq("tenant_id", tenantId).eq("status", "Pago")
+        .gte("date_normalized", `${ano - 1}-01-01`)
+        .lte("date_normalized", `${ano}-12-31`),
+      sb.from("finance_categories").select("id,subtipo").eq("tenant_id", tenantId),
+    ]);
+
+    const categoriesMap = new Map((categoryRows || []).map((c: any) => [c.id, c]));
+    type PerfEntry = { id: string; type: string; value: number; description: string | null; category: string | null; category_id: string | null; date_normalized: string | null };
+    const dreTipoDe = (e: PerfEntry) => {
+      if (e.type === "Receber") return "RECEBIMENTO";
+      const cat = e.category_id ? categoriesMap.get(e.category_id) : undefined;
+      return (cat as any)?.subtipo ?? "DESPESA_VARIAVEL";
+    };
+
+    const all = (entryRows || []) as PerfEntry[];
+    const atual = all.filter((e) => e.date_normalized && e.date_normalized.slice(0, 4) === String(ano));
+    const anterior = all.filter((e) => e.date_normalized && e.date_normalized.slice(0, 4) === String(ano - 1));
+
+    const somaTipo = (arr: PerfEntry[], type: string) => arr.filter((e) => e.type === type).reduce((s, e) => s + (Number(e.value) || 0), 0);
+    const receitaAtual = somaTipo(atual, "Receber"), receitaAnterior = somaTipo(anterior, "Receber");
+    const despesaAtual = somaTipo(atual, "Pagar"), despesaAnterior = somaTipo(anterior, "Pagar");
+
+    const maioresGastos = [...atual].filter((e) => e.type === "Pagar").sort((a, b) => b.value - a.value).slice(0, 5)
+      .map((e) => ({ id: e.id, description: e.description, value: Number(e.value) || 0 }));
+    const maioresReceitas = [...atual].filter((e) => e.type === "Receber").sort((a, b) => b.value - a.value).slice(0, 5)
+      .map((e) => ({ id: e.id, description: e.description, value: Number(e.value) || 0 }));
+
+    const porCategoriaReceita = new Map<string, number>();
+    atual.filter((e) => e.type === "Receber").forEach((e) => {
+      const k = e.category || "Sem categoria";
+      porCategoriaReceita.set(k, (porCategoriaReceita.get(k) || 0) + (Number(e.value) || 0));
+    });
+
+    const porTipoDespesa = new Map<string, number>();
+    atual.filter((e) => e.type === "Pagar").forEach((e) => {
+      const t = dreTipoDe(e);
+      porTipoDespesa.set(t, (porTipoDespesa.get(t) || 0) + (Number(e.value) || 0));
+    });
+
+    const linhasTipo = (["DESPESA_FIXA", "DESPESA_VARIAVEL", "PESSOAS", "IMPOSTOS"] as const).map((tipo) => {
+      const val = porTipoDespesa.get(tipo) || 0;
+      const valAnt = anterior.filter((e) => e.type === "Pagar" && dreTipoDe(e) === tipo).reduce((s, e) => s + (Number(e.value) || 0), 0);
+      return { label: PERF_DRE_TIPO_LABEL[tipo], atual: val, anterior: valAnt };
+    });
+
+    const summary = {
+      receitaAtual, receitaAnterior, despesaAtual, despesaAnterior,
+      maioresGastos, maioresReceitas,
+      donutReceita: Array.from(porCategoriaReceita.entries()).map(([name, value]) => ({ name, value })),
+      donutDespesa: Array.from(porTipoDespesa.entries()).map(([tipo, value]) => ({ name: PERF_DRE_TIPO_LABEL[tipo] || tipo, value })),
+      linhasTipo,
+      cachedAt: new Date().toISOString(),
+    };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[finance/performance-anual-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular performance anual." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

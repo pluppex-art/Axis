@@ -1,27 +1,39 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Download, Printer, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
 import { parseEntryDate } from "./lib/financeDates";
 import { dreTipoDe, categoriesById, saldoDaConta, transferenciasDaConta, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
 import { cn } from "../../lib/utils";
+import { apiFetch } from "../../lib/apiClient";
 
 const DRE_TIPO_LABEL: Record<string, string> = { DESPESA_FIXA: "Despesas Fixas", DESPESA_VARIAVEL: "Despesas Variáveis", PESSOAS: "Pessoal", IMPOSTOS: "Impostos" };
 const DONUT_COLORS = ["var(--color-success)", "var(--color-info)", "var(--color-warning)", "var(--color-danger)", "#8b5cf6", "#64748b"];
 
+interface MovimentoTop { id: string; description: string | null; value: number }
+interface LinhaTipo { label: string; atual: number; anterior: number }
+interface DonutItem { name: string; value: number }
+interface PerformanceAnualServerSummary {
+  receitaAtual: number; receitaAnterior: number; despesaAtual: number; despesaAnterior: number;
+  maioresGastos: MovimentoTop[]; maioresReceitas: MovimentoTop[];
+  donutReceita: DonutItem[]; donutDespesa: DonutItem[]; linhasTipo: LinhaTipo[];
+}
+
 export default function FinanceiroPerformanceAnual() {
   const { financeEntries, financeCategories, financeBankAccounts, financeTransfers } = useData();
+  const { activeTenantId } = useAuth();
   const { formatCurrency } = useLocalization();
   const [ano, setAno] = useState(new Date().getFullYear());
 
   const catMap = useMemo(() => categoriesById(financeCategories as FinanceCategoryLike[]), [financeCategories]);
 
-  const dadosAno = useMemo(() => {
+  const clientDadosAno = useMemo(() => {
     const doAno = (y: number) => (financeEntries as (FinanceEntryLike & any)[]).filter(e => { const d = parseEntryDate(e.date); return d && d.getFullYear() === y && e.status === "Pago"; });
     const atual = doAno(ano);
     const anterior = doAno(ano - 1);
@@ -53,6 +65,24 @@ export default function FinanceiroPerformanceAnual() {
       linhasTipo,
     };
   }, [financeEntries, catMap, ano]);
+
+  // GET /api/finance/performance-anual-summary replica o mesmo cálculo no
+  // servidor (ano vs. ano anterior, regime de caixa), cacheado 60s no
+  // Redis-SPY. Saldo das contas fica de fora (ver saldosContas abaixo) —
+  // sempre client-side, mesmo critério da Visão Geral.
+  const [serverSummary, setServerSummary] = useState<PerformanceAnualServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/finance/performance-anual-summary?tenantId=${encodeURIComponent(activeTenantId)}&ano=${ano}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side acima já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId, ano]);
+
+  const dadosAno = serverSummary ?? clientDadosAno;
 
   const saldosContas = useMemo(() => {
     return (financeBankAccounts as any[]).filter(c => !c.arquivada).map(conta => {

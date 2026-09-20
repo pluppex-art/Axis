@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -6,19 +6,27 @@ import { StatCell, StatCellRow } from "./components/StatCell";
 import { Download, Printer, TrendingUp, TrendingDown, Scale, Award } from "lucide-react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
 import { parseEntryDate } from "./lib/financeDates";
+import { apiFetch } from "../../lib/apiClient";
 
 const MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const JANELAS = [6, 12, 24] as const;
 
+interface MesPerformance { label: string; receita: number; despesa: number; resultado: number }
+interface PerformanceMensalServerSummary {
+  meses: MesPerformance[]; receitaTotal: number; despesaTotal: number; resultadoTotal: number; melhorMes: MesPerformance;
+}
+
 export default function FinanceiroPerformanceMensal() {
   const { financeEntries } = useData();
+  const { activeTenantId } = useAuth();
   const { formatCurrency } = useLocalization();
   const [janela, setJanela] = useState<(typeof JANELAS)[number]>(12);
 
-  const meses = useMemo(() => {
+  const clientMeses = useMemo(() => {
     const now = new Date();
     return Array.from({ length: janela }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (janela - 1 - i), 1);
@@ -30,12 +38,30 @@ export default function FinanceiroPerformanceMensal() {
     });
   }, [financeEntries, janela]);
 
-  const { receitaTotal, despesaTotal, resultadoTotal, melhorMes } = useMemo(() => {
-    const receitaTotal = meses.reduce((s, m) => s + m.receita, 0);
-    const despesaTotal = meses.reduce((s, m) => s + m.despesa, 0);
-    const melhorMes = meses.reduce((best, m) => (!best || m.resultado > best.resultado ? m : best), meses[0]);
+  const clientTotais = useMemo(() => {
+    const receitaTotal = clientMeses.reduce((s, m) => s + m.receita, 0);
+    const despesaTotal = clientMeses.reduce((s, m) => s + m.despesa, 0);
+    const melhorMes = clientMeses.reduce((best, m) => (!best || m.resultado > best.resultado ? m : best), clientMeses[0]);
     return { receitaTotal, despesaTotal, resultadoTotal: receitaTotal - despesaTotal, melhorMes };
-  }, [meses]);
+  }, [clientMeses]);
+
+  // GET /api/finance/performance-mensal-summary faz a mesma soma por mês no
+  // servidor (regime de caixa), cacheada 60s no Redis-SPY. Cálculo
+  // client-side acima continua como fallback.
+  const [serverSummary, setServerSummary] = useState<PerformanceMensalServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/finance/performance-mensal-summary?tenantId=${encodeURIComponent(activeTenantId)}&janela=${janela}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side acima já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId, janela]);
+
+  const meses = serverSummary?.meses ?? clientMeses;
+  const { receitaTotal, despesaTotal, resultadoTotal, melhorMes } = serverSummary ?? clientTotais;
 
   const handleExport = () => downloadCsv(`performance_mensal_${Date.now()}.csv`, ["Mês", "Receitas", "Despesas", "Resultado"], meses.map(m => [m.label, m.receita, m.despesa, m.resultado]));
 
