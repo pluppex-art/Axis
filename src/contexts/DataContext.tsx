@@ -70,15 +70,15 @@ function createLimiter(concurrency: number) {
 // Testado em produção: com 15, um erro real apareceu — log do Postgres
 // mostrou "canceling statement due to statement timeout" numa query de
 // reunioes (que sozinha leva 21ms) batendo no timeout de 8s do papel
-// `authenticated`. Isso só acontece com contenção real (CPU/locks) sob carga
-// simultânea alta, não é hipotético. Reduzido pra 10 nessa época, e depois
-// pra 6: o projeto Supabase roda no tier "Micro" (256MB shared_buffers, 60
-// max_connections) e uma rajada de ~70 requisições/min de um único tenant
-// (carga inicial de ~6 tabelas em paralelo) já foi o suficiente pra saturar
-// esse compute e derrubar TUDO em "statement timeout" (confirmado nos logs
-// do Postgres em 2026-09-19). Isso mitiga a rajada do lado do cliente — não
-// resolve o teto de capacidade do compute em si.
-const dbLimit = createLimiter(6);
+// `authenticated`. 10 ficou validado como seguro por muito tempo depois
+// disso. A rajada de timeouts de 2026-09-19 tinha DUAS causas empilhadas:
+// o compute "Micro" do Supabase saturando sob ~70 req/min, E o realtime
+// disparando refetch de tabela inteira a cada evento (uma sincronização em
+// massa gerava dezenas de refetches simultâneos). A causa do realtime foi
+// eliminada (patch incremental em vez de refetch — ver applyRealtimeUpsert),
+// então reduzir a 6 aqui também ficou excessivo: volta pro nível 10
+// validado, que já tinha rodado bem antes desse incidente específico.
+const dbLimit = createLimiter(10);
 
 async function fetchPageWithRetry(
   table: string,
@@ -957,8 +957,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           { name: 'products', promise: cachedFetchAllRowsForTenant('products', tenantId, true), apply: (res) => { if (res.data) setProducts(res.data.map(mapProductRow)); } },
           { name: 'proposals', promise: fetchAllRowsForTenant('proposals', tenantId), apply: (res) => { if (res.data) setProposals(res.data); setProposalsLoaded(true); } },
           { name: 'proposal_items', promise: fetchAllRowsForTenant('proposal_items', tenantId), apply: (res) => { if (res.data) setProposalItems(res.data); } },
-          { name: 'turmas', promise: fetchAllRowsForTenant('turmas', tenantId), apply: (res) => { if (res.data) setTurmas(res.data); } },
-          { name: 'students', promise: fetchAllRowsForTenant('students', tenantId), apply: (res) => { if (res.data) setStudents(res.data); } },
+          // turmas/students: só usados nas páginas de Educação — movidos pro
+          // lazy load de nicho (ensureNicheModulesLoaded) abaixo.
           {
             name: 'colaboradores',
             promise: fetchAllRowsForTenant('colaboradores', tenantId),
@@ -967,15 +967,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               else if (res.data) setColaboradores(res.data);
             },
           },
-          { name: 'squad_metas', promise: fetchAllRowsForTenant('squad_metas', tenantId), apply: (res) => { if (res.data) setSquadMetas(res.data); } },
-          { name: 'certificates', promise: fetchAllRowsForTenant('certificates', tenantId), apply: (res) => { if (res.data) setCertificates(res.data); } },
+          // squad_metas: nenhuma página do app lê esse campo hoje — não vale
+          // buscar toda carga. certificates/financial_goals/scheduled_exports:
+          // só usados em Educação/Indicadores — lazy load de nicho abaixo.
           { name: 'cargos', promise: fetchAllRowsForTenant('cargos', tenantId), apply: (res) => { if (res.data) setCargos(res.data); } },
           { name: 'clientes', promise: fetchAllRowsForTenant('clientes', tenantId), apply: (res) => { if (res.data) setClienteBase(res.data); } },
           { name: 'reunioes', promise: fetchAllRowsForTenant('reunioes', tenantId), apply: (res) => { if (res.data) setReunioes(res.data as Reuniao[]); } },
-          { name: 'financial_goals', promise: fetchAllRowsForTenant('financial_goals', tenantId), apply: (res) => { if (res.data) setFinancialGoals(res.data); } },
           { name: 'crm_funis', promise: cachedFetchAllRowsForTenant('crm_funis', tenantId, true), apply: (res) => { if (res.data) setFunis(res.data.map(rowToFunil)); } },
           { name: 'empresa_filiais', promise: fetchAllRowsForTenant('empresa_filiais', tenantId), apply: (res) => { if (res.data) setEmpresaFiliais(res.data); } },
-          { name: 'scheduled_exports', promise: fetchAllRowsForTenant('scheduled_exports', tenantId), apply: (res) => { if (res.data) setScheduledExports(res.data); } },
           {
             name: 'nichos',
             // Nichos globais (tenant_id null) + os do tenant ativo, mesmo motivo do app_settings acima.
@@ -1054,6 +1053,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       { name: 'marketing_campaigns', promise: fetchAllRowsForTenant('marketing_campaigns', tenantId), apply: (res) => { if (res.data) setMarketingCampaigns(res.data); } },
       { name: 'education_content', promise: fetchAllRowsForTenant('education_content', tenantId), apply: (res) => { if (res.data) setEducationContent(res.data); } },
       { name: 'aurora_agents', promise: fetchAllRowsForTenant('aurora_agents', tenantId), apply: (res) => { if (res.data) setAuroraAgents(res.data as AuroraAgent[]); } },
+      { name: 'turmas', promise: fetchAllRowsForTenant('turmas', tenantId), apply: (res) => { if (res.data) setTurmas(res.data); } },
+      { name: 'students', promise: fetchAllRowsForTenant('students', tenantId), apply: (res) => { if (res.data) setStudents(res.data); } },
+      { name: 'certificates', promise: fetchAllRowsForTenant('certificates', tenantId), apply: (res) => { if (res.data) setCertificates(res.data); } },
+      { name: 'squad_metas', promise: fetchAllRowsForTenant('squad_metas', tenantId), apply: (res) => { if (res.data) setSquadMetas(res.data); } },
+      { name: 'financial_goals', promise: fetchAllRowsForTenant('financial_goals', tenantId), apply: (res) => { if (res.data) setFinancialGoals(res.data); } },
+      { name: 'scheduled_exports', promise: fetchAllRowsForTenant('scheduled_exports', tenantId), apply: (res) => { if (res.data) setScheduledExports(res.data); } },
     ];
 
     nicheJobs.forEach(({ name, promise, apply }) => {

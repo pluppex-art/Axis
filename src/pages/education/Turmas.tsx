@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { GraduationCap, Users, BookOpen, CheckCircle2, Plus } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import EducationTurmaDetalhes from "./EducationTurmaDetalhes";
@@ -24,7 +24,8 @@ interface Turma {
 }
 
 export default function Turmas() {
-  const { turmas: rawTurmas, addTurma, students } = useData();
+  const { turmas: rawTurmas, addTurma, students, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const [search, setSearch] = useState("");
   const [selectedTurma, setSelectedTurma] = useState<Turma | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);

@@ -25,7 +25,8 @@ const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'
 export default function PainelGeralEducation() {
   const { formatCurrency } = useLocalization();
   const navigate = useNavigate();
-  const { turmas, students, certificates } = useData();
+  const { turmas, students, certificates, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const { activeTenantId } = useAuth();
   const [mensalidades, setMensalidades] = useState<any[]>([]);
   const [loadingMensalidades, setLoadingMensalidades] = useState(true);

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Users, BookOpen, Target, Star, Download, UserPlus } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { PageContainer } from "../../components/PageContainer";
@@ -23,7 +23,8 @@ interface Student {
 
 export default function Alunos() {
   const [searchTerm, setSearchTerm] = useState("");
-  const { students: rawStudents, addStudent, updateStudent, deleteStudent, turmas } = useData();
+  const { students: rawStudents, addStudent, updateStudent, deleteStudent, turmas, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isGradesModalOpen, setIsGradesModalOpen] = useState(false);

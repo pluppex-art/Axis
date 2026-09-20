@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { Target, Activity, Zap, Users } from "lucide-react";
 import { useData } from "../../../contexts/DataContext";
@@ -9,7 +9,8 @@ import { parseCurrencyBR } from "../../../lib/utils";
 import { getMRR } from "../../../lib/revenueMetrics";
 
 export function useIndicadores() {
-  const { leads, financeEntries, contracts, financialGoals, scheduledExports, addScheduledExport, updateScheduledExport, deleteScheduledExport } = useData();
+  const { leads, financeEntries, contracts, financialGoals, scheduledExports, addScheduledExport, updateScheduledExport, deleteScheduledExport, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const { formatCurrency } = useLocalization();
 
   const schedules = scheduledExports as { id: string; email: string; weekday: string; time: string; active: boolean }[];

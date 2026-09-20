@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Award, Plus, ShieldCheck, RefreshCw, Star, Search, CheckCircle2, XCircle, Download } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { toast } from "sonner";
@@ -24,7 +24,8 @@ function rowToCert(r: any): Certificate {
 }
 
 export default function Certificados() {
-  const { certificates, addCertificate } = useData();
+  const { certificates, addCertificate, ensureNicheModulesLoaded } = useData();
+  useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const certs: Certificate[] = certificates.map(rowToCert);
   const [search, setSearch] = useState("");
   const [isEmitModalOpen, setIsEmitModalOpen] = useState(false);
