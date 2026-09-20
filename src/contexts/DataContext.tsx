@@ -934,6 +934,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setScheduledExports([]);
     setNichos([]);
     nicheModulesRef.current = { tenantId: null, started: false };
+    reconciledProposalIdsRef.current.clear();
     setFinanceCategories([]);
     setFinanceBankAccounts([]);
     setFinanceCentrosCusto([]);
@@ -2152,6 +2153,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // contratos antigos. Centralizado aqui pra rodar uma vez só, globalmente,
   // pra qualquer tela que use `contracts`/`proposals` — a mesma fonte de
   // verdade em vez de cada página reimplementar (ou esquecer) essa sincronização.
+  // Trava contra loop de feedback da reconciliação — ver comentário no uso
+  // abaixo (dentro do bloco `jaExiste`).
+  const reconciledProposalIdsRef = React.useRef<Set<string>>(new Set());
+
   const syncAcceptedProposal = (prop: any, { silent = false }: { silent?: boolean } = {}) => {
     // BUG real (visto em produção: contrato/lançamento de "Casa Sao Paulo" e
     // "To Na Pista Boliche" — clientes REAIS da Pluppex — aparecendo com
@@ -2246,14 +2251,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const backfillEndDate = contractMonths
         ? new Date(baseDate.getFullYear(), baseDate.getMonth() + contractMonths, baseDate.getDate()).toLocaleDateString("pt-BR")
         : null;
+      // BUG real (rajada em produção 2026-09-20: PATCH em milhares de
+      // contratos de uma vez): essas comparações eram por string crua
+      // (`!==`), sem o mesmo norm() usado no match de `jaExiste` acima —
+      // qualquer espaço/maiúscula invisível divergente entre `planLabel`/
+      // `prop.titulo` (recalculados a cada passada) e o valor já salvo
+      // fazia `updates` nunca ficar vazio, então TODO contrato "aceito"
+      // era re-atualizado em TODA execução da reconciliação — e
+      // updateContract muda `contracts`, que é dependência do próprio
+      // useEffect que chama isso, reexecutando a reconciliação de novo,
+      // num loop sem nenhum limitador de rede pra segurar (diferente do
+      // debounce que só existe pro refetch disparado por realtime).
       const updates: any = {};
-      if (planLabel && planLabel !== existingContract.plan) updates.plan = planLabel;
+      if (planLabel && norm(planLabel) !== norm(existingContract.plan)) updates.plan = planLabel;
       if (backfillEndDate && backfillEndDate !== existingContract.endDate) updates.endDate = backfillEndDate;
       if (!existingContract.proposalId) updates.proposalId = prop.id;
       // Descrição = título original da proposta ("Proposta Comercial — Cliente
       // X") — separado do plano (produto do catálogo) desde a correção acima.
-      if (prop.titulo && prop.titulo !== existingContract.description) updates.description = prop.titulo;
-      if (Object.keys(updates).length > 0) updateContract(existingContract.id, updates, { silent: true });
+      if (prop.titulo && norm(prop.titulo) !== norm(existingContract.description)) updates.description = prop.titulo;
+      // Segunda trava, independente da causa exata da divergência: cada
+      // proposta só é reconciliada UMA VEZ por sessão, mesmo que o efeito
+      // reexecute (contracts mudando é esperado — não pode virar gatilho
+      // pra reprocessar tudo de novo).
+      if (Object.keys(updates).length > 0 && !reconciledProposalIdsRef.current.has(prop.id)) {
+        reconciledProposalIdsRef.current.add(prop.id);
+        updateContract(existingContract.id, updates, { silent: true });
+      }
       return false;
     }
 
