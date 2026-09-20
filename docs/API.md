@@ -19,6 +19,12 @@ Cria um lead. **Auth:** `requireApiKey`. **Tenant:** da chave de API. **Body:** 
 ### `GET /api/v1/leads`
 Lista leads do tenant da chave. **Auth:** `requireApiKey`. **Query:** `seller`, `status`, `limit` (default 100), `offset`. **Resposta:** `{ success, count, leads }`.
 
+### `POST /api/v1/lead-activities`
+Registra uma atividade (nota, ligação, avaliação, sugestão etc.) no histórico de um lead **já existente**. **Auth:** `requireApiKey`. **Body:** `phone`/`email` (ao menos um, usados só pra localizar o lead — nunca cria um novo), `type`, `title` (obrigatório), `description`, `date`, `seller`, `externalId` (opcional, garante idempotência via `id = tnp_live_<externalId>`). **Resposta:** `201 { success }`, ou `200 { success, skipped: true }` se não achar lead pro contato.
+
+### `POST /api/v1/finance-entries`
+Cria ou atualiza (upsert por `externalId`) um lançamento em `finance_entries`. **Auth:** `requireApiKey`. **Body:** `externalId` (obrigatório — chave de idempotência, vira `id = tnp_fat_<externalId>`), `description` (obrigatório), `value`, `date`, `category`, `type` (default `"Receber"`), `status` (default `"Pago"`). **Resposta:** `201 { success }`.
+
 ---
 
 ## IA / Leads (sessão de usuário)

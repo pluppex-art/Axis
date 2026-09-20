@@ -282,6 +282,8 @@ const googleCalendarLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardH
 // público do site de marketing), maior risco de abuso/spam automatizado.
 const publicLeadLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
 app.use("/api/v1/leads", apiKeyLimiter);
+app.use("/api/v1/lead-activities", apiKeyLimiter);
+app.use("/api/v1/finance-entries", apiKeyLimiter);
 app.use("/api/leads", aiLimiter);
 app.use("/api/ai", aiLimiter);
 app.use("/api/whatsapp", whatsappLimiter);
@@ -587,6 +589,97 @@ app.get("/api/v1/leads", requireApiKey, async (req, res) => {
   }
   logApiKeyUsage(req, 200);
   return res.json({ success: true, count: data?.length ?? 0, leads: data ?? [] });
+});
+
+// Registra uma atividade (nota, ligação, avaliação, sugestão etc.) no
+// histórico de um lead já existente — usado por integrações "ao vivo" que
+// não têm outro dado além de um evento pontual pra reportar (ex.: to-na-pista-
+// boliche registrando uma interação de CRM interna). Nunca cria lead: se o
+// contato (telefone/e-mail) não tiver lead correspondente nesse tenant, a
+// atividade é descartada (best-effort, sem erro pro chamador) — não faz
+// sentido um histórico de atividade "pendurado" sem lead dono.
+app.post("/api/v1/lead-activities", requireApiKey, async (req, res) => {
+  const {
+    phone = "", email = "", type = "Nota", title = "", description = "",
+    date = "", seller = "", externalId = "",
+  } = req.body;
+
+  if (!title) { logApiKeyUsage(req, 400); return res.status(400).json({ error: "O campo 'title' é obrigatório." }); }
+  if (!phone && !email) { logApiKeyUsage(req, 400); return res.status(400).json({ error: "Informe ao menos 'phone' ou 'email'." }); }
+  if (!supabaseService) { logApiKeyUsage(req, 503); return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." }); }
+
+  const tenantId = (req as any).tenantId;
+  const normalizedPhone = phone ? String(phone).replace(/\D/g, "") : "";
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : "";
+
+  // Mesma lógica de resolução de contato do POST /api/v1/leads (telefone
+  // primeiro, e-mail como fallback) — ver ali o porquê de duas queries .eq()
+  // em vez de um .or() concatenado.
+  let lead: any = null;
+  if (normalizedPhone) {
+    const { data } = await supabaseService.from("leads").select("id")
+      .eq("tenant_id", tenantId).eq("phone", normalizedPhone).limit(1).maybeSingle();
+    lead = data;
+  }
+  if (!lead && normalizedEmail) {
+    const { data } = await supabaseService.from("leads").select("id")
+      .eq("tenant_id", tenantId).eq("email", normalizedEmail).limit(1).maybeSingle();
+    lead = data;
+  }
+  if (!lead) { logApiKeyUsage(req, 200); return res.status(200).json({ success: true, skipped: true, reason: "Nenhum lead encontrado pra esse contato." }); }
+
+  // Idempotência: reenvio do mesmo evento externo (retry, reprocessamento)
+  // nunca duplica a atividade — mesma estratégia de id determinístico usada
+  // na migração em massa original (`tnp_interacao_<id>` etc.), só que
+  // genérica pra qualquer origem externa daqui em diante.
+  const id = externalId ? `tnp_live_${externalId}` : randomUUID();
+  const { error } = await supabaseService.from("lead_activities").upsert({
+    id, tenant_id: tenantId, lead_id: lead.id, type, title, description,
+    date: date || new Date().toISOString().split("T")[0], seller,
+  }, { onConflict: "id", ignoreDuplicates: true });
+
+  if (error) {
+    console.error("[API v1] Erro ao criar lead_activity:", error.message);
+    logApiKeyUsage(req, 500);
+    return res.status(500).json({ error: "Falha ao salvar atividade no banco." });
+  }
+  logApiKeyUsage(req, 201);
+  return res.status(201).json({ success: true });
+});
+
+// Cria/atualiza um lançamento financeiro a partir de uma fonte externa (ex.:
+// fechamento mensal do to-na-pista-boliche). Upsert de verdade (não ignora
+// conflito) porque um mês já lançado pode ser revisado depois — o valor mais
+// recente pro mesmo externalId deve substituir o anterior.
+app.post("/api/v1/finance-entries", requireApiKey, async (req, res) => {
+  const {
+    externalId = "", description = "", value = 0, date = "",
+    category = "", type = "Receber", status = "Pago",
+  } = req.body;
+
+  if (!externalId) { logApiKeyUsage(req, 400); return res.status(400).json({ error: "O campo 'externalId' é obrigatório." }); }
+  if (!description) { logApiKeyUsage(req, 400); return res.status(400).json({ error: "O campo 'description' é obrigatório." }); }
+  if (!supabaseService) { logApiKeyUsage(req, 503); return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." }); }
+
+  const tenantId = (req as any).tenantId;
+  const rawValue = typeof value === "string"
+    ? parseFloat(value.replace(/[^\d.,]/g, "").replace(",", ".")) || 0
+    : (value ?? 0);
+  const id = `tnp_fat_${externalId}`;
+
+  const { error } = await supabaseService.from("finance_entries").upsert({
+    id, tenant_id: tenantId, description, value: rawValue,
+    date: date || new Date().toISOString().split("T")[0],
+    category, type, status,
+  }, { onConflict: "id" });
+
+  if (error) {
+    console.error("[API v1] Erro ao criar finance_entry:", error.message);
+    logApiKeyUsage(req, 500);
+    return res.status(500).json({ error: "Falha ao salvar lançamento no banco." });
+  }
+  logApiKeyUsage(req, 201);
+  return res.status(201).json({ success: true });
 });
 
 // ── Captação pública do site de marketing (InteractiveForm.tsx, /f/:niche) ──
