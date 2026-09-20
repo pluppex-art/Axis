@@ -1,16 +1,40 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Users, Brain, DollarSign, Award, Zap } from "lucide-react";
 
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { apiFetch } from "../../lib/apiClient";
 
 import { KpiCards } from "./components/PerformanceDashboard/KpiCards";
 import { PerformanceScoreChart, HotLeadsPanel, LeadsVolumeChart } from "./components/PerformanceDashboard/PerformanceCharts";
 
+interface MesPerformanceCRM { month: string; avgScore: number; conversionRate: number; leads: number }
+interface DashboardPerformanceServerSummary {
+  performanceData: MesPerformanceCRM[]; totalLeads: number; avgScore: number; totalValue: number; winRate: number;
+}
+
 export default function Dashboard() {
   const { leads, leadScoreTriggers } = useData();
+  const { activeTenantId } = useAuth();
 
-  const performanceData = useMemo(() => {
+  // KPIs do topo + janela de 6 meses vêm de um cache no Redis-SPY quando
+  // disponível (GET /api/crm/dashboard-performance-summary), mesma fórmula.
+  // hotLeads (lista de registros) e o contador de gatilhos de automação
+  // continuam sempre client-side — ver comentário no endpoint.
+  const [serverSummary, setServerSummary] = useState<DashboardPerformanceServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/crm/dashboard-performance-summary?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
+
+  const clientPerformanceData = useMemo(() => {
     const now = new Date();
     return Array.from({ length: 6 }, (_, i) => {
       const target = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
@@ -28,16 +52,24 @@ export default function Dashboard() {
     });
   }, [leads]);
 
+  const performanceData = serverSummary?.performanceData ?? clientPerformanceData;
+
   const stats = useMemo(() => {
     const all = leads as any[];
-    const totalLeads = all.length;
-    const avgScore = totalLeads > 0 ? all.reduce((a, l) => a + (l.scoreIA || 0), 0) / totalLeads : 0;
-    const totalValue = all.reduce((a, l) => {
+    const clientTotalLeads = all.length;
+    const clientAvgScore = clientTotalLeads > 0 ? all.reduce((a, l) => a + (l.scoreIA || 0), 0) / clientTotalLeads : 0;
+    const clientTotalValue = all.reduce((a, l) => {
       const v = parseFloat((l.value || "").replace(/[^\d]/g, "")) || 0;
       return a + v;
     }, 0);
     const wonLeads = all.filter(l => l.status === "Fechado").length;
-    const winRate = totalLeads > 0 ? (wonLeads / totalLeads) * 100 : 0;
+    const clientWinRate = clientTotalLeads > 0 ? (wonLeads / clientTotalLeads) * 100 : 0;
+
+    const totalLeads = serverSummary?.totalLeads ?? clientTotalLeads;
+    const avgScore = serverSummary?.avgScore ?? clientAvgScore;
+    const totalValue = serverSummary?.totalValue ?? clientTotalValue;
+    const winRate = serverSummary?.winRate ?? clientWinRate;
+
     return [
       { label: "Leads Totais",      value: totalLeads,                    icon: Users },
       { label: "Score IA Médio",    value: avgScore.toFixed(1),           icon: Brain },
@@ -45,7 +77,7 @@ export default function Dashboard() {
       { label: "Taxa de Conversão", value: `${winRate.toFixed(1)}%`,      icon: Award },
       { label: "Gatilhos de Automação Ativos", value: leadScoreTriggers.length, icon: Zap },
     ];
-  }, [leads, leadScoreTriggers]);
+  }, [leads, leadScoreTriggers, serverSummary]);
 
   const hotLeads = useMemo(() =>
     (leads as any[]).filter(l => (l.temperature || "").toLowerCase() === "quente").slice(0, 5),

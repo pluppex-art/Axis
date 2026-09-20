@@ -1226,6 +1226,68 @@ app.get("/api/crm/relatorios-executivos-summary", requireUser, async (req: any, 
   }
 });
 
+/**
+ * Dashboard de Performance do CRM (src/pages/crm/Dashboard.tsx) — janela
+ * rolante de 6 meses (correta, agrupa por mês+ano, não só o nome do mês) e
+ * os KPIs do topo. `totalValue` replica a mesma extração de dígitos
+ * (parseFloat + replace(/[^\d]/g)) do cliente, mesmo sendo uma conta que
+ * ignora separador decimal — é o que a tela já mostra hoje, não é escopo
+ * corrigir aqui. hotLeads (lista de registros) e leadScoreTriggers.length
+ * ficam de fora — o primeiro precisa dos leads completos pra qualquer ação
+ * de clique, o segundo é uma tabela de configuração já pequena.
+ */
+app.get("/api/crm/dashboard-performance-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `crm-dashboard-performance:tenant:${tenantId}:summary`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const { data: rows } = await sb.from("leads").select('status,value,"scoreIA",created_at').eq("tenant_id", tenantId);
+    const leadsAll = (rows || []) as { status: string; value: any; scoreIA: number | null; created_at: string | null }[];
+
+    const now = new Date();
+    const performanceData = Array.from({ length: 6 }, (_, i) => {
+      const target = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const month = target.toLocaleString("pt-BR", { month: "short" });
+      const monthLeads = leadsAll.filter((l) => {
+        const d = new Date(l.created_at || 0);
+        return d.getMonth() === target.getMonth() && d.getFullYear() === target.getFullYear();
+      });
+      const avgScore = monthLeads.length > 0
+        ? Math.round(monthLeads.reduce((s, l) => s + (l.scoreIA || 0), 0) / monthLeads.length)
+        : 0;
+      const won = monthLeads.filter((l) => l.status === "Fechado").length;
+      const conversionRate = monthLeads.length > 0 ? Math.round((won / monthLeads.length) * 100) : 0;
+      return { month, avgScore, conversionRate, leads: monthLeads.length };
+    });
+
+    const totalLeads = leadsAll.length;
+    const avgScore = totalLeads > 0 ? leadsAll.reduce((a, l) => a + (l.scoreIA || 0), 0) / totalLeads : 0;
+    const totalValue = leadsAll.reduce((a, l) => {
+      const v = parseFloat(String(l.value || "").replace(/[^\d]/g, "")) || 0;
+      return a + v;
+    }, 0);
+    const wonLeads = leadsAll.filter((l) => l.status === "Fechado").length;
+    const winRate = totalLeads > 0 ? (wonLeads / totalLeads) * 100 : 0;
+
+    const summary = { performanceData, totalLeads, avgScore, totalValue, winRate, cachedAt: new Date().toISOString() };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[crm/dashboard-performance-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular dashboard de performance." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma
