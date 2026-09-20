@@ -16,11 +16,16 @@ import { Badge } from "../../components/ui/badge";
 import { PageContainer } from "../../components/PageContainer";
 import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { supabase } from "../../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { useLocalization } from "../../contexts/LocalizationContext";
+import { apiFetch } from "../../lib/apiClient";
 
 const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'];
+
+interface MensalidadesServerSummary {
+  totalRecebido: number; totalPendente: number; totalAtrasado: number;
+  statusCounts: { pagos: number; pendentes: number; atrasados: number };
+}
 
 export default function PainelGeralEducation() {
   const { formatCurrency } = useLocalization();
@@ -28,27 +33,21 @@ export default function PainelGeralEducation() {
   const { turmas, students, certificates, ensureNicheModulesLoaded } = useData();
   useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const { activeTenantId } = useAuth();
-  const [mensalidades, setMensalidades] = useState<any[]>([]);
-  const [loadingMensalidades, setLoadingMensalidades] = useState(true);
 
+  // KPIs de mensalidades (Recebido/A Receber/Em Atraso + status pro gráfico
+  // de pizza) vêm de um cache no Redis-SPY (GET /api/education/mensalidades-summary,
+  // mesmo endpoint usado em Mensalidades.tsx) — esta tela buscava a tabela
+  // `mensalidades` inteira do tenant sem paginação nenhuma antes.
+  const [serverSummary, setServerSummary] = useState<MensalidadesServerSummary | null>(null);
   useEffect(() => {
-    if (!supabase || !activeTenantId) {
-      setLoadingMensalidades(false);
-      return;
-    }
-    // Sem o filtro de tenant, os KPIs de mensalidades (Recebido/A Receber/Em
-    // Atraso) somavam os valores de TODOS os tenants juntos.
-    supabase
-      .from("mensalidades")
-      .select("*")
-      .eq("tenant_id", activeTenantId)
-      .order("vencimento", { ascending: true })
-      .then(({ data, error }) => {
-        if (!error && data) {
-          setMensalidades(data);
-        }
-        setLoadingMensalidades(false);
-      });
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/education/mensalidades-summary?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — sem fallback client-side pra esses somatórios */ });
+    return () => { cancelled = true; };
   }, [activeTenantId]);
 
   // KPIs
@@ -56,23 +55,12 @@ export default function PainelGeralEducation() {
   const totalTurmas = turmas.length;
   const totalCertificados = certificates.length;
 
-  const totalRecebido = useMemo(() => {
-    return mensalidades
-      .filter(m => m.status === 'Pago')
-      .reduce((acc, m) => acc + (Number(m.valor) || 0), 0);
-  }, [mensalidades]);
-
-  const totalPendente = useMemo(() => {
-    return mensalidades
-      .filter(m => m.status === 'Pendente')
-      .reduce((acc, m) => acc + (Number(m.valor) || 0), 0);
-  }, [mensalidades]);
-
-  const totalAtrasado = useMemo(() => {
-    return mensalidades
-      .filter(m => m.status === 'Atrasado')
-      .reduce((acc, m) => acc + (Number(m.valor) || 0), 0);
-  }, [mensalidades]);
+  // Sem array completo já carregado no cliente pra usar de fallback —
+  // mostra "—" em vez de R$0,00 enquanto o resumo não chega/se o cache falhar.
+  const kpiValue = (n: number | undefined) => (n === undefined ? "—" : formatCurrency(n));
+  const totalRecebido = kpiValue(serverSummary?.totalRecebido);
+  const totalPendente = kpiValue(serverSummary?.totalPendente);
+  const totalAtrasado = kpiValue(serverSummary?.totalAtrasado);
 
   // Alunos por Turma
   const turmasData = useMemo(() => {
@@ -84,18 +72,14 @@ export default function PainelGeralEducation() {
 
   // Status de Mensalidades (Pie)
   const mensalidadesStatusData = useMemo(() => {
-    const pagos = mensalidades.filter(m => m.status === 'Pago').length;
-    const pendentes = mensalidades.filter(m => m.status === 'Pendente').length;
-    const atrasados = mensalidades.filter(m => m.status === 'Atrasado').length;
-
+    if (!serverSummary) return [];
+    const { pagos, pendentes, atrasados } = serverSummary.statusCounts;
     return [
       { name: 'Pagas', value: pagos, color: '#10b981' },
       { name: 'A Vencer', value: pendentes, color: '#3b82f6' },
       { name: 'Atrasadas', value: atrasados, color: '#ef4444' },
     ].filter(d => d.value > 0);
-  }, [mensalidades]);
-
-  const fmt = (v: number) => formatCurrency(v);
+  }, [serverSummary]);
 
   return (
     <PageContainer 
@@ -152,7 +136,7 @@ export default function PainelGeralEducation() {
                 <DollarSign className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl font-display font-black text-emerald-400 italic">{fmt(totalRecebido)}</div>
+            <div className="text-2xl font-display font-black text-emerald-400 italic">{totalRecebido}</div>
             <p className="text-[11px] text-slate-500 mt-1">Parcelas pagas confirmadas</p>
           </Card>
 
@@ -266,13 +250,13 @@ export default function PainelGeralEducation() {
                 <span className="text-slate-400 flex items-center gap-1.5">
                   <div className="w-2 h-2 rounded-full bg-emerald-500" /> A Receber
                 </span>
-                <span className="font-bold text-white">{fmt(totalPendente)}</span>
+                <span className="font-bold text-white">{totalPendente}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400 flex items-center gap-1.5">
                   <div className="w-2 h-2 rounded-full bg-rose-500" /> Em Atraso
                 </span>
-                <span className="font-bold text-rose-400">{fmt(totalAtrasado)}</span>
+                <span className="font-bold text-rose-400">{totalAtrasado}</span>
               </div>
             </div>
           </Card>

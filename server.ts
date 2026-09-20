@@ -1473,10 +1473,13 @@ app.get("/api/clinica/painel-geral-summary", requireUser, async (req: any, res) 
 });
 
 /**
- * Mensalidades (src/pages/education/Mensalidades.tsx) — os 4 KPIs do topo
- * somam sobre TODAS as mensalidades do tenant (não só a página atual da
- * tabela, que agora pagina de verdade via useMensalidadesList.ts). `data_pagamento`
- * e `vencimento` são colunas `date` reais (sem parsing de texto). O mês
+ * Mensalidades — resumo compartilhado por duas telas:
+ * src/pages/education/Mensalidades.tsx (os 4 KPIs do topo, sobre TODAS as
+ * mensalidades do tenant, não só a página atual da tabela paginada) e
+ * src/pages/education/PainelGeral.tsx (totalRecebido all-time + contagem
+ * por status pro gráfico de pizza) — mesma query, mesmo cache, evita duas
+ * agregações redundantes sobre a mesma tabela. `data_pagamento` e
+ * `vencimento` são colunas `date` reais (sem parsing de texto). O mês
  * corrente usa new Date().toISOString() em UTC — igual ao cliente, sem
  * risco de fuso, já que os dois convertem pro mesmo instante em UTC.
  */
@@ -1499,12 +1502,18 @@ app.get("/api/education/mensalidades-summary", requireUser, async (req: any, res
     const currentMonth = new Date().toISOString().substring(0, 7);
     const totalPendente = mensalidadesAll.filter((m) => m.status === "Pendente").reduce((s, m) => s + (Number(m.valor) || 0), 0);
     const totalAtrasado = mensalidadesAll.filter((m) => m.status === "Atrasado").reduce((s, m) => s + (Number(m.valor) || 0), 0);
+    const totalRecebido = mensalidadesAll.filter((m) => m.status === "Pago").reduce((s, m) => s + (Number(m.valor) || 0), 0);
     const totalRecebidoMes = mensalidadesAll
       .filter((m) => m.status === "Pago" && m.data_pagamento?.startsWith(currentMonth))
       .reduce((s, m) => s + (Number(m.valor) || 0), 0);
     const countAtrasado = mensalidadesAll.filter((m) => m.status === "Atrasado").length;
+    const statusCounts = {
+      pagos: mensalidadesAll.filter((m) => m.status === "Pago").length,
+      pendentes: mensalidadesAll.filter((m) => m.status === "Pendente").length,
+      atrasados: countAtrasado,
+    };
 
-    const summary = { totalPendente, totalAtrasado, totalRecebidoMes, countAtrasado, cachedAt: new Date().toISOString() };
+    const summary = { totalPendente, totalAtrasado, totalRecebido, totalRecebidoMes, countAtrasado, statusCounts, cachedAt: new Date().toISOString() };
 
     await cacheSet(cacheKey, summary, 60);
     res.setHeader("X-Cache", "MISS");
