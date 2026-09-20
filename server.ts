@@ -3162,11 +3162,13 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
   }
 
   if (name === "resumo_pipeline") {
-    const { data, error } = await supabaseClient.from("leads").select("status").is("deleted_at", null);
-    if (error) return { error: error.message };
+    // Agregado sobre TODOS os leads — precisa da paginação de verdade (ver
+    // fetchAllRowsPaginated), senão o PostgREST trunca em 1000 e a IA
+    // responde uma contagem errada pra qualquer tenant acima disso.
+    const data = await fetchAllRowsPaginated(supabaseClient, "leads", "status", (q) => q.is("deleted_at", null));
     const contagem: Record<string, number> = {};
     for (const row of data ?? []) {
-      const s = row.status || "Sem status";
+      const s = (row as any).status || "Sem status";
       contagem[s] = (contagem[s] || 0) + 1;
     }
     return { total_leads: data?.length ?? 0, por_status: contagem };
@@ -3188,15 +3190,13 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
 
   if (name === "resumo_financeiro") {
     const cutoff = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
-    const { data, error } = await supabaseClient
-      .from("finance_entries")
-      .select("type, value, status")
-      .gte("created_at", cutoff);
-    if (error) return { error: error.message };
+    // Mesma razão do resumo_pipeline: soma agregada precisa de TODAS as
+    // linhas do período, não só as primeiras 1000 que o PostgREST devolveria.
+    const data = await fetchAllRowsPaginated(supabaseClient, "finance_entries", "type,value,status", (q) => q.gte("created_at", cutoff));
     const porTipo: Record<string, number> = {};
     for (const row of data ?? []) {
-      const t = row.type || "Outro";
-      porTipo[t] = (porTipo[t] || 0) + (Number(row.value) || 0);
+      const t = (row as any).type || "Outro";
+      porTipo[t] = (porTipo[t] || 0) + (Number((row as any).value) || 0);
     }
     return { dias_considerados: dias, total_lancamentos: data?.length ?? 0, soma_por_tipo: porTipo };
   }
@@ -3241,11 +3241,9 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
   }
 
   if (name === "solar_funil_resumo") {
-    const { data, error } = await supabaseClient
-      .from("solar_analises")
-      .select("status, potencia_estimada_kwp, valor_proposta");
-    if (error) return { error: error.message };
-    const rows = data ?? [];
+    // Mesma razão do resumo_pipeline: funil agregado precisa de TODAS as
+    // linhas, não só as primeiras 1000 que o PostgREST devolveria sem paginar.
+    const rows = await fetchAllRowsPaginated(supabaseClient, "solar_analises", "status,potencia_estimada_kwp,valor_proposta", (q) => q);
     const porEstagio: Record<string, number> = {};
     rows.forEach((r: any) => { porEstagio[r.status] = (porEstagio[r.status] ?? 0) + 1; });
     const fechados = rows.filter((r: any) => r.status === "Concluído");
