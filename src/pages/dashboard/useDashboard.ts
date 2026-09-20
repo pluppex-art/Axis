@@ -6,11 +6,19 @@ import { getMRR, getConversionRate, getActiveLeadsCount, getChurnRate } from '..
 import { FUNIS_DEFAULT } from '../settings/sections/crm/funisTypes';
 import { apiFetch } from '../../lib/apiClient';
 
-interface DashboardSummary {
+export interface DashboardSummary {
   totalRevenue: number;
   conversionRate: number;
   activeLeadsCount: number;
   churnRate: number;
+  valorPipelineAberto: number;
+  leadsQuentes: number;
+  mrrAtivo: number;
+  mrrEmRisco: number;
+  taxaInadimplencia: number;
+  contractsAtivosCount: number;
+  contractsEmRiscoCount: number;
+  contractsTotalCount: number;
 }
 
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -251,6 +259,7 @@ export function useDashboard() {
     squads,
     leadActivities,
     activeLeadsCount,
+    serverSummary,
     isModuleEnabled,
     user,
     activeTab,

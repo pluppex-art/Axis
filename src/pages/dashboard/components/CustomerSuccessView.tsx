@@ -7,16 +7,21 @@ import { useData } from '../../../contexts/DataContext';
 import { toast } from 'sonner';
 import { useLocalization } from '../../../contexts/LocalizationContext';
 import { parseCurrencyBR as toNumberMRR } from '../../../lib/utils';
+import type { DashboardSummary } from '../useDashboard';
 
-export function CustomerSuccessView() {
+export function CustomerSuccessView({ serverSummary }: { serverSummary?: DashboardSummary | null }) {
   const { contracts, addTask } = useData();
   const { formatCurrency } = useLocalization();
 
+  // A lista de contratos inadimplentes (com ação "Abrir Protocolo") precisa
+  // dos registros reais — só os 3 números "hero" abaixo preferem o valor
+  // cacheado de GET /api/dashboard/summary (ver useDashboard.ts) quando
+  // disponível, mesma fórmula.
   const ativos = contracts.filter(c => c.status === 'Ativo');
   const emRisco = contracts.filter(c => c.status === 'Inadimplente');
-  const mrrAtivo = ativos.reduce((s, c: any) => s + toNumberMRR(c.mrr), 0);
-  const mrrEmRisco = emRisco.reduce((s, c: any) => s + toNumberMRR(c.mrr), 0);
-  const taxaRisco = contracts.length > 0 ? (emRisco.length / contracts.length) * 100 : 0;
+  const mrrAtivo = serverSummary?.mrrAtivo ?? ativos.reduce((s, c: any) => s + toNumberMRR(c.mrr), 0);
+  const mrrEmRisco = serverSummary?.mrrEmRisco ?? emRisco.reduce((s, c: any) => s + toNumberMRR(c.mrr), 0);
+  const taxaRisco = serverSummary?.taxaInadimplencia ?? (contracts.length > 0 ? (emRisco.length / contracts.length) * 100 : 0);
 
   const handleAbrirProtocolo = (contractClient: string) => {
     addTask({

@@ -31,6 +31,7 @@ export default function Dashboard() {
     setDateFrom,
     dateTo,
     setDateTo,
+    serverSummary,
   } = useDashboard();
 
   return (
@@ -80,6 +81,7 @@ export default function Dashboard() {
           salesRanking={salesRanking}
           funnelData={funnelData}
           recentActivities={recentActivities}
+          serverSummary={serverSummary}
         />
 
 

@@ -9,6 +9,7 @@ import { useData } from '../../../contexts/DataContext';
 import { useLocalization } from '../../../contexts/LocalizationContext';
 import { parseCurrencyBR } from '../../../lib/utils';
 import { getMRR } from '../../../lib/revenueMetrics';
+import type { DashboardSummary } from '../useDashboard';
 
 interface Squad {
   nome: string;
@@ -27,6 +28,7 @@ interface StrategicalViewProps {
   performanceData: any[];
   squads?: Squad[];
   contracts?: Contract[];
+  serverSummary?: DashboardSummary | null;
 }
 
 export function StrategicalView({
@@ -35,15 +37,21 @@ export function StrategicalView({
   performanceData,
   squads = [],
   contracts = [],
+  serverSummary,
 }: StrategicalViewProps) {
   const { leads } = useData();
   const { formatCurrency } = useLocalization();
   const leadsAbertos = leads.filter(l => l.status !== 'Fechado' && l.status !== 'Perdido');
-  const valorPipelineAberto = leadsAbertos.reduce((s, l) => s + parseCurrencyBR(l.value), 0);
-  const leadsQuentes = leadsAbertos.filter(l => (l.scoreIA ?? 0) > 80).length;
+  // Cada métrica abaixo prefere o valor cacheado de GET /api/dashboard/summary
+  // (ver useDashboard.ts) quando disponível — mesma fórmula, só calculada no
+  // servidor sobre a base inteira do tenant em vez do array já em memória.
+  const valorPipelineAberto = serverSummary?.valorPipelineAberto ?? leadsAbertos.reduce((s, l) => s + parseCurrencyBR(l.value), 0);
+  const leadsQuentes = serverSummary?.leadsQuentes ?? leadsAbertos.filter(l => (l.scoreIA ?? 0) > 80).length;
 
-  const contratosInadimplentes = contracts.filter(c => c.status === 'Inadimplente').length;
-  const taxaInadimplencia = contracts.length > 0 ? (contratosInadimplentes / contracts.length) * 100 : null;
+  const contratosInadimplentesClient = contracts.filter(c => c.status === 'Inadimplente').length;
+  const taxaInadimplencia = serverSummary
+    ? (contracts.length > 0 ? serverSummary.taxaInadimplencia : null)
+    : (contracts.length > 0 ? (contratosInadimplentesClient / contracts.length) * 100 : null);
 
   // Compute Goal Meter from real squads
   const totalMeta = squads.reduce((s, sq) => s + (sq.meta || 0), 0);
@@ -51,7 +59,7 @@ export function StrategicalView({
   const goalPct = totalMeta > 0 ? Math.min(100, Math.round((totalAlcancado / totalMeta) * 100)) : 0;
 
   // Compute real MRR from contracts (camada única de métricas)
-  const activeMRR = getMRR(contracts);
+  const activeMRR = serverSummary?.mrrAtivo ?? getMRR(contracts);
 
   const hasSquads = squads.length > 0;
   const hasContracts = contracts.length > 0;

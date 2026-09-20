@@ -2,6 +2,7 @@ import { StrategicalView } from "./StrategicalView";
 import { CommercialView } from "./CommercialView";
 import { MarketingView } from "./MarketingView";
 import { CustomerSuccessView } from "./CustomerSuccessView";
+import type { DashboardSummary } from "../useDashboard";
 
 export function DashboardTabContent(props: {
   activeTab: "executivo" | "comercial" | "marketing" | "sucesso";
@@ -13,6 +14,7 @@ export function DashboardTabContent(props: {
   salesRanking: any[];
   funnelData: any[];
   recentActivities: any[];
+  serverSummary: DashboardSummary | null;
 }) {
   const {
     activeTab,
@@ -24,6 +26,7 @@ export function DashboardTabContent(props: {
     salesRanking,
     funnelData,
     recentActivities,
+    serverSummary,
   } = props;
 
   return (
@@ -35,6 +38,7 @@ export function DashboardTabContent(props: {
           performanceData={performanceData}
           squads={squads}
           contracts={contracts}
+          serverSummary={serverSummary}
         />
       )}
 
@@ -48,7 +52,7 @@ export function DashboardTabContent(props: {
 
       {activeTab === "marketing" && <MarketingView />}
 
-      {activeTab === "sucesso" && <CustomerSuccessView />}
+      {activeTab === "sucesso" && <CustomerSuccessView serverSummary={serverSummary} />}
     </>
   );
 }

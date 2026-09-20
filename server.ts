@@ -421,29 +421,35 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
 
     const sb = req.supabase;
 
-    // Leads: conversão + ativos — mesma fórmula de getConversionRate/
-    // getActiveLeadsCount em src/lib/revenueMetrics.ts.
-    const leadsBase = () => sb.from("leads").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId);
-    const [leadsTotalRes, leadsWonRes, leadsOpenRes] = await Promise.all([
-      leadsBase(),
-      leadsBase().eq("status", "Fechado"),
-      leadsBase().not("status", "in", '("Fechado","Perdido")'),
-    ]);
-    const leadsTotal = leadsTotalRes.count ?? 0;
-    const leadsWon = leadsWonRes.count ?? 0;
-    const leadsOpen = leadsOpenRes.count ?? 0;
+    // Leads: uma busca só (status, value, scoreIA) cobre conversão/ativos
+    // (getConversionRate/getActiveLeadsCount em src/lib/revenueMetrics.ts)
+    // + pipeline em aberto/leads quentes (StrategicalView.tsx).
+    const { data: leadsRows } = await sb.from("leads")
+      .select('status,value,"scoreIA"').eq("tenant_id", tenantId);
+    const leadsAll = (leadsRows || []) as { status: string; value: number | null; scoreIA: number | null }[];
+    const leadsTotal = leadsAll.length;
+    const leadsWon = leadsAll.filter((l) => l.status === "Fechado").length;
+    const leadsOpenRows = leadsAll.filter((l) => l.status !== "Fechado" && l.status !== "Perdido");
     const conversionRate = leadsTotal > 0 ? Math.round((leadsWon / leadsTotal) * 1000) / 10 : 0;
-    const activeLeadsCount = tenantId === TO_NA_PISTA_TENANT_ID ? leadsTotal : leadsOpen;
+    const activeLeadsCount = tenantId === TO_NA_PISTA_TENANT_ID ? leadsTotal : leadsOpenRows.length;
+    const valorPipelineAberto = leadsOpenRows.reduce((s, l) => s + (Number(l.value) || 0), 0);
+    const leadsQuentes = leadsOpenRows.filter((l) => (l.scoreIA ?? 0) > 80).length;
 
     // Contratos: mrr_value já é numeric de verdade (sem parsing de texto
     // tipo parseCurrencyBR) — soma direta dos não cancelados/perdidos,
-    // mesma regra de getMRR().
+    // mesma regra de getMRR(). Reaproveitado pra MRR ativo/em risco e taxa
+    // de inadimplência (CustomerSuccessView.tsx/StrategicalView.tsx — a
+    // mesma métrica "taxaInadimplencia"/"taxaRisco" nos dois arquivos).
     const { data: contractsRows } = await sb.from("contracts")
       .select("mrr_value,status").eq("tenant_id", tenantId);
     const contracts = (contractsRows || []) as { mrr_value: number | null; status: string }[];
     const totalRevenue = contracts
       .filter((c) => c.status !== "Cancelado" && c.status !== "Perdido")
       .reduce((sum, c) => sum + (Number(c.mrr_value) || 0), 0);
+    const contractsAtivos = contracts.filter((c) => c.status === "Ativo");
+    const contractsEmRisco = contracts.filter((c) => c.status === "Inadimplente");
+    const mrrEmRisco = contractsEmRisco.reduce((s, c) => s + (Number(c.mrr_value) || 0), 0);
+    const taxaInadimplencia = contracts.length > 0 ? Math.round((contractsEmRisco.length / contracts.length) * 1000) / 10 : 0;
 
     // Churn: mesma regra condicional de useDashboard.ts — tenant com agenda
     // (appointments) usa churn por paciente (sem visita nos últimos 90 dias);
@@ -478,7 +484,13 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
       churnRate = totalContracts > 0 ? Math.round((cancelledContracts / totalContracts) * 1000) / 10 : 0;
     }
 
-    const summary = { totalRevenue, conversionRate, activeLeadsCount, churnRate, cachedAt: new Date().toISOString() };
+    const summary = {
+      totalRevenue, conversionRate, activeLeadsCount, churnRate,
+      valorPipelineAberto, leadsQuentes,
+      mrrAtivo: totalRevenue, mrrEmRisco, taxaInadimplencia,
+      contractsAtivosCount: contractsAtivos.length, contractsEmRiscoCount: contractsEmRisco.length, contractsTotalCount: contracts.length,
+      cachedAt: new Date().toISOString(),
+    };
 
     await cacheSet(cacheKey, summary, 60);
     res.setHeader("X-Cache", "MISS");
