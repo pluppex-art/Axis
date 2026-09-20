@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Button } from "../../components/ui/button";
 import {
@@ -7,11 +7,12 @@ import {
 } from "lucide-react";
 import { Card } from "../../components/ui/card";
 import { StatCell, StatCellRow } from "./components/StatCell";
-import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
 import { parseEntryDate } from "./lib/financeDates";
 import { cn } from "../../lib/utils";
+import { useFinanceTransacoesList } from "./useFinanceTransacoesList";
+import { Pagination } from "../../components/ui/Pagination";
 
 const STATUS_STYLE: Record<string, { icon: typeof CheckCircle2; className: string }> = {
   Pago: { icon: CheckCircle2, className: "bg-[var(--color-success)]/10 text-[var(--color-success)] border-[var(--color-success)]/20" },
@@ -23,40 +24,26 @@ const STATUS_STYLE: Record<string, { icon: typeof CheckCircle2; className: strin
  * exportação. Para lançar/editar, use Despesas, Receitas, Contas a Pagar ou
  * Contas a Receber, que têm o formulário completo (GenericFinanceiroList). */
 export default function FinanceiroTransacoes() {
-  const { financeEntries } = useData();
   const { formatCurrency } = useLocalization();
   const [search, setSearch] = useState("");
-  const [tipoFilter, setTipoFilter] = useState("Todos");
+  const [tipoFilter, setTipoFilter] = useState<"Todos" | "Entradas" | "Saídas">("Todos");
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return financeEntries
-      .filter(t => {
-        const matchQ =
-          t.description.toLowerCase().includes(q) ||
-          (t.category ?? "").toLowerCase().includes(q) ||
-          (t.counterparty ?? "").toLowerCase().includes(q);
-        const matchTipo =
-          tipoFilter === "Todos" ||
-          (tipoFilter === "Entradas" && t.type === "Receber") ||
-          (tipoFilter === "Saídas" && t.type === "Pagar");
-        return matchQ && matchTipo;
-      })
-      .map(t => ({ ...t, __data: parseEntryDate(t.date) }))
-      .sort((a, b) => (b.__data?.getTime() ?? 0) - (a.__data?.getTime() ?? 0));
-  }, [financeEntries, search, tipoFilter]);
+  // Busca/pagina direto no Supabase (50 por vez), ordenado por
+  // date_normalized — em vez de carregar todo o array `financeEntries` do
+  // DataContext e filtrar/ordenar no navegador. Ver useFinanceTransacoesList.ts.
+  const {
+    entries, total, totalEntradas, totalSaidas,
+    page, setPage, totalPages, pageSize, loading, fetchAllForExport,
+  } = useFinanceTransacoesList({ search, tipoFilter });
 
-  const { totalEntradas, totalSaidas } = useMemo(() => {
-    const totalEntradas = filtered.filter(t => t.type === "Receber").reduce((s, t) => s + t.value, 0);
-    const totalSaidas = filtered.filter(t => t.type === "Pagar").reduce((s, t) => s + t.value, 0);
-    return { totalEntradas, totalSaidas };
-  }, [filtered]);
+  const filtered = entries.map((t: any) => ({ ...t, __data: parseEntryDate(t.date) }));
 
-  const handleExport = () => {
+  const handleExport = async () => {
+    const all = await fetchAllForExport();
     downloadCsv(
       `extrato_transacoes_${Date.now()}.csv`,
       ["Descrição", "Tipo", "Categoria", "Data", "Status", "Valor (R$)"],
-      filtered.map(t => [t.description, t.type === "Receber" ? "Entrada" : "Saída", t.category, t.date, t.status, t.value.toFixed(2)])
+      all.map((t: any) => [t.description, t.type === "Receber" ? "Entrada" : "Saída", t.category, t.date, t.status, Number(t.value).toFixed(2)])
     );
   };
 
@@ -74,7 +61,7 @@ export default function FinanceiroTransacoes() {
           <StatCell label="Entradas (filtro atual)" value={formatCurrency(totalEntradas)} icon={ArrowUpRight} tone="success" />
           <StatCell label="Saídas (filtro atual)" value={formatCurrency(totalSaidas)} icon={ArrowDownLeft} tone="danger" />
           <StatCell label="Saldo (filtro atual)" value={formatCurrency(totalEntradas - totalSaidas)} icon={Scale} tone={totalEntradas - totalSaidas < 0 ? "danger" : "neutral"} />
-          <StatCell label="Lançamentos" value={filtered.length} icon={Search} />
+          <StatCell label="Lançamentos" value={total} icon={Search} />
         </StatCellRow>
 
         <div className="flex flex-col sm:flex-row gap-3 items-center justify-between print:hidden">
@@ -90,7 +77,7 @@ export default function FinanceiroTransacoes() {
           </div>
 
           <div className="flex items-center gap-1 bg-[var(--color-surface-sunken)] p-1 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)]">
-            {["Todos", "Entradas", "Saídas"].map(tp => (
+            {(["Todos", "Entradas", "Saídas"] as const).map(tp => (
               <Button key={tp} size="sm" variant={tipoFilter === tp ? "default" : "ghost"} onClick={() => setTipoFilter(tp)} className="h-7 px-3 text-xs font-medium">{tp}</Button>
             ))}
           </div>
@@ -145,6 +132,16 @@ export default function FinanceiroTransacoes() {
             </table>
           </div>
         </Card>
+
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={pageSize}
+          loading={loading}
+          onPageChange={setPage}
+          itemLabel="lançamento"
+        />
       </div>
     </PageContainer>
   );
