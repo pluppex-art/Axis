@@ -1566,6 +1566,40 @@ app.get("/api/crm/leads-list", requireUser, async (req: any, res) => {
   }
 });
 
+/**
+ * Preview cacheado de `clientes` pra src/pages/crm/Clientes.tsx — mesma
+ * lógica do preview de leads acima (Redis, TTL curto de 20s, cap em 2000
+ * mais recentes, nunca é a fonte de verdade). A tela continua com sua
+ * própria busca completa sem cap, que sempre sobrescreve quando termina.
+ */
+app.get("/api/crm/clientes-list", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `crm-clientes-list:tenant:${tenantId}`;
+
+    const cached = await cacheGet<any[]>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json({ data: cached });
+    }
+
+    const sb = req.supabase;
+    const { data, error } = await sb.from("clientes").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(2000);
+    if (error) {
+      console.error("[crm/clientes-list]", error.message);
+      return res.status(500).json({ error: "Erro ao buscar clientes." });
+    }
+
+    await cacheSet(cacheKey, data || [], 20);
+    res.setHeader("X-Cache", "MISS");
+    return res.json({ data: data || [] });
+  } catch (err: any) {
+    console.error("[crm/clientes-list]", err?.message);
+    return res.status(500).json({ error: "Erro ao buscar clientes." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

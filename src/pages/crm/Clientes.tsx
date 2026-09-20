@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "../../components/ui/button";
 import { Plus } from "lucide-react";
 import { NovoClienteModal } from "../../components/ui/modals/crm/NovoClienteModal";
@@ -8,6 +8,7 @@ import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { PageContainer } from "../../components/PageContainer";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import { apiFetch } from "../../lib/apiClient";
 import { ClientesKPIs } from "./components/Clientes/ClientesKPIs";
 import { ClientesList } from "./components/Clientes/ClientesList";
 
@@ -19,18 +20,37 @@ export default function Clientes() {
   const [sectorFilter, setSectorFilter] = useState("Todos os setores");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Supabase (clientes) é a única fonte — sem cache local.
+  // Supabase (clientes) é a fonte de verdade — a busca completa abaixo
+  // sempre roda e sempre tem a palavra final. GET /api/crm/clientes-list
+  // (Redis-SPY, TTL de 20s) só adianta uma prévia enquanto ela não termina.
   const [clientes, setClientes] = useState<any[]>([]);
+  const authoritativeLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (!supabase || !activeTenantId) return;
+    if (!activeTenantId) return;
+    let cancelled = false;
+    authoritativeLoadedRef.current = false;
+
+    apiFetch(`/api/crm/clientes-list?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || authoritativeLoadedRef.current || !json?.data) return;
+        setClientes(json.data);
+      })
+      .catch(() => { /* silencioso — a busca completa abaixo segue normalmente */ });
+
+    if (!supabase) return;
     // Sem o filtro de tenant, contas de parceiro (has_tenant_access verdadeiro
     // pra vários tenants) recebiam via RLS linhas de todos os tenants acessíveis
     // misturadas numa única lista.
     supabase.from("clientes").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
+      if (cancelled) return;
+      authoritativeLoadedRef.current = true;
       if (error) toast.error(`Erro ao carregar clientes: ${error.message}`);
       else if (data) setClientes(data);
     });
+
+    return () => { cancelled = true; };
   }, [activeTenantId]);
 
   const kpis = useMemo(() => ({
