@@ -3760,8 +3760,13 @@ app.post("/api/whatsapp/contacts", requireUser, async (req: any, res) => {
 
 app.get("/api/whatsapp/messages/:contactId", requireUser, async (req: any, res) => {
   const { contactId } = req.params;
-  const { data, error } = await req.supabase.from("chat_messages").select("*").eq("contact_id", contactId).order("timestamp", { ascending: true });
-  if (!error && data) return res.json(data);
+  // Buscava o histórico INTEIRO da conversa sem limite, a cada poll (esta
+  // tela consulta de novo a cada poucos segundos enquanto o chat tá aberto)
+  // — uma conversa de anos com um cliente recorrente facilmente passa de
+  // milhares de mensagens. Traz as 200 mais recentes (desc) e inverte pra
+  // manter a ordem cronológica que a UI espera (mais antiga primeiro).
+  const { data, error } = await req.supabase.from("chat_messages").select("*").eq("contact_id", contactId).order("timestamp", { ascending: false }).limit(200);
+  if (!error && data) return res.json([...data].reverse());
   const { data: tenantId } = await req.supabase.rpc("current_tenant_id");
   res.json(tenantMessages(tenantId)[contactId] || []);
 });
