@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Button } from "../../components/ui/button";
 import {
@@ -6,11 +6,14 @@ import {
   Columns3, Calendar, CheckCircle2, Clock, AlertCircle, ArrowUpRight
 } from "lucide-react";
 import { Card } from "../../components/ui/card";
+import { Pagination } from "../../components/ui/Pagination";
 import { Link } from "react-router-dom";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { NewLeadModal } from "../../components/ui/modals/crm/NewLeadModal";
 import { LeadDetailsModal } from "../../components/ui/LeadDetailsModal";
+
+const PAGE_SIZE = 50;
 
 export default function Oportunidades() {
   const { leads } = useData();
@@ -42,6 +45,13 @@ export default function Oportunidades() {
       return matchSearch && matchStage;
     });
   }, [oportunidades, search, stageFilter]);
+
+  // Renderizava TODAS as oportunidades filtradas de uma vez — pagina só a
+  // exibição (os dados já estão em memória).
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [search, stageFilter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageItems = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   const totalPipeline = useMemo(() => {
     return oportunidades.reduce((acc, curr) => acc + curr.numericValue, 0);
@@ -120,7 +130,7 @@ export default function Oportunidades() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border-subtle)]">
-              {filtered.map(op => (
+              {pageItems.map(op => (
                 <tr key={op.id} className="hover:bg-[var(--color-surface-sunken)]/40 transition-colors">
                   <td className="px-5 py-3.5">
                     <div className="font-bold text-[var(--color-text-primary)]">{op.name}</div>
@@ -176,6 +186,8 @@ export default function Oportunidades() {
           </table>
         </div>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} itemLabel="oportunidade" />
 
       <NewLeadModal isOpen={showNewModal} onClose={() => setShowNewModal(false)} />
       <LeadDetailsModal isOpen={!!selectedLead} onClose={() => setSelectedLead(null)} lead={selectedLead} />

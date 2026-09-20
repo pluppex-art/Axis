@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Button } from "../../components/ui/button";
 import {
@@ -6,9 +6,12 @@ import {
   Calendar, Search, Filter, User, ArrowRight
 } from "lucide-react";
 import { Card } from "../../components/ui/card";
+import { Pagination } from "../../components/ui/Pagination";
 import { useData } from "../../contexts/DataContext";
 import { toast } from "sonner";
 import { LeadDetailsModal } from "../../components/ui/LeadDetailsModal";
+
+const PAGE_SIZE = 50;
 
 export default function FollowUps() {
   const { leads } = useData();
@@ -42,6 +45,13 @@ export default function FollowUps() {
   }, [followUpList, search]);
 
   const urgentCount = useMemo(() => followUpList.filter(l => l.isUrgent).length, [followUpList]);
+
+  // Renderizava TODOS os leads em follow-up de uma vez — pagina só a
+  // exibição (os dados já estão em memória).
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [search]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageItems = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   return (
     <PageContainer
@@ -82,7 +92,7 @@ export default function FollowUps() {
 
       {/* Follow-up Cards */}
       <div className="space-y-3">
-        {filtered.map(item => (
+        {pageItems.map(item => (
           <div
             key={item.id}
             className={`p-4 rounded-2xl bg-[var(--color-surface)] border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs ${
@@ -151,6 +161,8 @@ export default function FollowUps() {
           </div>
         )}
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} itemLabel="follow-up" />
 
       <LeadDetailsModal isOpen={!!selectedLead} onClose={() => setSelectedLead(null)} lead={selectedLead} />
     </PageContainer>

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Button } from "../../components/ui/button";
 import {
@@ -6,8 +6,11 @@ import {
   CheckCircle2, Clock, Search, Filter, Plus, User
 } from "lucide-react";
 import { Card } from "../../components/ui/card";
+import { Pagination } from "../../components/ui/Pagination";
 import { useData } from "../../contexts/DataContext";
 import { toast } from "sonner";
+
+const PAGE_SIZE = 50;
 
 export default function Atividades() {
   const { leads } = useData();
@@ -59,6 +62,13 @@ export default function Atividades() {
       return matchSearch && matchType;
     });
   }, [activities, search, typeFilter]);
+
+  // Renderizava TODAS as atividades de uma vez (uma por lead, no mínimo) —
+  // pagina só a exibição (os dados já estão em memória).
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [search, typeFilter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageItems = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -114,7 +124,7 @@ export default function Atividades() {
 
       {/* Activity Timeline */}
       <div className="space-y-3">
-        {filtered.map(act => (
+        {pageItems.map(act => (
           <div
             key={act.id}
             className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border-default)] flex items-start gap-4 transition-all hover:border-[var(--color-primary-blue)]/40"
@@ -153,6 +163,8 @@ export default function Atividades() {
           </div>
         )}
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} itemLabel="atividade" />
     </PageContainer>
   );
 }
