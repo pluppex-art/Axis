@@ -1179,9 +1179,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
             addNotification({
               title: "Lembrete de Teleconsulta Enviado",
-              desc: `Mensagem de WhatsApp disparada para ${apt.patient} (${apt.phone}).`,
+              description: `Mensagem de WhatsApp disparada para ${apt.patient} (${apt.phone}).`,
               type: "info",
-              category: "Telemedicina"
             });
           }
         }
@@ -1230,9 +1229,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
             addNotification({
               title: "Reengajamento Iniciado",
-              desc: `Automação detectou o lead frio '${lead.name}' (Score IA: ${lead.scoreIA}) e gerou uma tarefa de Nutrição.`,
+              description: `Automação detectou o lead frio '${lead.name}' (Score IA: ${lead.scoreIA}) e gerou uma tarefa de Nutrição.`,
               type: "info",
-              category: "Automação"
             }, true);
           } else {
             handledColdLeadsRef.current[lead.id] = true;
@@ -1269,9 +1267,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           moveLead(lead.id, trigger.targetStageId, 0);
           addNotification({
             title: "Gatilho de Lead Score Aplicado",
-            desc: `${lead.name} (Score IA: ${lead.scoreIA}) foi movido automaticamente para a etapa configurada no gatilho.`,
+            description: `${lead.name} (Score IA: ${lead.scoreIA}) foi movido automaticamente para a etapa configurada no gatilho.`,
             type: "info",
-            category: "Automação"
           }, true);
           break;
         }
@@ -1291,9 +1288,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (percentage >= 90 && !notifiedSquadsRef.current[sq.id]) {
         addNotification({
           title: "Meta Próxima (90%+)",
-          desc: `O ${sq.nome} atingiu 90% da meta mensal! Faturamento atual: ${formatCurrency(sq.faturamentoAlcancado)}`,
+          description: `O ${sq.nome} atingiu 90% da meta mensal! Faturamento atual: ${formatCurrency(sq.faturamentoAlcancado)}`,
           type: "success",
-          category: "Performance"
         }, true);
         toast.success(`Alerta de Meta: ${sq.nome} atingiu 90%!`, {
           description: "Excelente desempenho do time.",
@@ -1383,9 +1379,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     toast.success('Novo lead adicionado com sucesso!');
     addNotification({
       title: "Novo Lead",
-      desc: `${lead.name} da empresa ${lead.company || "lead"} foi adicionado.`,
-      link: `/app/crm/pipeline?leadId=${newId}`,
-      category: "CRM",
+      description: `${lead.name} da empresa ${lead.company || "lead"} foi adicionado.`,
+      link_url: `/app/crm/pipeline?leadId=${newId}`,
       type: "success"
     });
 
@@ -1476,10 +1471,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         updateLead(lead.id, { clientId, clientName });
         addNotification({
           title: "Novo Cliente na Base",
-          desc: `${clientName} foi adicionado à Base de Clientes a partir do lead ganho "${lead.name}".`,
-          link: "/app/crm/clientes",
+          description: `${clientName} foi adicionado à Base de Clientes a partir do lead ganho "${lead.name}".`,
+          link_url: "/app/crm/clientes",
           type: "success",
-          category: "CRM & Vendas",
         });
         toast.success(existing ? "Lead vinculado a um cliente já existente na base." : "Cliente adicionado à Base de Clientes!");
       }
@@ -1517,19 +1511,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             });
             addNotification({
               title: "Lead Qualificado (SDR -> Comercial)",
-              desc: `O lead ${updatedLead.name} foi qualificado pela Master AI com temperatura ${tempLabel} e enviado ao pipeline comercial.`,
-              link: "/app/pipeline",
+              description: `O lead ${updatedLead.name} foi qualificado pela Master AI com temperatura ${tempLabel} e enviado ao pipeline comercial.`,
+              link_url: "/app/pipeline",
               type: "success",
-              category: "CRM & Vendas"
             });
           }
           if (updates.status === 'Fechado' && l.status !== 'Fechado') {
             becameWon = true;
             addNotification({
               title: "Automação: E-mail de Boas Vindas",
-              desc: `Boas vindas enviadas para ${updatedLead.name} por ter se tornado cliente!`,
+              description: `Boas vindas enviadas para ${updatedLead.name} por ter se tornado cliente!`,
               type: "success",
-              category: "Engajamento"
             });
             toast.success("E-mail de Boas Vindas enviado!");
           }
@@ -1593,10 +1585,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (destStageId === 's_qual' && lead.pipelineId === 'sdr') {
         addNotification({
           title: "Análise Master AI Concluída",
-          desc: `O lead ${lead.name} foi movido para Qualificação IA. A análise estrutural da Master AI foi finalizada.`,
+          description: `O lead ${lead.name} foi movido para Qualificação IA. A análise estrutural da Master AI foi finalizada.`,
           type: "success",
-          category: "SDR",
-          link: `/app/pipeline?search=${encodeURIComponent(lead.name)}`
+          link_url: `/app/pipeline?search=${encodeURIComponent(lead.name)}`
         });
       }
       return [...otherLeads, updatedLead];
@@ -1638,9 +1629,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTasks(prev => [newTask, ...prev]);
     addNotification({
       title: "Nova Tarefa",
-      desc: `Agendada: ${task.title}`,
-      link: task.lead_id ? `/app/crm/pipeline?leadId=${task.lead_id}` : `/app/tarefas`,
-      category: "CRM",
+      description: `Agendada: ${task.title}`,
+      link_url: task.lead_id ? `/app/crm/pipeline?leadId=${task.lead_id}` : `/app/tarefas`,
       type: "info"
     }, true);
 
@@ -1693,7 +1683,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       toast.success('Contrato registrado!');
       addNotification({
         title: "Novo Contrato",
-        desc: `Cliente: ${contract.client}`,
+        description: `Cliente: ${contract.client}`,
         type: "success"
       });
     }
@@ -1789,26 +1779,55 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const addNotification = (notification: Omit<Notification, 'id' | 'time' | 'date' | 'read'>, push?: boolean) => {
+  // Antes só existia em memória (setNotifications, sem nenhuma escrita no
+  // Supabase) — sumia a cada refresh e "marcar como lida" nunca persistia de
+  // verdade. Agora grava direto na tabela (colunas reais: title, description,
+  // type, link_url, is_read, created_at — sem `category`, que nunca existiu
+  // como coluna). Otimista: atualiza o estado local primeiro, igual todo
+  // outro mutator deste arquivo, e só loga se a escrita no Supabase falhar.
+  const addNotification = (notification: Omit<Notification, 'id' | 'is_read' | 'created_at'>, push?: boolean) => {
     const newNotification: Notification = {
       ...notification,
-      id: Math.random().toString(36).substr(2, 9),
-      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      date: "Hoje",
-      read: false
+      id: crypto.randomUUID(),
+      is_read: false,
+      created_at: new Date().toISOString(),
     };
     if (push) {
-      sendPushNotification(newNotification.title, newNotification.desc);
+      sendPushNotification(newNotification.title, newNotification.description);
     }
     setNotifications(prev => [newNotification, ...prev]);
+    if (supabase && tenantId) {
+      supabase.from('notifications').insert({
+        id: newNotification.id,
+        tenant_id: tenantId,
+        title: newNotification.title,
+        description: newNotification.description,
+        type: newNotification.type,
+        link_url: newNotification.link_url || null,
+        is_read: false,
+      }).then(({ error }: { error: any }) => {
+        if (error) console.error('[Notifications] Falha ao persistir:', error.message);
+      });
+    }
   };
 
   const markNotificationAsRead = (id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    if (supabase) {
+      supabase.from('notifications').update({ is_read: true }).eq('id', id).then(({ error }: { error: any }) => {
+        if (error) console.error('[Notifications] Falha ao marcar como lida:', error.message);
+      });
+    }
   };
 
   const markAllNotificationsAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    if (supabase && tenantId) {
+      supabase.from('notifications').update({ is_read: true }).eq('tenant_id', tenantId).eq('is_read', false)
+        .then(({ error }: { error: any }) => {
+          if (error) console.error('[Notifications] Falha ao marcar todas como lidas:', error.message);
+        });
+    }
   };
 
   const addLeadActivity = async (leadId: string, type: 'Ligação' | 'E-mail' | 'Reunião' | 'Outro', title: string, description: string, seller: string, customDate?: string, files?: { name: string; size: string; }[]) => {

@@ -259,7 +259,7 @@ export function ConfigNotificacoesPreferencias() {
     sendPushNotification("S.P.Y. Alerta Comercial", "Nova oportunidade qualificada identificada pelo S.P.Y.!");
     addNotification({
       title: "Oportunidade Comercial",
-      desc: "Lead qualificado interagiu com a proposta via WhatsApp.",
+      description: "Lead qualificado interagiu com a proposta via WhatsApp.",
       type: "info",
     }, true);
     toast.success("Notificação de teste disparada em todos os canais ativos!");

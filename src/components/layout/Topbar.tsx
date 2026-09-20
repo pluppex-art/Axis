@@ -13,11 +13,9 @@ import {
   Sun,
   Moon,
   Bell,
-  Target,
-  CheckSquare,
-  Wallet,
-  Mail,
-  Server,
+  CheckCircle2,
+  AlertTriangle,
+  Info,
   Users,
   Settings2,
   AlertCircle,
@@ -33,7 +31,23 @@ interface TopbarProps {
   setIsMobileSidebarOpen: (val: boolean) => void;
 }
 
-type NotificationTab = "todas" | "unread" | "CRM" | "Financeiro" | "Sistema";
+// "category" nunca existiu como coluna em public.notifications — as abas
+// CRM/Financeiro/Sistema filtravam um campo que nunca persistia. Simplificado
+// pra usar só o que a tabela de fato tem: lida/não lida.
+type NotificationTab = "todas" | "unread";
+
+/** "Hoje, 09:00" / "Ontem" / "12 mar" — a partir de created_at (timestamptz real). */
+function formatNotificationTime(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const now = new Date();
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(d) - startOfDay(now)) / 86400000);
+  const time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if (diffDays === 0) return time;
+  if (diffDays === -1) return "Ontem";
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
 
 export function Topbar({
   isSidebarCollapsed,
@@ -120,7 +134,7 @@ export function Topbar({
   const liveProfile = { name: user?.name || "Gustavo Portilho", avatar: user?.avatarUrl || null };
   const liveEmpresaName = appSettings?.empresa_dados?.nomeFantasia || user?.tenantName || "S.P.Y. Corp";
 
-  const unreadNotifications = notifications.filter((n) => !n.read).length;
+  const unreadNotifications = notifications.filter((n) => !n.is_read).length;
   const userInitials = liveProfile.name ? liveProfile.name.substring(0, 2).toUpperCase() : "GT";
 
   const handleLogout = () => {
@@ -128,28 +142,18 @@ export function Topbar({
     navigate("/login");
   };
 
-  const filteredNotifications = notifications.filter((n) => {
-    if (activeTab === "unread") return !n.read;
-    if (activeTab === "CRM") return n.category === "CRM";
-    if (activeTab === "Financeiro") return n.category === "Financeiro";
-    if (activeTab === "Sistema") return n.category === "Sistema";
-    return true;
-  });
+  const filteredNotifications = activeTab === "unread" ? notifications.filter((n) => !n.is_read) : notifications;
 
-  const getCategoryStyle = (cat?: string) => {
-    switch (cat) {
-      case "CRM":
-        return { icon: Target, bg: "bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)] border-[var(--color-primary-blue)]/20", label: "CRM" };
-      case "Produtividade":
-        return { icon: CheckSquare, bg: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20", label: "Tarefas" };
-      case "Financeiro":
-        return { icon: Wallet, bg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20", label: "Financeiro" };
-      case "Engajamento":
-        return { icon: Mail, bg: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20", label: "Omnichannel" };
-      case "Sistema":
-        return { icon: Server, bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20", label: "Sistema" };
+  const getTypeStyle = (type?: string) => {
+    switch (type) {
+      case "success":
+        return { icon: CheckCircle2, bg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" };
+      case "warning":
+        return { icon: AlertTriangle, bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" };
+      case "error":
+        return { icon: AlertCircle, bg: "bg-rose-500/10 text-rose-500 border-rose-500/20" };
       default:
-        return { icon: Bell, bg: "bg-slate-500/10 text-[var(--color-text-muted)] border-[var(--color-border-default)]", label: cat || "Geral" };
+        return { icon: Info, bg: "bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)] border-[var(--color-primary-blue)]/20" };
     }
   };
 
@@ -250,9 +254,6 @@ export function Topbar({
                   {[
                     { id: "todas" as const, label: "Todas", count: notifications.length },
                     { id: "unread" as const, label: "Não lidas", count: unreadNotifications },
-                    { id: "CRM" as const, label: "CRM", count: notifications.filter(n => n.category === "CRM").length },
-                    { id: "Financeiro" as const, label: "Finanças", count: notifications.filter(n => n.category === "Financeiro").length },
-                    { id: "Sistema" as const, label: "Sistema", count: notifications.filter(n => n.category === "Sistema").length },
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -278,7 +279,7 @@ export function Topbar({
                 <div className="max-h-[420px] overflow-y-auto scrollbar-thin divide-y divide-[var(--color-border-subtle)]">
                   {filteredNotifications.length > 0 ? (
                     filteredNotifications.map((n) => {
-                      const style = getCategoryStyle(n.category);
+                      const style = getTypeStyle(n.type);
                       const IconComp = style.icon;
 
                       return (
@@ -286,14 +287,14 @@ export function Topbar({
                           key={n.id}
                           onClick={() => {
                             markNotificationAsRead(n.id);
-                            const target = n.link || (n.category === "CRM" ? "/app/crm/pipeline" : n.title?.toLowerCase().includes("tarefa") ? "/app/tarefas" : undefined);
+                            const target = n.link_url || (n.title?.toLowerCase().includes("tarefa") ? "/app/tarefas" : undefined);
                             if (target) {
                               navigate(target);
                               setIsNotificationsOpen(false);
                             }
                           }}
                           className={`p-3.5 hover:bg-[var(--color-surface-sunken)] cursor-pointer transition-all flex gap-3 relative group ${
-                            !n.read ? "bg-[var(--color-primary-blue)]/[0.04]" : ""
+                            !n.is_read ? "bg-[var(--color-primary-blue)]/[0.04]" : ""
                           }`}
                         >
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${style.bg}`}>
@@ -301,18 +302,18 @@ export function Topbar({
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-start mb-0.5 gap-1">
-                              <h5 className={`text-xs font-bold truncate ${!n.read ? "text-[var(--color-text-primary)]" : "text-[var(--color-text-muted)]"}`}>
+                              <h5 className={`text-xs font-bold truncate ${!n.is_read ? "text-[var(--color-text-primary)]" : "text-[var(--color-text-muted)]"}`}>
                                 {n.title}
                               </h5>
                               <span className="text-[10px] text-[var(--color-text-faint)] font-mono shrink-0">
-                                {n.time}
+                                {formatNotificationTime(n.created_at)}
                               </span>
                             </div>
                             <p className="text-[11px] text-[var(--color-text-muted)] line-clamp-2 leading-relaxed">
-                              {n.desc}
+                              {n.description}
                             </p>
                           </div>
-                          {!n.read && (
+                          {!n.is_read && (
                             <div className="absolute right-3 top-1/2 -translate-y-1/2">
                               <div className="w-2 h-2 rounded-full bg-[var(--color-primary-blue)] shadow-xs"></div>
                             </div>
@@ -324,7 +325,7 @@ export function Topbar({
                     <div className="p-10 flex flex-col items-center justify-center text-center opacity-50">
                       <Bell className="w-8 h-8 mb-2 text-[var(--color-text-faint)]" />
                       <p className="text-xs font-bold text-[var(--color-text-muted)]">
-                        {t("Nenhuma notificação")} {activeTab !== "todas" ? t("nesta categoria") : ""}
+                        {t("Nenhuma notificação")}
                       </p>
                     </div>
                   )}

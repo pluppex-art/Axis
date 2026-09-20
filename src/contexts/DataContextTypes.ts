@@ -12,16 +12,20 @@ export interface LeadActivity {
   files?: { name: string; size: string; }[];
 }
 
+// Espelha as colunas reais de public.notifications (id uuid, tenant_id,
+// user_id, title, description, type, link_url, is_read, created_at). Não
+// tem mais `category` — a tabela nunca teve essa coluna versionada; os
+// mutators (addNotification/markNotificationAsRead/markAllNotificationsAsRead
+// em DataContext.tsx) agora persistem de verdade, então o formato aqui
+// precisa bater exatamente com o schema.
 export interface Notification {
   id: string;
   title: string;
-  desc: string;
-  link?: string;
-  time: string;
-  date: string;
+  description: string;
+  link_url?: string | null;
   type: 'success' | 'error' | 'info' | 'warning';
-  category?: string;
-  read: boolean;
+  is_read: boolean;
+  created_at: string;
 }
 
 export interface GlobalWebhook {
@@ -166,7 +170,7 @@ export interface DataContextType {
   addContract: (contract: Omit<Contract, 'id'>, options?: { silent?: boolean }) => void;
   updateContract: (id: string, updates: Partial<Contract>, options?: { silent?: boolean }) => void;
   deleteContract: (id: string) => void;
-  addNotification: (notification: Omit<Notification, 'id' | 'time' | 'date' | 'read'>, push?: boolean) => void;
+  addNotification: (notification: Omit<Notification, 'id' | 'is_read' | 'created_at'>, push?: boolean) => void;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
   addLeadActivity: (leadId: string, type: 'Ligação' | 'E-mail' | 'Reunião' | 'Outro', title: string, description: string, seller: string, customDate?: string, files?: { name: string; size: string; }[]) => void;

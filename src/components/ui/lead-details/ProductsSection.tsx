@@ -582,10 +582,9 @@ export function ProductsSection({
 
       addNotification({
         title: `🎉 Venda Concluída no PDV: ${clientName}`,
-        desc: `Venda de ${formatCurrency(finalTotal)} processada via ${formaPagamento}${installmentInfo} para ${formattedDate}. Proposta vinculada e receita provisionada no financeiro.`,
+        description: `Venda de ${formatCurrency(finalTotal)} processada via ${formaPagamento}${installmentInfo} para ${formattedDate}. Proposta vinculada e receita provisionada no financeiro.`,
         type: "success",
-        category: "CRM & Vendas",
-        link: "/app/crm/propostas",
+        link_url: "/app/crm/propostas",
       });
 
       const generatedProposal: PropostaEditorData = {
