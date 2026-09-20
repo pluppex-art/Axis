@@ -1753,6 +1753,43 @@ app.get("/api/finance/entries-list", requireUser, async (req: any, res) => {
   }
 });
 
+/**
+ * Preview cacheado de `tasks` — alimenta WorkloadBento.tsx (visão tipo
+ * board/carga de trabalho, precisa do array completo pra desenhar colunas
+ * por responsável/status, mesma razão do Pipeline de leads). Tabela pequena
+ * hoje (poucas dezenas de linhas nos dois tenants ativos), mas cresce com
+ * uso — mesmo critério de leads/reuniões/finance_entries: tarefa recorrente
+ * de negócio, não catálogo/config. `select("*")` sem exclusão de coluna —
+ * sem bloat nenhum aqui (description é texto curto de tarefa).
+ */
+app.get("/api/operative/tasks-list", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `operative-tasks-list:tenant:${tenantId}`;
+
+    const cached = await cacheGet<any[]>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json({ data: cached });
+    }
+
+    const sb = req.supabase;
+    const { data, error } = await sb.from("tasks").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(1000);
+    if (error) {
+      console.error("[operative/tasks-list]", error.message);
+      return res.status(500).json({ error: "Erro ao buscar tarefas." });
+    }
+
+    await cacheSet(cacheKey, data || [], 20);
+    res.setHeader("X-Cache", "MISS");
+    return res.json({ data: data || [] });
+  } catch (err: any) {
+    console.error("[operative/tasks-list]", err?.message);
+    return res.status(500).json({ error: "Erro ao buscar tarefas." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

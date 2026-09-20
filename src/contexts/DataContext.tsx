@@ -885,6 +885,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const reunioesAuthoritativeLoadedRef = React.useRef(false);
   // Mesma ideia, pro preview de lançamentos financeiros (ver GET /api/finance/entries-list).
   const financeEntriesAuthoritativeLoadedRef = React.useRef(false);
+  // Mesma ideia, pro preview de tarefas (ver GET /api/operative/tasks-list).
+  const tasksAuthoritativeLoadedRef = React.useRef(false);
 
   useEffect(() => {
     // Agora que a carga pagina de verdade (várias requisições sequenciais
@@ -923,6 +925,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setLeads([]);
     leadsAuthoritativeLoadedRef.current = false;
     setTasks([]);
+    tasksAuthoritativeLoadedRef.current = false;
     setContracts([]);
     setLeadActivities([]);
     setFinanceEntries([]);
@@ -1006,7 +1009,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               leadsAuthoritativeLoadedRef.current = true;
             },
           },
-          { name: 'tasks', promise: fetchAllRowsForTenant('tasks', tenantId), apply: (res) => { if (res.data) setTasks(res.data as Task[]); } },
+          { name: 'tasks', promise: fetchAllRowsForTenant('tasks', tenantId), apply: (res) => { if (res.data) setTasks(res.data as Task[]); tasksAuthoritativeLoadedRef.current = true; } },
           // Faltava esse hidrate — `contracts` nunca era populado a partir do
           // Supabase na carga inicial (só via evento realtime de escrita na
           // tabela), então a cada refresh da página o estado local começava
@@ -1128,6 +1131,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             setFinanceEntries(json.data as FinanceEntry[]);
           })
           .catch(() => { /* silencioso — a busca autoritativa (job 'finance_entries' acima) segue normalmente */ });
+
+        // Mesma ideia pras tarefas — WorkloadBento.tsx precisa do array
+        // completo pra desenhar o board por responsável/status.
+        apiFetch(`/api/operative/tasks-list?tenantId=${encodeURIComponent(tenantId)}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((json) => {
+            if (cancelled || tasksAuthoritativeLoadedRef.current || !json?.data) return;
+            setTasks(json.data as Task[]);
+          })
+          .catch(() => { /* silencioso — a busca autoritativa (job 'tasks' acima) segue normalmente */ });
 
         // Falha total (retries esgotados, ex.: timeout do banco sob carga)
         // resolvia silenciosamente com `data: []` — a tela ficava mostrando
