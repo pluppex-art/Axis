@@ -983,6 +983,68 @@ app.get("/api/finance/performance-anual-summary", requireUser, async (req: any, 
   }
 });
 
+// Fluxo de Caixa — regime de caixa, dia a dia. [startDate, endDate] vem
+// pronto do cliente (mesma janela de 30/60/90 dias calculada em
+// FinanceiroFluxoCaixa.tsx) pra evitar divergência de fuso horário entre
+// o "hoje" do servidor e o do navegador — mesmo motivo do DRE.
+app.get("/api/finance/fluxo-caixa-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+
+    const startDate = typeof req.query.startDate === "string" ? req.query.startDate : null;
+    const endDate = typeof req.query.endDate === "string" ? req.query.endDate : null;
+    const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!startDate || !endDate || !isoDateRe.test(startDate) || !isoDateRe.test(endDate)) {
+      return res.status(400).json({ error: "Parâmetros startDate/endDate (YYYY-MM-DD) são obrigatórios." });
+    }
+    const cacheKey = `finance-fluxo-caixa:tenant:${tenantId}:${startDate}:${endDate}`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const { data: rows } = await sb.from("finance_entries")
+      .select("type,value,date_normalized")
+      .eq("tenant_id", tenantId).eq("status", "Pago")
+      .gte("date_normalized", startDate).lte("date_normalized", endDate);
+
+    const buckets = new Map<string, { entradas: number; saidas: number }>();
+    for (const r of (rows || []) as { type: string; value: number; date_normalized: string | null }[]) {
+      if (!r.date_normalized) continue;
+      const cur = buckets.get(r.date_normalized) || { entradas: 0, saidas: 0 };
+      if (r.type === "Receber") cur.entradas += Number(r.value) || 0;
+      else if (r.type === "Pagar") cur.saidas += Number(r.value) || 0;
+      buckets.set(r.date_normalized, cur);
+    }
+
+    const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+    let acumulado = 0;
+    const fluxoDiario = Array.from(buckets.keys()).sort().map((key) => {
+      const b = buckets.get(key)!;
+      const [y, m, d] = key.split("-");
+      const saldoDia = round2(b.entradas - b.saidas);
+      acumulado = round2(acumulado + saldoDia);
+      return { label: `${d}/${m}`, dataCompleta: `${d}/${m}/${y}`, entradas: b.entradas, saidas: b.saidas, saldoDia, acumulado };
+    });
+
+    const totalEntradas = fluxoDiario.reduce((s, d) => s + d.entradas, 0);
+    const totalSaidas = fluxoDiario.reduce((s, d) => s + d.saidas, 0);
+
+    const summary = { totalEntradas, totalSaidas, saldoLiquido: round2(totalEntradas - totalSaidas), fluxoDiario, cachedAt: new Date().toISOString() };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[finance/fluxo-caixa-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular fluxo de caixa." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

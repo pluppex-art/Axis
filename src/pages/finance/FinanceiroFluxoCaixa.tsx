@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -6,23 +6,35 @@ import { StatCell, StatCellRow } from "./components/StatCell";
 import { ArrowUpRight, ArrowDownRight, Scale, Download, Calendar } from "lucide-react";
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
 import { parseEntryDate } from "./lib/financeDates";
 import { isPago, round2, type FinanceEntryLike } from "./lib/financeEngine";
 import { cn } from "../../lib/utils";
+import { apiFetch } from "../../lib/apiClient";
 
 const PERIODOS = [30, 60, 90] as const;
+
+interface DiaFluxo { label: string; dataCompleta: string; entradas: number; saidas: number; saldoDia: number; acumulado: number }
+interface FluxoCaixaServerSummary { totalEntradas: number; totalSaidas: number; saldoLiquido: number; fluxoDiario: DiaFluxo[] }
+
+/** YYYY-MM-DD no fuso local — precisa bater com o dia calendário que o
+ * cálculo local abaixo usa (nunca toISOString(), que converte pra UTC). */
+function toLocalISODate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 /** Fluxo de caixa REALIZADO (regime de caixa: só status "Pago") dos últimos
  * N dias — irmão do dashboard "Projeção de Caixa", que é o oposto: só
  * "A Vencer". Os dois nunca se misturam. */
 export default function FinanceiroFluxoCaixa() {
   const { financeEntries } = useData();
+  const { activeTenantId } = useAuth();
   const { formatCurrency } = useLocalization();
   const [periodo, setPeriodo] = useState<(typeof PERIODOS)[number]>(30);
 
-  const { totalEntradas, totalSaidas, saldoLiquido, fluxoDiario } = useMemo(() => {
+  const { totalEntradas: clientTotalEntradas, totalSaidas: clientTotalSaidas, saldoLiquido: clientSaldoLiquido, fluxoDiario: clientFluxoDiario, rangeStart, rangeEnd } = useMemo(() => {
     const hoje = new Date(); hoje.setHours(23, 59, 59, 999);
     const inicio = new Date(hoje); inicio.setDate(inicio.getDate() - periodo); inicio.setHours(0, 0, 0, 0);
 
@@ -54,8 +66,31 @@ export default function FinanceiroFluxoCaixa() {
     const totalEntradas = doPeriodo.filter(e => e.type === "Receber").reduce((s, e) => s + e.value, 0);
     const totalSaidas = doPeriodo.filter(e => e.type === "Pagar").reduce((s, e) => s + e.value, 0);
 
-    return { totalEntradas, totalSaidas, saldoLiquido: round2(totalEntradas - totalSaidas), fluxoDiario };
+    return {
+      totalEntradas, totalSaidas, saldoLiquido: round2(totalEntradas - totalSaidas), fluxoDiario,
+      rangeStart: toLocalISODate(inicio), rangeEnd: toLocalISODate(hoje),
+    };
   }, [financeEntries, periodo]);
+
+  // GET /api/finance/fluxo-caixa-summary faz a mesma soma dia a dia no
+  // servidor, cacheada 60s no Redis-SPY. Cálculo client-side acima
+  // continua como fallback.
+  const [serverSummary, setServerSummary] = useState<FluxoCaixaServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/finance/fluxo-caixa-summary?tenantId=${encodeURIComponent(activeTenantId)}&startDate=${rangeStart}&endDate=${rangeEnd}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side acima já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId, rangeStart, rangeEnd]);
+
+  const totalEntradas = serverSummary?.totalEntradas ?? clientTotalEntradas;
+  const totalSaidas = serverSummary?.totalSaidas ?? clientTotalSaidas;
+  const saldoLiquido = serverSummary?.saldoLiquido ?? clientSaldoLiquido;
+  const fluxoDiario = serverSummary?.fluxoDiario ?? clientFluxoDiario;
 
   const handleExport = () => {
     downloadCsv(`fluxo_de_caixa_${periodo}d_${Date.now()}.csv`, ["Data", "Entradas", "Saídas", "Saldo do Dia", "Acumulado"], fluxoDiario.map(d => [d.dataCompleta, d.entradas, d.saidas, d.saldoDia, d.acumulado]));
