@@ -64,9 +64,14 @@ export function useDashboard() {
   const [serverSummary, setServerSummary] = useState<DashboardSummary | null>(null);
   useEffect(() => {
     setServerSummary(null);
-    if (dateFrom || dateTo) return;
+    if (dateFrom || dateTo || !activeTenantId) return;
     let cancelled = false;
-    apiFetch("/api/dashboard/summary")
+    // `tenantId` explícito — essencial pra contas master/parceiro trocando
+    // de "empresa visualizada" (switchTenant() em AuthContext.tsx): sem
+    // isso, o servidor resolvia sempre o tenant "de casa" do usuário
+    // logado, nunca o tenant selecionado na tela. Revalidado no servidor
+    // via has_tenant_access antes de usar — nunca aceito às cegas.
+    apiFetch(`/api/dashboard/summary?tenantId=${encodeURIComponent(activeTenantId)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => { if (!cancelled && data) setServerSummary(data); })
       .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });

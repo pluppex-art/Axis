@@ -356,11 +356,20 @@ const TO_NA_PISTA_TENANT_ID = "65469cc6-5cc6-4115-a48b-782e7250a10c";
  * Resumo agregado do dashboard executivo (mesmas 4 métricas "hero" de
  * src/lib/revenueMetrics.ts + useDashboard.ts: receita recorrente,
  * conversão, leads ativos, churn), com cache-aside no Redis-SPY (TTL curto
- * — são agregados, não precisam ser em tempo real). tenant_id sempre
- * resolvido no servidor a partir da sessão (req.user.id via requireUser),
- * nunca aceito do cliente. Se o Redis estiver fora do ar, cacheGet/cacheSet
- * apenas não fazem nada (ver server/redisClient.ts) e a rota calcula direto
- * no Supabase — sem essa rota quebrar.
+ * — são agregados, não precisam ser em tempo real). Se o Redis estiver fora
+ * do ar, cacheGet/cacheSet apenas não fazem nada (ver server/redisClient.ts)
+ * e a rota calcula direto no Supabase — sem essa rota quebrar.
+ *
+ * Tenant: aceita `?tenantId=` opcional (o `activeTenantId` do
+ * AuthContext.tsx no frontend — necessário pra contas master/parceiro, que
+ * trocam de "empresa visualizada" sem que isso mude a própria linha do
+ * usuário em `users`; sem isso, o resumo de um master sempre voltava os
+ * dados do tenant "de casa" dele, nunca o tenant que ele selecionou na tela).
+ * NUNCA aceito às cegas: sempre revalidado no servidor via has_tenant_access
+ * (a mesma função usada pela RLS), então um tenantId que o usuário não tem
+ * acesso retorna 403 — nunca dado de outro tenant. Sem o parâmetro, cai pro
+ * tenant do próprio usuário (comportamento anterior, ainda correto pro caso
+ * comum sem troca de tenant).
  *
  * Só as 4 métricas "hero" (número grande no topo) — performanceData
  * (tendência de 7 meses), salesRanking (fallback lead→produto→proposta) e
@@ -376,7 +385,17 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
     if (callerError || !caller?.tenant_id) {
       return res.status(403).json({ error: "Não foi possível identificar o tenant do usuário." });
     }
-    const tenantId = caller.tenant_id as string;
+
+    const requestedTenantId = typeof req.query.tenantId === "string" ? req.query.tenantId : null;
+    let tenantId = caller.tenant_id as string;
+    if (requestedTenantId && requestedTenantId !== tenantId) {
+      const { data: allowed, error: accessError } = await req.supabase
+        .rpc("has_tenant_access", { target_tenant_id: requestedTenantId });
+      if (accessError || !allowed) {
+        return res.status(403).json({ error: "Sem acesso a este tenant." });
+      }
+      tenantId = requestedTenantId;
+    }
     const cacheKey = `dashboard:tenant:${tenantId}:summary`;
 
     const cached = await cacheGet<Record<string, unknown>>(cacheKey);
