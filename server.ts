@@ -1790,6 +1790,60 @@ app.get("/api/operative/tasks-list", requireUser, async (req: any, res) => {
   }
 });
 
+/**
+ * Preview cacheado genérico pras tabelas restantes carregadas pelo
+ * DataContext (notifications, proposal_items, lead_activities,
+ * colaboradores, students, turmas, finance_bank_accounts,
+ * finance_transfers, finance_attachments, finance_commission_entries,
+ * marketing_automations/forms/content/campaigns, education_content,
+ * aurora_agents, indicacoes, scheduled_exports, finance_period_locks) —
+ * todas hoje com poucas dezenas de linhas ou vazias nos dois tenants
+ * ativos, mas mesmo critério de completude do resto do cache: um único
+ * endpoint com allowlist explícita em vez de 19 quase idênticos.
+ * `contracts` e `proposals` ficam de fora de propósito — os setState reais
+ * deles carregam flags (contractsLoaded/proposalsLoaded) que travam lógica
+ * de reconciliação contra duplicação (bug já corrigido antes nesta sessão);
+ * uma prévia parcial nunca deve tocar nelas.
+ */
+const GENERIC_PREVIEW_TABLES = new Set([
+  "notifications", "proposal_items", "lead_activities", "colaboradores", "students", "turmas",
+  "finance_bank_accounts", "finance_transfers", "finance_attachments", "finance_commission_entries",
+  "marketing_automations", "marketing_forms", "marketing_content", "marketing_campaigns",
+  "education_content", "aurora_agents", "indicacoes", "scheduled_exports", "finance_period_locks",
+]);
+
+app.get("/api/data/table-preview", requireUser, async (req: any, res) => {
+  try {
+    const table = typeof req.query.table === "string" ? req.query.table : "";
+    if (!GENERIC_PREVIEW_TABLES.has(table)) {
+      return res.status(400).json({ error: "Tabela não permitida para preview." });
+    }
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `data-preview:tenant:${tenantId}:${table}`;
+
+    const cached = await cacheGet<any[]>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json({ data: cached });
+    }
+
+    const sb = req.supabase;
+    const { data, error } = await sb.from(table).select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(1000);
+    if (error) {
+      console.error(`[data/table-preview:${table}]`, error.message);
+      return res.status(500).json({ error: "Erro ao buscar dados." });
+    }
+
+    await cacheSet(cacheKey, data || [], 30);
+    res.setHeader("X-Cache", "MISS");
+    return res.json({ data: data || [] });
+  } catch (err: any) {
+    console.error("[data/table-preview]", err?.message);
+    return res.status(500).json({ error: "Erro ao buscar dados." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

@@ -887,6 +887,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const financeEntriesAuthoritativeLoadedRef = React.useRef(false);
   // Mesma ideia, pro preview de tarefas (ver GET /api/operative/tasks-list).
   const tasksAuthoritativeLoadedRef = React.useRef(false);
+  // Mesma ideia, só que compartilhada entre as ~19 tabelas menores cobertas
+  // pelo preview genérico (ver GET /api/data/table-preview) — uma chave por
+  // nome de tabela em vez de um useRef por tabela.
+  const genericPreviewAuthoritativeLoadedRef = React.useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     // Agora que a carga pagina de verdade (várias requisições sequenciais
@@ -975,6 +979,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // ficam mostrando o valor do tenant ANTERIOR até a busca nova do tenant
     // atual terminar.
     setIndicacoes([]);
+    genericPreviewAuthoritativeLoadedRef.current = {};
     setSidebarModulesState(DEFAULT_SIDEBAR_MODULES);
     setCustomLeadFields(defaultCustomLeadFields);
     setLeadScoreTriggers(defaultLeadScoreTriggers);
@@ -1142,6 +1147,43 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           })
           .catch(() => { /* silencioso — a busca autoritativa (job 'tasks' acima) segue normalmente */ });
 
+        // Preview genérico (GET /api/data/table-preview) pras ~19 tabelas
+        // menores restantes — um fetch por tabela, mesma lógica de
+        // "supersede se a busca real ainda não chegou" de leads/produtos/
+        // reuniões/lançamentos/tarefas acima, só que sem endpoint dedicado
+        // por tabela. `contracts`/`proposals` ficam de fora de propósito
+        // (ver comentário no endpoint).
+        const genericPreviewTables: [string, (data: any[]) => void][] = [
+          ['notifications', setNotifications],
+          ['proposal_items', setProposalItems],
+          ['lead_activities', setLeadActivities],
+          ['colaboradores', setColaboradores],
+          ['students', setStudents],
+          ['turmas', setTurmas],
+          ['finance_bank_accounts', setFinanceBankAccounts],
+          ['finance_transfers', setFinanceTransfers],
+          ['finance_attachments', setFinanceAttachments],
+          ['finance_commission_entries', setFinanceCommissionEntries],
+          ['marketing_automations', setMarketingAutomations],
+          ['marketing_forms', setMarketingForms],
+          ['marketing_content', setMarketingContent],
+          ['marketing_campaigns', setMarketingCampaigns],
+          ['education_content', setEducationContent],
+          ['aurora_agents', setAuroraAgents],
+          ['indicacoes', setIndicacoes],
+          ['scheduled_exports', setScheduledExports],
+          ['finance_period_locks', setFinancePeriodLocks],
+        ];
+        genericPreviewTables.forEach(([table, setter]) => {
+          apiFetch(`/api/data/table-preview?table=${table}&tenantId=${encodeURIComponent(tenantId)}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((json) => {
+              if (cancelled || genericPreviewAuthoritativeLoadedRef.current[table] || !json?.data) return;
+              setter(json.data);
+            })
+            .catch(() => { /* silencioso — a busca autoritativa (job correspondente acima) segue normalmente */ });
+        });
+
         // Falha total (retries esgotados, ex.: timeout do banco sob carga)
         // resolvia silenciosamente com `data: []` — a tela ficava mostrando
         // "vazio" (ou o estado anterior, dependendo do timing) sem NENHUM
@@ -1159,6 +1201,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               if (cancelled) return;
               if (res?.error) failedTables.push(name);
               apply(res);
+              // Usado pelo preview genérico abaixo (GET /api/data/table-preview)
+              // pra nunca sobrescrever dado fresco com uma prévia atrasada —
+              // marca qualquer tabela como "chegou de verdade", sem custo pras
+              // que não têm preview (a chave fica só sem uso).
+              genericPreviewAuthoritativeLoadedRef.current[name] = true;
             })
             .catch((err: any) => {
               if (!cancelled) failedTables.push(name);
