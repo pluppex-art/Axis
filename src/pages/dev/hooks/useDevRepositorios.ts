@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 import { toast } from 'sonner';
 import type { NovoRepositorioPayload } from '../modals/NovoRepositorioDevModal';
 
@@ -83,6 +84,7 @@ function ghRepoToDevRepo(gh: any): DevRepo {
 }
 
 export function useDevRepositorios() {
+  const { activeTenantId } = useAuth();
   const [repos, setRepos] = useState<DevRepo[]>([]);
   const [loading, setLoading] = useState(false);
   const [githubConn, setGithubConn] = useState<GitHubConnection | null>(null);
@@ -105,13 +107,13 @@ export function useDevRepositorios() {
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     async function load() {
       setLoading(true);
 
       const [{ data: repoData }, { data: ghData }] = await Promise.all([
-        supabase!.from('dev_repositories').select('*').order('created_at', { ascending: false }),
-        supabase!.from('app_settings').select('value').eq('key', 'github_config').maybeSingle(),
+        supabase!.from('dev_repositories').select('*').eq('tenant_id', activeTenantId).order('created_at', { ascending: false }),
+        supabase!.from('app_settings').select('value').eq('tenant_id', activeTenantId).eq('key', 'github_config').maybeSingle(),
       ]);
 
       const manualRepos = repoData ? repoData.map(rowToRepo) : [];
@@ -128,7 +130,7 @@ export function useDevRepositorios() {
       setLoading(false);
     }
     load();
-  }, [loadGithubRepos]);
+  }, [loadGithubRepos, activeTenantId]);
 
   async function addRepo(payload: NovoRepositorioPayload) {
     const visibility = payload.visibility === 'Público' ? 'public' : 'private';
@@ -137,9 +139,10 @@ export function useDevRepositorios() {
       toast.success('Repositório criado!');
       return;
     }
+    if (!activeTenantId) { toast.error('Erro ao criar repositório'); return; }
     const { data, error } = await supabase
       .from('dev_repositories')
-      .insert({ name: payload.name, description: payload.description, language: payload.language, visibility })
+      .insert({ name: payload.name, description: payload.description, language: payload.language, visibility, tenant_id: activeTenantId })
       .select()
       .maybeSingle();
     if (error) { toast.error('Erro ao criar repositório'); return; }
@@ -150,8 +153,8 @@ export function useDevRepositorios() {
   }
 
   async function disconnectGitHub() {
-    if (supabase) {
-      await supabase.from('app_settings').delete().eq('key', 'github_config');
+    if (supabase && activeTenantId) {
+      await supabase.from('app_settings').delete().eq('tenant_id', activeTenantId).eq('key', 'github_config');
     }
     setGithubConn(null);
     setRepos(prev => prev.filter(r => !r.fromGitHub));

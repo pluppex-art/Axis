@@ -957,6 +957,7 @@ function LeadRow({ lead, onSelect }: { lead: Lead; onSelect: (l: Lead) => void }
  * (vinculado a imóvel ou ainda genérico) → funil de Imóveis. */
 export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
   const { currency, convertFromBRL } = useLocalization();
+  const { activeTenantId } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [ativos, setAtivos] = useState<AtivoOption[]>([]);
   const [view, setView] = useState<"kanban" | "lista">("kanban");
@@ -971,8 +972,8 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
 
   // Load from Supabase on mount
   useEffect(() => {
-    if (!supabase) return;
-    let query = supabase.from("imobiliario_leads").select("*").order("created_at", { ascending: false });
+    if (!supabase || !activeTenantId) return;
+    let query = supabase.from("imobiliario_leads").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false });
     query = tipo === "veiculo" ? query.not("veiculo_id", "is", null) : query.is("veiculo_id", null);
     query.then(({ data }) => {
         if (!data) return;
@@ -1002,15 +1003,15 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
     // do tipo deste funil (imóveis para o board de Imóveis, veículos para o
     // de Veículos), já que os dois módulos agora são independentes.
     if (tipo === "veiculo") {
-      supabase.from("imobiliario_veiculos").select("id, marca, modelo").then(({ data }) => {
+      supabase.from("imobiliario_veiculos").select("id, marca, modelo").eq("tenant_id", activeTenantId).then(({ data }) => {
         setAtivos((data ?? []).map(v => ({ id: v.id, tipo: "veiculo" as const, label: `${v.marca} ${v.modelo}` })));
       });
     } else {
-      supabase.from("imobiliario_imoveis").select("id, titulo, bairro").then(({ data }) => {
+      supabase.from("imobiliario_imoveis").select("id, titulo, bairro").eq("tenant_id", activeTenantId).then(({ data }) => {
         setAtivos((data ?? []).map(i => ({ id: i.id, tipo: "imovel" as const, label: `${i.titulo}${i.bairro ? ` — ${i.bairro}` : ""}` })));
       });
     }
-  }, [tipo]);
+  }, [tipo, activeTenantId]);
 
   // Async save to Supabase
   const saveToDB = async (lead: Lead) => {
@@ -1053,7 +1054,7 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
       criadoEm: new Date().toISOString().split("T")[0],
     };
     setLeads(prev => [novo, ...prev]);
-    if (supabase) {
+    if (supabase && activeTenantId) {
       // `tipo` é NOT NULL (discrimina imóvel/veículo) e nunca era enviado — todo
       // insert falhava. `status`/`tags` não têm coluna própria (ficam só localmente).
       const { data, error } = await supabase.from("imobiliario_leads").insert({
@@ -1061,7 +1062,7 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
         interesse: novo.interesse, tipo, bairro: novo.bairro, orcamento: novo.orcamento,
         corretor: novo.corretor, origem: novo.origem, etapa: novo.etapa,
         dias_etapa: novo.diasEtapa, prioridade: novo.prioridade, obs: novo.obs,
-        imovel_id: novo.imovelId, veiculo_id: novo.veiculoId,
+        imovel_id: novo.imovelId, veiculo_id: novo.veiculoId, tenant_id: activeTenantId,
       }).select("id").single();
       if (error) {
         console.error("[Supabase] insert imobiliario_leads error:", error.message);

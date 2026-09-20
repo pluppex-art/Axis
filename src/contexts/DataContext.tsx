@@ -949,6 +949,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setMarketingCampaigns([]);
     setEducationContent([]);
     setAuroraAgents([]);
+    // `indicacoes` e as configs abaixo (sidebarModules/customLeadFields/
+    // leadScoreTriggers/appSettings/globalWebhooks/whatsappWebhookUrl) tinham
+    // ficado de fora deste bloco — mesma classe do bug documentado acima,
+    // só que descoberta depois numa auditoria de multi-tenancy: sem isso,
+    // ficam mostrando o valor do tenant ANTERIOR até a busca nova do tenant
+    // atual terminar.
+    setIndicacoes([]);
+    setSidebarModulesState(DEFAULT_SIDEBAR_MODULES);
+    setCustomLeadFields(defaultCustomLeadFields);
+    setLeadScoreTriggers(defaultLeadScoreTriggers);
+    setAppSettings({});
+    setAppSettingsLoaded(false);
+    setGlobalWebhooks(defaultGlobalWebhooks);
+    setWhatsappWebhookUrl("");
 
     async function loadInitialData() {
       // Aguarda a sessão resolver e o tenant ser conhecido antes de buscar

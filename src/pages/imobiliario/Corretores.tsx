@@ -12,6 +12,7 @@ import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { Modal } from "../../components/ui/modal";
 import { useLocalization } from "../../contexts/LocalizationContext";
+import { useAuth } from "../../contexts/AuthContext";
 
 type Corretor = {
   id: string;
@@ -323,6 +324,7 @@ function CorretorDetailDrawer({ c, idx, onClose, onEdit, onDelete }: {
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 export default function Corretores() {
   const { formatCurrency } = useLocalization();
+  const { activeTenantId } = useAuth();
   const [corretores, setCorretores] = useState<Corretor[]>([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -331,10 +333,10 @@ export default function Corretores() {
   const [sortBy, setSortBy] = useState<"vendas" | "avaliacao" | "vgv">("vendas");
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     Promise.all([
-      supabase.from("imobiliario_corretores").select("*").order("created_at", { ascending: false }),
-      supabase.from("imobiliario_imoveis").select("corretor,status,valor,updated_at"),
+      supabase.from("imobiliario_corretores").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }),
+      supabase.from("imobiliario_imoveis").select("corretor,status,valor,updated_at").eq("tenant_id", activeTenantId),
     ]).then(([{ data }, { data: imoveis }]) => {
       if (!data) return;
       const now = new Date();
@@ -359,7 +361,7 @@ export default function Corretores() {
         };
       }));
     });
-  }, []);
+  }, [activeTenantId]);
 
   const filtered = corretores
     .filter(c =>
@@ -380,8 +382,8 @@ export default function Corretores() {
     const slug = makeSlug(form.nome);
     const novo: Corretor = { ...form, id: Date.now().toString(), slug, imovisAtivos: 0, vendasMes: 0, totalVendas: 0, vgvMes: 0, avaliacao: 5.0, status: "Ativo" };
     setCorretores(prev => [novo, ...prev]);
-    if (supabase) {
-      const { error } = await supabase.from("imobiliario_corretores").insert({ nome: form.nome, creci: form.creci, telefone: form.telefone, email: form.email, especialidade: form.especialidade, bio: form.bio, slug, meta: form.meta, comissao_pct: form.comissaoPct, id: novo.id });
+    if (supabase && activeTenantId) {
+      const { error } = await supabase.from("imobiliario_corretores").insert({ nome: form.nome, creci: form.creci, telefone: form.telefone, email: form.email, especialidade: form.especialidade, bio: form.bio, slug, meta: form.meta, comissao_pct: form.comissaoPct, id: novo.id, tenant_id: activeTenantId });
       if (error) {
         console.error("[Supabase]", error.message);
         toast.error(`Erro ao cadastrar corretor: ${error.message}`);

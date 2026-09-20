@@ -9,6 +9,7 @@ import { Badge } from "../../components/ui/badge";
 import { PageContainer } from "../../components/PageContainer";
 import { motion, AnimatePresence } from "motion/react";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { exportToCSV } from "../../lib/exportCsv";
 import { toast } from "sonner";
 import { BookingModal } from "./components/BookingModal";
@@ -137,6 +138,7 @@ function rowToPaciente(r: any): Paciente {
 
 export default function Pacientes() {
   const { appointments, leads, addTask, addAppointment } = useData();
+  const { activeTenantId } = useAuth();
   const navigate = useNavigate();
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,15 +149,15 @@ export default function Pacientes() {
   const [bookingFor, setBookingFor] = useState<Paciente | null>(null);
 
   const refetch = () => {
-    if (!supabase) { setLoading(false); return; }
-    supabase.from("pacientes").select("*").order("created_at", { ascending: false }).then(({ data, error }) => {
+    if (!supabase || !activeTenantId) { setLoading(false); return; }
+    supabase.from("pacientes").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
       if (error) toast.error(`Erro ao carregar pacientes: ${error.message}`);
       else if (data) setPacientes(data.map(rowToPaciente));
       setLoading(false);
     });
   };
 
-  useEffect(() => { refetch(); }, []);
+  useEffect(() => { refetch(); }, [activeTenantId]);
 
   const visitsByName = useMemo(() => {
     const map = new Map<string, { lastVisit: string; visits: number }>();
@@ -184,8 +186,8 @@ export default function Pacientes() {
     : 0;
 
   const handleSave = async (form: any) => {
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
-    const { data, error } = await supabase.from("pacientes").insert(form).select().maybeSingle();
+    if (!supabase || !activeTenantId) { toast.error("Supabase não configurado."); return; }
+    const { data, error } = await supabase.from("pacientes").insert({ ...form, tenant_id: activeTenantId }).select().maybeSingle();
     if (error) { toast.error(`Erro ao cadastrar paciente: ${error.message}`); return; }
     if (data) setPacientes(prev => [rowToPaciente(data), ...prev]);
     toast.success("Paciente cadastrado com sucesso!");

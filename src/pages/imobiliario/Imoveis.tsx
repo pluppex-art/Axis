@@ -13,6 +13,7 @@ import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { Modal } from "../../components/ui/modal";
 import { Link } from "react-router-dom";
 import { useLocalization } from "../../contexts/LocalizationContext";
+import { useAuth } from "../../contexts/AuthContext";
 
 type Imovel = {
   id: string;
@@ -385,6 +386,7 @@ export default function Imoveis() {
   // Supabase (imobiliario_imoveis) é a única fonte — sem cache local nem
   // gravação otimista silenciosa: erro de escrita agora aparece pro usuário.
   const { formatCurrency } = useLocalization();
+  const { activeTenantId } = useAuth();
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -398,15 +400,15 @@ export default function Imoveis() {
   const [selectedImovel, setSelectedImovel] = useState<Imovel | null>(null);
 
   const refetch = () => {
-    if (!supabase) { setLoading(false); return; }
-    supabase.from("imobiliario_imoveis").select("*").order("created_at", { ascending: false }).then(({ data, error }) => {
+    if (!supabase || !activeTenantId) { setLoading(false); return; }
+    supabase.from("imobiliario_imoveis").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
       if (error) toast.error(`Erro ao carregar imóveis: ${error.message}`);
       else if (data) setImoveis(data.map(rowToImovel));
       setLoading(false);
     });
   };
 
-  useEffect(() => { refetch(); }, []);
+  useEffect(() => { refetch(); }, [activeTenantId]);
 
   const filtered = imoveis.filter(i => {
     const q = search.toLowerCase();
@@ -419,8 +421,8 @@ export default function Imoveis() {
   });
 
   const handleSave = async (form: any) => {
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
-    const { data, error } = await supabase.from("imobiliario_imoveis").insert({ ...form, visitas: 0 }).select().maybeSingle();
+    if (!supabase || !activeTenantId) { toast.error("Supabase não configurado."); return; }
+    const { data, error } = await supabase.from("imobiliario_imoveis").insert({ ...form, visitas: 0, tenant_id: activeTenantId }).select().maybeSingle();
     if (error) { toast.error(`Erro ao cadastrar imóvel: ${error.message}`); return; }
     if (data) setImoveis(prev => [rowToImovel(data), ...prev]);
     toast.success("Imóvel cadastrado com sucesso!");

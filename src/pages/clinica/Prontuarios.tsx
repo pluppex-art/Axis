@@ -9,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { PageContainer } from "../../components/PageContainer";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
 import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 
@@ -100,6 +101,7 @@ function NovaEntradaModal({ onClose, onSave }: { onClose: () => void; onSave: (d
 }
 
 export default function ProntuariosDashboard() {
+  const { activeTenantId } = useAuth();
   const [searchParams] = useSearchParams();
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [prontuarios, setProntuarios] = useState<Prontuario[]>([]);
@@ -109,8 +111,8 @@ export default function ProntuariosDashboard() {
   const [showNovaEntrada, setShowNovaEntrada] = useState(false);
 
   const refetchPacientes = () => {
-    if (!supabase) { setLoading(false); return; }
-    supabase.from("pacientes").select("id, nome, convenio, alergias").order("nome").then(({ data, error }) => {
+    if (!supabase || !activeTenantId) { setLoading(false); return; }
+    supabase.from("pacientes").select("id, nome, convenio, alergias").eq("tenant_id", activeTenantId).order("nome").then(({ data, error }) => {
       if (error) toast.error(`Erro ao carregar pacientes: ${error.message}`);
       else if (data) setPacientes(data as Paciente[]);
       setLoading(false);
@@ -118,15 +120,15 @@ export default function ProntuariosDashboard() {
   };
 
   const refetchProntuarios = (pacienteId: string) => {
-    if (!supabase) return;
-    supabase.from("prontuarios").select("*").eq("paciente_id", pacienteId).order("created_at", { ascending: false })
+    if (!supabase || !activeTenantId) return;
+    supabase.from("prontuarios").select("*").eq("paciente_id", pacienteId).eq("tenant_id", activeTenantId).order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (error) toast.error(`Erro ao carregar prontuário: ${error.message}`);
         else if (data) setProntuarios(data as Prontuario[]);
       });
   };
 
-  useEffect(() => { refetchPacientes(); }, []);
+  useEffect(() => { refetchPacientes(); }, [activeTenantId]);
   useEffect(() => {
     if (selectedPacienteId) refetchProntuarios(selectedPacienteId);
     else setProntuarios([]);
@@ -137,8 +139,8 @@ export default function ProntuariosDashboard() {
   const totalPatients = pacientes.length;
 
   const handleSaveEntrada = async (form: any) => {
-    if (!supabase || !selectedPacienteId) return;
-    const { data, error } = await supabase.from("prontuarios").insert({ ...form, paciente_id: selectedPacienteId }).select().maybeSingle();
+    if (!supabase || !selectedPacienteId || !activeTenantId) return;
+    const { data, error } = await supabase.from("prontuarios").insert({ ...form, paciente_id: selectedPacienteId, tenant_id: activeTenantId }).select().maybeSingle();
     if (error) { toast.error(`Erro ao salvar entrada: ${error.message}`); return; }
     if (data) setProntuarios(prev => [data as Prontuario, ...prev]);
     toast.success("Entrada registrada no prontuário.");

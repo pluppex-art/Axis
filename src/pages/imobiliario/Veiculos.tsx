@@ -13,6 +13,7 @@ import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { Modal } from "../../components/ui/modal";
 import { VeiculoFinanciamentoModal } from "./components/VeiculoFinanciamentoModal";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
 
 type Veiculo = {
   id: string;
@@ -271,24 +272,25 @@ function VeiculoDetailDrawer({ v, onClose, onEdit, onDelete, onRepasseRegistrado
   onDelete: () => void;
   onRepasseRegistrado: (id: string) => void;
 }) {
+  const { activeTenantId } = useAuth();
   const [financiamentos, setFinanciamentos] = useState<Financiamento[]>([]);
   const [showFinanciamentoModal, setShowFinanciamentoModal] = useState(false);
   const [repassando, setRepassando] = useState(false);
 
   const refetchFinanciamentos = () => {
-    if (!supabase) return;
-    supabase.from("veiculo_financiamentos").select("*").eq("veiculo_id", v.id).order("created_at", { ascending: false })
+    if (!supabase || !activeTenantId) return;
+    supabase.from("veiculo_financiamentos").select("*").eq("veiculo_id", v.id).eq("tenant_id", activeTenantId).order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (error) toast.error(`Erro ao carregar financiamentos: ${error.message}`);
         else if (data) setFinanciamentos(data as Financiamento[]);
       });
   };
 
-  useEffect(() => { refetchFinanciamentos(); }, [v.id]);
+  useEffect(() => { refetchFinanciamentos(); }, [v.id, activeTenantId]);
 
   const handleSaveFinanciamento = async (data: any) => {
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
-    const { error } = await supabase.from("veiculo_financiamentos").insert({ ...data, veiculo_id: v.id });
+    if (!supabase || !activeTenantId) { toast.error("Supabase não configurado."); return; }
+    const { error } = await supabase.from("veiculo_financiamentos").insert({ ...data, veiculo_id: v.id, tenant_id: activeTenantId });
     if (error) { toast.error(`Erro ao registrar financiamento: ${error.message}`); return; }
     toast.success("Solicitação de financiamento registrada!");
     refetchFinanciamentos();
@@ -527,6 +529,7 @@ function rowToVeiculo(r: any): Veiculo {
 export default function Veiculos() {
   // Supabase (imobiliario_veiculos) é a única fonte — sem cache local nem
   // gravação otimista silenciosa: erro de escrita aparece pro usuário.
+  const { activeTenantId } = useAuth();
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -539,15 +542,15 @@ export default function Veiculos() {
   const [selectedVeiculo, setSelectedVeiculo] = useState<Veiculo | null>(null);
 
   const refetch = () => {
-    if (!supabase) { setLoading(false); return; }
-    supabase.from("imobiliario_veiculos").select("*").order("created_at", { ascending: false }).then(({ data, error }) => {
+    if (!supabase || !activeTenantId) { setLoading(false); return; }
+    supabase.from("imobiliario_veiculos").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
       if (error) toast.error(`Erro ao carregar veículos: ${error.message}`);
       else if (data) setVeiculos(data.map(rowToVeiculo));
       setLoading(false);
     });
   };
 
-  useEffect(() => { refetch(); }, []);
+  useEffect(() => { refetch(); }, [activeTenantId]);
 
   const filtered = veiculos.filter(v => {
     const q = search.toLowerCase();
@@ -559,8 +562,8 @@ export default function Veiculos() {
   });
 
   const handleSave = async (form: any) => {
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
-    const { data, error } = await supabase.from("imobiliario_veiculos").insert({ ...form, visitas: 0 }).select().maybeSingle();
+    if (!supabase || !activeTenantId) { toast.error("Supabase não configurado."); return; }
+    const { data, error } = await supabase.from("imobiliario_veiculos").insert({ ...form, visitas: 0, tenant_id: activeTenantId }).select().maybeSingle();
     if (error) { toast.error(`Erro ao cadastrar veículo: ${error.message}`); return; }
     if (data) setVeiculos(prev => [rowToVeiculo(data), ...prev]);
     toast.success("Veículo cadastrado com sucesso!");

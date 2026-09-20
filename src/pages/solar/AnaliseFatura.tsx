@@ -10,6 +10,7 @@ import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { supabase } from "../../lib/supabase";
 import { analyzeFaturaSolar, FaturaAnalise } from "../../lib/solarOcr";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface SolarAnalise extends FaturaAnalise {
   id: string;
@@ -45,6 +46,7 @@ const statusColor = (s: string) => {
 export default function AnaliseFatura() {
   const navigate = useNavigate();
   const { addTask, createProposalWithItems } = useData();
+  const { activeTenantId } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [cliente, setCliente] = useState("");
@@ -70,14 +72,14 @@ export default function AnaliseFatura() {
   });
 
   const refetch = () => {
-    if (!supabase) return;
-    supabase.from("solar_analises").select("*").order("created_at", { ascending: false }).then(({ data, error }) => {
+    if (!supabase || !activeTenantId) return;
+    supabase.from("solar_analises").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
       if (error) toast.error(`Erro ao carregar análises: ${error.message}`);
       else if (data) setAnalises(data.map(rowToAnalise));
     });
   };
 
-  useEffect(() => { refetch(); }, []);
+  useEffect(() => { refetch(); }, [activeTenantId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -107,7 +109,7 @@ export default function AnaliseFatura() {
   };
 
   const handleSave = async () => {
-    if (!resultado || !supabase) return;
+    if (!resultado || !supabase || !activeTenantId) return;
     if (!cliente.trim()) { toast.error("Informe o nome do cliente."); return; }
     const { error } = await supabase.from("solar_analises").insert({
       cliente: cliente.trim(),
@@ -118,6 +120,7 @@ export default function AnaliseFatura() {
       potencia_estimada_kwp: resultado.potenciaEstimadaKwp,
       economia_mensal_estimada: resultado.economiaMensalEstimada,
       economia_anual_estimada: resultado.economiaAnualEstimada,
+      tenant_id: activeTenantId,
     });
     if (error) { toast.error(`Erro ao salvar: ${error.message}`); return; }
     toast.success("Análise salva! Cliente adicionado ao funil fotovoltaico.");

@@ -4,6 +4,7 @@ import { X, Search, ChevronDown, Check, Calendar, UserPlus } from 'lucide-react'
 import { Button } from "../../../components/ui/button";
 import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
+import { useAuth } from "../../../contexts/AuthContext";
 import { supabase } from "../../../lib/supabase";
 
 interface BookingModalProps {
@@ -16,6 +17,7 @@ interface BookingModalProps {
 
 export function BookingModal({ isOpen, onClose, leads, addTask, addAppointment }: BookingModalProps) {
   const { colaboradores } = useData();
+  const { activeTenantId } = useAuth();
   const doctors = useMemo(() => {
     return (colaboradores || [])
       .filter((c: any) => c.status !== 'Inativo')
@@ -37,13 +39,13 @@ export function BookingModal({ isOpen, onClose, leads, addTask, addAppointment }
   const [pacientes, setPacientes] = useState<Array<{ id: string; name: string; email: string | null; phone: string | null }>>([]);
 
   useEffect(() => {
-    if (!isOpen || !supabase) return;
-    supabase.from('pacientes').select('id,nome,email,telefone').order('nome', { ascending: true }).then(({ data, error }) => {
+    if (!isOpen || !supabase || !activeTenantId) return;
+    supabase.from('pacientes').select('id,nome,email,telefone').eq('tenant_id', activeTenantId).order('nome', { ascending: true }).then(({ data, error }) => {
       if (!error && data) {
         setPacientes(data.map((p: any) => ({ id: p.id, name: p.nome, email: p.email, phone: p.telefone })));
       }
     });
-  }, [isOpen]);
+  }, [isOpen, activeTenantId]);
 
   const filteredPatients = useMemo(() => {
     if (!searchPatient) return [];

@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { Modal } from "../../components/ui/modal";
+import { useAuth } from "../../contexts/AuthContext";
 
 type Visita = {
   id: string;
@@ -323,6 +324,7 @@ function VisitaDetailDrawer({ v, onClose, onEdit, onDelete, onUpdateStatus }: {
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 export default function Visitas() {
+  const { activeTenantId } = useAuth();
   const [visitas, setVisitas] = useState<Visita[]>([]);
   const [ativos, setAtivos] = useState<AtivoOption[]>([]);
   const [search, setSearch] = useState("");
@@ -332,8 +334,8 @@ export default function Visitas() {
   const [selectedVisita, setSelectedVisita] = useState<Visita | null>(null);
 
   useEffect(() => {
-    if (!supabase) return;
-    supabase.from("imobiliario_visitas").select("*").order("data", { ascending: true }).then(({ data }) => {
+    if (!supabase || !activeTenantId) return;
+    supabase.from("imobiliario_visitas").select("*").eq("tenant_id", activeTenantId).order("data", { ascending: true }).then(({ data }) => {
       if (data) {
         setVisitas(data.map(r => ({
           id: r.id, imovel: r.imovel, bairro: r.bairro ?? "",
@@ -345,8 +347,8 @@ export default function Visitas() {
     });
 
     Promise.all([
-      supabase.from("imobiliario_imoveis").select("id, titulo, bairro"),
-      supabase.from("imobiliario_veiculos").select("id, marca, modelo"),
+      supabase.from("imobiliario_imoveis").select("id, titulo, bairro").eq("tenant_id", activeTenantId),
+      supabase.from("imobiliario_veiculos").select("id, marca, modelo").eq("tenant_id", activeTenantId),
     ]).then(([imoveisRes, veiculosRes]) => {
       const imoveis: AtivoOption[] = (imoveisRes.data ?? []).map(i => ({
         id: i.id, tipo: "imovel", label: `${i.titulo}${i.bairro ? ` — ${i.bairro}` : ""}`,
@@ -356,7 +358,7 @@ export default function Visitas() {
       }));
       setAtivos([...imoveis, ...veiculos]);
     });
-  }, []);
+  }, [activeTenantId]);
 
   const filtered = visitas.filter(v => {
     const q = search.toLowerCase();
@@ -369,10 +371,10 @@ export default function Visitas() {
   const handleSave = async (form: any) => {
     const nova: Visita = { ...form, id: Date.now().toString(), status: "Agendada" };
     setVisitas(prev => [nova, ...prev]);
-    if (supabase) {
+    if (supabase && activeTenantId) {
       const { imovelId, veiculoId, ...rest } = form;
       const { error } = await supabase.from("imobiliario_visitas").insert({
-        ...rest, id: nova.id, imovel_id: imovelId, veiculo_id: veiculoId,
+        ...rest, id: nova.id, imovel_id: imovelId, veiculo_id: veiculoId, tenant_id: activeTenantId,
       });
       if (error) {
         console.error("[Supabase]", error.message);
