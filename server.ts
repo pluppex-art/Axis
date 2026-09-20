@@ -603,6 +603,77 @@ app.get("/api/finance/visao-geral-summary", requireUser, async (req: any, res) =
   }
 });
 
+const WEEKDAYS_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+/**
+ * Resumo cacheado de Marketing (src/pages/marketing/MarketingCampanhas.tsx)
+ * — KPIs + gráficos, nada de listagem de registro individual (a tela toda
+ * é agregada: cards, 2 gráficos e uma tabela "por origem" já sumarizada).
+ * Mesma resolução/validação de tenant das rotas anteriores.
+ *
+ * `leads.date` é texto — 4373/4396 em ISO válido, ~20 com o literal "Hoje"
+ * (dado legado) que o cliente já ignora silenciosamente via try/catch no
+ * new Date(); replicado aqui filtrando só datas que batem o formato ISO
+ * antes de agrupar por dia da semana. Sem formato BR misturado (diferente
+ * de finance_entries) — confirmado ao vivo antes de implementar.
+ */
+app.get("/api/marketing/campanhas-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `marketing-campanhas:tenant:${tenantId}:summary`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const [{ data: leadsRows }, { data: entriesRows }] = await Promise.all([
+      sb.from("leads").select("status,date,source").eq("tenant_id", tenantId),
+      sb.from("finance_entries").select("type,status,value").eq("tenant_id", tenantId),
+    ]);
+    const leadsAll = (leadsRows || []) as { status: string; date: string | null; source: string | null }[];
+    const entries = (entriesRows || []) as { type: string; status: string; value: number }[];
+
+    const totalLeads = leadsAll.length;
+    const closedLeads = leadsAll.filter(l => l.status === "Fechado").length;
+    const totalRevenue = entries.filter(f => f.type === "Receber" && f.status === "Pago").reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const totalSpent = entries.filter(f => f.type === "Pagar" && f.status === "Pago").reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const cpa = totalLeads > 0 ? totalSpent / totalLeads : 0;
+
+    const trafficCounts = [0, 0, 0, 0, 0, 0, 0];
+    for (const l of leadsAll) {
+      if (!l.date || !/^\d{4}-\d{2}-\d{2}/.test(l.date)) continue;
+      const d = new Date(l.date);
+      if (isNaN(d.getTime())) continue;
+      trafficCounts[d.getDay()]++;
+    }
+    const trafficData = WEEKDAYS_PT.map((name, i) => ({ name, leads: trafficCounts[i], spend: 0 }));
+
+    const bySourceMap: Record<string, { leads: number; closed: number }> = {};
+    for (const l of leadsAll) {
+      const src = l.source || "Orgânico / Direto";
+      if (!bySourceMap[src]) bySourceMap[src] = { leads: 0, closed: 0 };
+      bySourceMap[src].leads++;
+      if (l.status === "Fechado") bySourceMap[src].closed++;
+    }
+    const bySource = Object.entries(bySourceMap)
+      .sort((a, b) => b[1].leads - a[1].leads)
+      .map(([source, data]) => ({ source, leads: data.leads, closed: data.closed }));
+
+    const summary = { totalLeads, closedLeads, totalRevenue, totalSpent, cpa, trafficData, bySource, cachedAt: new Date().toISOString() };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[marketing/campanhas-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular resumo de campanhas." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

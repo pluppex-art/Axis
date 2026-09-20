@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { PageContainer } from "../../components/PageContainer";
@@ -40,46 +40,72 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
+import { apiFetch } from "../../lib/apiClient";
 
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+interface CampanhasServerSummary {
+  totalLeads: number; closedLeads: number; totalRevenue: number; totalSpent: number; cpa: number;
+  trafficData: { name: string; leads: number; spend: number }[];
+  bySource: { source: string; leads: number; closed: number }[];
+}
 
 export default function MarketingCampanhas() {
   const navigate = useNavigate();
   const { leads, financeEntries, appSettings } = useData();
+  const { activeTenantId } = useAuth();
   const { formatCurrency } = useLocalization();
+
+  // KPIs/gráficos/tabela-por-origem vêm de um cache no Redis-SPY quando
+  // disponível (GET /api/marketing/campanhas-summary) — mesma fórmula,
+  // calculada sobre a base inteira do tenant em vez do array já em memória.
+  // Puramente aditivo: cálculo client-side abaixo continua como fallback.
+  const [serverSummary, setServerSummary] = useState<CampanhasServerSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (!activeTenantId) return;
+    let cancelled = false;
+    apiFetch(`/api/marketing/campanhas-summary?tenantId=${encodeURIComponent(activeTenantId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
 
   // Status das integrações vem do Supabase (app_settings, via DataContext),
   // gravado pela Central de Integrações.
   const metaConfig = appSettings?.integracoes_meta_ads ?? { connected: false, pixelId: "" };
   const googleConfig = appSettings?.integracoes_google_ads ?? { connected: false, measurementId: "" };
 
-  // Compute real KPIs from leads data
-  const totalLeads = leads.length;
-  const closedLeads = leads.filter((l) => l.status === "Fechado").length;
+  // Cada métrica abaixo prefere o valor cacheado do servidor quando
+  // disponível, senão cai pro cálculo client-side de sempre (mesma fórmula).
+  const totalLeads = serverSummary?.totalLeads ?? leads.length;
+  const closedLeads = serverSummary?.closedLeads ?? leads.filter((l) => l.status === "Fechado").length;
 
-  // Revenue from paid financeEntries
-  const totalRevenue = useMemo(
+  const totalRevenueClient = useMemo(
     () =>
       financeEntries
         .filter((f) => f.type === "Receber" && f.status === "Pago")
         .reduce((s, f) => s + f.value, 0),
     [financeEntries]
   );
+  const totalRevenue = serverSummary?.totalRevenue ?? totalRevenueClient;
 
-  // Total spent (despesas pagas)
-  const totalSpent = useMemo(
+  const totalSpentClient = useMemo(
     () =>
       financeEntries
         .filter((f) => f.type === "Pagar" && f.status === "Pago")
         .reduce((s, f) => s + f.value, 0),
     [financeEntries]
   );
+  const totalSpent = serverSummary?.totalSpent ?? totalSpentClient;
 
-  const cpa = totalLeads > 0 ? totalSpent / totalLeads : 0;
+  const cpa = serverSummary?.cpa ?? (totalLeads > 0 ? totalSpent / totalLeads : 0);
 
   // Leads grouped by weekday for traffic chart
-  const trafficData = useMemo(() => {
+  const trafficDataClient = useMemo(() => {
     return WEEKDAYS.map((day) => {
       const dayLeads = leads.filter((l) => {
         try {
@@ -92,6 +118,7 @@ export default function MarketingCampanhas() {
       return { name: day, leads: dayLeads.length, spend: 0 };
     });
   }, [leads]);
+  const trafficData = serverSummary?.trafficData ?? trafficDataClient;
 
   return (
     <PageContainer
@@ -382,43 +409,49 @@ export default function MarketingCampanhas() {
             </TableHeader>
             <TableBody>
               {(() => {
-                const bySource: Record<string, { leads: number; closed: number }> = {};
-                leads.forEach((l) => {
-                  const src = l.source || "Orgânico / Direto";
-                  if (!bySource[src]) bySource[src] = { leads: 0, closed: 0 };
-                  bySource[src].leads++;
-                  if (l.status === "Fechado") bySource[src].closed++;
-                });
-
-                return Object.entries(bySource)
-                  .sort((a, b) => b[1].leads - a[1].leads)
-                  .map(([source, data], i) => {
-                    const rate = data.leads > 0 ? Math.round((data.closed / data.leads) * 100) : 0;
-                    return (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <span className="font-bold text-[var(--color-text-primary)] text-sm">
-                            {source}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono text-xs font-bold text-[var(--color-primary-blue)]">
-                            {data.leads}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            {data.closed}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant={rate > 20 ? "success" : rate > 0 ? "warning" : "secondary"}>
-                            {rate}%
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
+                let bySourceList: { source: string; leads: number; closed: number }[];
+                if (serverSummary) {
+                  bySourceList = serverSummary.bySource;
+                } else {
+                  const bySource: Record<string, { leads: number; closed: number }> = {};
+                  leads.forEach((l) => {
+                    const src = l.source || "Orgânico / Direto";
+                    if (!bySource[src]) bySource[src] = { leads: 0, closed: 0 };
+                    bySource[src].leads++;
+                    if (l.status === "Fechado") bySource[src].closed++;
                   });
+                  bySourceList = Object.entries(bySource)
+                    .sort((a, b) => b[1].leads - a[1].leads)
+                    .map(([source, data]) => ({ source, ...data }));
+                }
+
+                return bySourceList.map((data, i) => {
+                  const rate = data.leads > 0 ? Math.round((data.closed / data.leads) * 100) : 0;
+                  return (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <span className="font-bold text-[var(--color-text-primary)] text-sm">
+                          {data.source}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-mono text-xs font-bold text-[var(--color-primary-blue)]">
+                          {data.leads}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                          {data.closed}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={rate > 20 ? "success" : rate > 0 ? "warning" : "secondary"}>
+                          {rate}%
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                });
               })()}
             </TableBody>
           </Table>
