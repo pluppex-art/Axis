@@ -11,6 +11,7 @@ import { randomUUID } from "crypto";
 import axios from "axios";
 import { createGoogleCalendarRouter } from "./server/googleCalendar.js";
 import { getWhatsAppProvider, getActiveProviderName, isWahaConfigured } from "./server/whatsappProvider.js";
+import { cacheGet, cacheSet, redisHealthCheck } from "./server/redisClient.js";
 import nodemailer from "nodemailer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -335,6 +336,64 @@ async function requireUser(req: express.Request, res: express.Response, next: ex
     res.status(500).json({ error: "Erro ao validar autenticação." });
   }
 }
+
+// Status do Redis-SPY (ping + latência). Não expõe dado de tenant nenhum,
+// só topologia/saúde de infra — mesmo nível de sensibilidade de um /healthz
+// comum, por isso fica sem autenticação.
+app.get("/api/health/redis", async (_req, res) => {
+  const status = await redisHealthCheck();
+  res.json(status);
+});
+
+/**
+ * Resumo agregado do dashboard (contagens de leads) por tenant, com
+ * cache-aside no Redis-SPY (TTL curto — é um agregado, não precisa ser
+ * em tempo real). tenant_id sempre resolvido no servidor a partir da sessão
+ * (req.user.id via requireUser), nunca aceito do cliente. Se o Redis estiver
+ * fora do ar, cacheGet/cacheSet apenas não fazem nada (ver server/redisClient.ts)
+ * e a rota calcula direto no Supabase — sem essa rota quebrar.
+ */
+app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
+  try {
+    const { data: caller, error: callerError } = await req.supabase
+      .from("users").select("tenant_id").eq("id", req.user.id).maybeSingle();
+    if (callerError || !caller?.tenant_id) {
+      return res.status(403).json({ error: "Não foi possível identificar o tenant do usuário." });
+    }
+    const tenantId = caller.tenant_id as string;
+    const cacheKey = `dashboard:tenant:${tenantId}:summary`;
+
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const baseLeadsQuery = () =>
+      req.supabase.from("leads").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId);
+    const [totalRes, hotRes, closedRes] = await Promise.all([
+      baseLeadsQuery(),
+      baseLeadsQuery().eq("priority", "Alta"),
+      baseLeadsQuery().eq("status", "Fechado"),
+    ]);
+
+    const summary = {
+      leads: {
+        total: totalRes.count ?? 0,
+        hot: hotRes.count ?? 0,
+        closed: closedRes.count ?? 0,
+      },
+      cachedAt: new Date().toISOString(),
+    };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[dashboard/summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular resumo do dashboard." });
+  }
+});
 
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
