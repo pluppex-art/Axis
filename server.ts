@@ -1653,6 +1653,50 @@ app.get("/api/operative/produtos-list", requireUser, async (req: any, res) => {
   }
 });
 
+/**
+ * Preview cacheado de `reunioes` pra Agenda/CRM (AgendaCRM.tsx,
+ * src/pages/reunioes/index.tsx) — mesmo padrão de leads acima. Hoje é a
+ * MAIOR tabela do maior tenant (4.644 linhas), e tem colunas de texto longo
+ * (transcricao/relatorio_ia/relatorio/notas_closer/pauta — IA e anotações de
+ * reunião) que uma visão de agenda/calendário não precisa pra desenhar os
+ * blocos de evento; excluídas aqui pela mesma razão do customFields em
+ * leads (mesmo medindo ~2,9MB pra tudo hoje, essas colunas de texto livre
+ * são as que mais podem crescer sem aviso).
+ */
+const REUNIOES_PREVIEW_COLUMNS = [
+  "id", "tenant_id", `"leadId"`, `"leadName"`, `"companyName"`, `"closerName"`,
+  `"scheduledAt"`, `"durationMinutes"`, "status", `"meetLink"`, `"googleEventId"`,
+  `"createdAt"`, `"clienteId"`,
+].join(",");
+
+app.get("/api/crm/reunioes-list", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `crm-reunioes-list:tenant:${tenantId}`;
+
+    const cached = await cacheGet<any[]>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json({ data: cached });
+    }
+
+    const sb = req.supabase;
+    const { data, error } = await sb.from("reunioes").select(REUNIOES_PREVIEW_COLUMNS).eq("tenant_id", tenantId).order("createdAt", { ascending: false }).limit(8000);
+    if (error) {
+      console.error("[crm/reunioes-list]", error.message);
+      return res.status(500).json({ error: "Erro ao buscar reuniões." });
+    }
+
+    await cacheSet(cacheKey, data || [], 20);
+    res.setHeader("X-Cache", "MISS");
+    return res.json({ data: data || [] });
+  } catch (err: any) {
+    console.error("[crm/reunioes-list]", err?.message);
+    return res.status(500).json({ error: "Erro ao buscar reuniões." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

@@ -881,6 +881,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const leadsAuthoritativeLoadedRef = React.useRef(false);
   // Mesma ideia, pro preview de products (ver GET /api/operative/produtos-list).
   const productsAuthoritativeLoadedRef = React.useRef(false);
+  // Mesma ideia, pro preview de reuniões (ver GET /api/crm/reunioes-list).
+  const reunioesAuthoritativeLoadedRef = React.useRef(false);
 
   useEffect(() => {
     // Agora que a carga pagina de verdade (várias requisições sequenciais
@@ -938,6 +940,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setCargos([]);
     setClienteBase([]);
     setReunioes([]);
+    reunioesAuthoritativeLoadedRef.current = false;
     setFinancialGoals([]);
     setFunis([]);
     setEmpresaFiliais([]);
@@ -1065,7 +1068,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           // só usados em Educação/Indicadores — lazy load de nicho abaixo.
           { name: 'cargos', promise: fetchAllRowsForTenant('cargos', tenantId), apply: (res) => { if (res.data) setCargos(res.data); } },
           { name: 'clientes', promise: fetchAllRowsForTenant('clientes', tenantId), apply: (res) => { if (res.data) setClienteBase(res.data); } },
-          { name: 'reunioes', promise: fetchAllRowsForTenant('reunioes', tenantId), apply: (res) => { if (res.data) setReunioes(res.data as Reuniao[]); } },
+          { name: 'reunioes', promise: fetchAllRowsForTenant('reunioes', tenantId), apply: (res) => { if (res.data) setReunioes(res.data as Reuniao[]); reunioesAuthoritativeLoadedRef.current = true; } },
           { name: 'crm_funis', promise: cachedFetchAllRowsForTenant('crm_funis', tenantId, true), apply: (res) => { if (res.data) setFunis(res.data.map(rowToFunil)); } },
           { name: 'empresa_filiais', promise: fetchAllRowsForTenant('empresa_filiais', tenantId), apply: (res) => { if (res.data) setEmpresaFiliais(res.data); } },
           {
@@ -1102,6 +1105,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             setProducts((json.data as any[]).map(mapProductRow));
           })
           .catch(() => { /* silencioso — a busca autoritativa (job 'products' acima) segue normalmente */ });
+
+        // Mesma ideia pra agenda de reuniões — hoje é a maior tabela do maior
+        // tenant (ver comentário no endpoint sobre as colunas excluídas).
+        apiFetch(`/api/crm/reunioes-list?tenantId=${encodeURIComponent(tenantId)}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((json) => {
+            if (cancelled || reunioesAuthoritativeLoadedRef.current || !json?.data) return;
+            setReunioes(json.data as Reuniao[]);
+          })
+          .catch(() => { /* silencioso — a busca autoritativa (job 'reunioes' acima) segue normalmente */ });
 
         // Falha total (retries esgotados, ex.: timeout do banco sob carga)
         // resolvia silenciosamente com `data: []` — a tela ficava mostrando
