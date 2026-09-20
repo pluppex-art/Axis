@@ -1529,15 +1529,30 @@ app.get("/api/education/mensalidades-summary", requireUser, async (req: any, res
  * NÃO é a fonte de verdade — é só uma prévia rápida (Redis, TTL curto) pra
  * pintar a tela antes da busca paginada real (fetchAllRowsForTenant, que
  * continua rodando em paralelo e sempre sobrescreve isso quando termina).
- * Por isso: (1) TTL curto (20s) em vez dos 60s usados nos resumos de
- * métricas — esta tabela muda o tempo todo; (2) cap em 2000 leads mais
- * recentes — cobre a esmagadora maioria dos tenants por completo, e pro
- * raro tenant que passa disso, a prévia só fica incompleta por alguns
- * segundos até a busca real (sem cap) preencher o resto; (3) nenhuma
- * mutação passa por aqui — create/update/delete de lead continuam indo
- * direto pro Supabase com atualização otimista, então a sessão do próprio
- * usuário nunca depende deste cache pra ver a própria edição.
+ *
+ * Colunas explícitas (não `select("*")`) e SEM `customFields` de propósito:
+ * medido direto no banco pro maior tenant hoje (4.373 leads), `select("*")`
+ * gera ~7,6MB de JSON — acima do limite de resposta de função serverless da
+ * Vercel (~4,5MB), o que faria a prévia FALHAR pra esse tenant exatamente
+ * quando ele mais precisa dela. `customFields` sozinho é 70% desse peso.
+ * Com as colunas abaixo (as que o board/lista de fato usa), os mesmos 4.373
+ * leads caem pra ~2,7MB. TTL curto (20s, vs. 60s nos resumos de métricas —
+ * esta tabela muda o tempo todo) e cap em 8000 leads mais recentes (cobre o
+ * maior tenant hoje com ~80% de folga; a busca real, completa e sem cap,
+ * preenche o resto em poucos segundos pro raro tenant que passar disso).
+ * Nenhuma mutação passa por aqui — create/update/delete de lead continuam
+ * indo direto pro Supabase com atualização otimista, então a sessão do
+ * próprio usuário nunca depende deste cache pra ver a própria edição.
  */
+// Colunas camelCase precisam vir entre aspas duplas no select do PostgREST
+// (mesma convenção já usada pra "scoreIA" nos resumos de dashboard acima).
+const LEADS_PREVIEW_COLUMNS = [
+  "id", "tenant_id", "name", "company", "status", "stage_id", `"stageId"`, "pipeline_id", `"pipelineId"`,
+  "temperature", "priority", "source", "seller", "seller_id", "value", "email", "phone",
+  `"scoreIA"`, "score_ia", "date", "created_at", "updated_at", "title", `"productIds"`,
+  `"clientId"`, `"clientName"`, "filial_id", "document_id", "cnpj",
+].join(",");
+
 app.get("/api/crm/leads-list", requireUser, async (req: any, res) => {
   try {
     const tenantId = await resolveRequestedTenantId(req, res);
@@ -1551,7 +1566,7 @@ app.get("/api/crm/leads-list", requireUser, async (req: any, res) => {
     }
 
     const sb = req.supabase;
-    const { data, error } = await sb.from("leads").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(2000);
+    const { data, error } = await sb.from("leads").select(LEADS_PREVIEW_COLUMNS).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(8000);
     if (error) {
       console.error("[crm/leads-list]", error.message);
       return res.status(500).json({ error: "Erro ao buscar leads." });
