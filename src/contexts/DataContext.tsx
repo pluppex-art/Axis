@@ -883,6 +883,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const productsAuthoritativeLoadedRef = React.useRef(false);
   // Mesma ideia, pro preview de reuniões (ver GET /api/crm/reunioes-list).
   const reunioesAuthoritativeLoadedRef = React.useRef(false);
+  // Mesma ideia, pro preview de lançamentos financeiros (ver GET /api/finance/entries-list).
+  const financeEntriesAuthoritativeLoadedRef = React.useRef(false);
 
   useEffect(() => {
     // Agora que a carga pagina de verdade (várias requisições sequenciais
@@ -924,6 +926,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setContracts([]);
     setLeadActivities([]);
     setFinanceEntries([]);
+    financeEntriesAuthoritativeLoadedRef.current = false;
     setAppointments([]);
     setSquads([]);
     setNotifications([]);
@@ -1012,7 +1015,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           // + disparar notificação de novo contrato a cada entrada na tela.
           { name: 'contracts', promise: fetchAllRowsForTenant('contracts', tenantId), apply: (res) => { if (res.data) setContracts(res.data.map(rowToContract)); setContractsLoaded(true); } },
           { name: 'lead_activities', promise: fetchAllRowsForTenant('lead_activities', tenantId), apply: (res) => { if (res.data) setLeadActivities(res.data as LeadActivity[]); } },
-          { name: 'finance_entries', promise: fetchAllRowsForTenant('finance_entries', tenantId), apply: (res) => { if (res.data) setFinanceEntries(res.data as FinanceEntry[]); } },
+          { name: 'finance_entries', promise: fetchAllRowsForTenant('finance_entries', tenantId), apply: (res) => { if (res.data) setFinanceEntries(res.data as FinanceEntry[]); financeEntriesAuthoritativeLoadedRef.current = true; } },
           { name: 'appointments', promise: fetchAllRowsForTenant('appointments', tenantId), apply: (res) => { if (res.data) setAppointments(res.data.map(mapAppointmentRow)); } },
           { name: 'squads', promise: cachedFetchAllRowsForTenant('squads', tenantId, true), apply: (res) => { if (res.data) setSquads(res.data.map(mapSquadRow)); } },
           { name: 'notifications', promise: fetchAllRowsForTenant('notifications', tenantId), apply: (res) => { if (res.data) setNotifications(res.data as Notification[]); } },
@@ -1115,6 +1118,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             setReunioes(json.data as Reuniao[]);
           })
           .catch(() => { /* silencioso — a busca autoritativa (job 'reunioes' acima) segue normalmente */ });
+
+        // Mesma ideia pros lançamentos financeiros — alimenta várias telas
+        // de listagem do Financeiro de uma vez só (ver comentário no endpoint).
+        apiFetch(`/api/finance/entries-list?tenantId=${encodeURIComponent(tenantId)}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((json) => {
+            if (cancelled || financeEntriesAuthoritativeLoadedRef.current || !json?.data) return;
+            setFinanceEntries(json.data as FinanceEntry[]);
+          })
+          .catch(() => { /* silencioso — a busca autoritativa (job 'finance_entries' acima) segue normalmente */ });
 
         // Falha total (retries esgotados, ex.: timeout do banco sob carga)
         // resolvia silenciosamente com `data: []` — a tela ficava mostrando

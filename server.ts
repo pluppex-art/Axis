@@ -1697,6 +1697,52 @@ app.get("/api/crm/reunioes-list", requireUser, async (req: any, res) => {
   }
 });
 
+/**
+ * Preview cacheado de `finance_entries` — a mesma array crua alimenta várias
+ * telas do Financeiro que ainda listam registro a registro (Cobranças,
+ * Conciliação, Contas Bancárias, Extrato — as telas de relatório/KPI já têm
+ * seus próprios resumos cacheados acima e usam este array só como fallback).
+ * Um único preview aqui acelera a pintura inicial de todas elas de uma vez.
+ * Exclui colunas de baixo uso em lista (notes, recurring_frequency,
+ * recurring_group_id, is_recurring, competencia_date, division_group_id,
+ * numero_documento) — nenhuma é volumosa hoje, mas reduz o overhead fixo de
+ * nome de coluna repetido por linha e dá mais margem pra crescer.
+ */
+const FINANCE_ENTRIES_PREVIEW_COLUMNS = [
+  "id", "tenant_id", "description", "category", "category_id", "status", "value", "type",
+  "date", "date_normalized", "created_at", "filial_id", "payment_method", "counterparty",
+  "installment_number", "installment_total", "installment_group_id", "centro_custo_id",
+  "conta_bancaria_id", "tags", "contato_id",
+].join(",");
+
+app.get("/api/finance/entries-list", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `finance-entries-list:tenant:${tenantId}`;
+
+    const cached = await cacheGet<any[]>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json({ data: cached });
+    }
+
+    const sb = req.supabase;
+    const { data, error } = await sb.from("finance_entries").select(FINANCE_ENTRIES_PREVIEW_COLUMNS).eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(8000);
+    if (error) {
+      console.error("[finance/entries-list]", error.message);
+      return res.status(500).json({ error: "Erro ao buscar lançamentos." });
+    }
+
+    await cacheSet(cacheKey, data || [], 20);
+    res.setHeader("X-Cache", "MISS");
+    return res.json({ data: data || [] });
+  } catch (err: any) {
+    console.error("[finance/entries-list]", err?.message);
+    return res.status(500).json({ error: "Erro ao buscar lançamentos." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma
