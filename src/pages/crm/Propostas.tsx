@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { DateRangeFilter } from "../../components/ui/DateRangeFilter";
 import { Plus, FileText, FileSignature } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
@@ -46,6 +47,31 @@ export default function Propostas() {
   const [contractSearch, setContractSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPropostaModalOpen, setIsPropostaModalOpen] = useState(false);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
+
+  // Contracts guarda a data como "dd/mm/aaaa" (rowToContract) — converte pra
+  // ISO só pra comparar com o filtro, sem mudar o formato de exibição.
+  const toIsoBR = (br?: string | null) => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(br || "");
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+  };
+  const inRange = (iso: string | null, from: string | null, to: string | null) => {
+    if (!iso) return !from && !to;
+    if (from && iso < from) return false;
+    if (to && iso > to) return false;
+    return true;
+  };
+
+  const filteredPropostas = useMemo(() => {
+    if (!dateFrom && !dateTo) return propostas;
+    return (propostas as any[]).filter((p) => inRange((p.created_at || "").slice(0, 10) || null, dateFrom, dateTo));
+  }, [propostas, dateFrom, dateTo]);
+
+  const filteredContracts = useMemo(() => {
+    if (!dateFrom && !dateTo) return contracts;
+    return (contracts as any[]).filter((c) => inRange(toIsoBR(c.date), dateFrom, dateTo));
+  }, [contracts, dateFrom, dateTo]);
 
   const handleCreatePropostaNew = async (data: any) => {
     await createProposalWithItems({
@@ -78,7 +104,7 @@ export default function Propostas() {
     toast.success(`Proposta atualizada para: ${newStatus}`);
   };
 
-  const totalMRR = getMRR(contracts || []);
+  const totalMRR = getMRR(filteredContracts || []);
 
   const handleEditContract = (contract: Contract) => {
     setEditingContract(contract);
@@ -147,41 +173,44 @@ export default function Propostas() {
       }
     >
       {/* Abas de Navegação Unificada */}
-      <div className="flex gap-2 border-b border-[var(--color-border-subtle)] pb-2 mb-6">
-        <button
-          type="button"
-          onClick={() => setActiveTab("propostas")}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
-            activeTab === "propostas"
-              ? "bg-[#2563EB] text-white shadow-md shadow-blue-500/20"
-              : "bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] text-slate-400 hover:text-white"
-          )}
-        >
-          <FileText className="w-3.5 h-3.5" />
-          Propostas Comerciais ({propostas.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("contratos")}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
-            activeTab === "contratos"
-              ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
-              : "bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] text-slate-400 hover:text-white"
-          )}
-        >
-          <FileSignature className="w-3.5 h-3.5" />
-          Contratos & Faturas ({contracts.length})
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-subtle)] pb-2 mb-6">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("propostas")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
+              activeTab === "propostas"
+                ? "bg-[#2563EB] text-white shadow-md shadow-blue-500/20"
+                : "bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] text-slate-400 hover:text-white"
+            )}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Propostas Comerciais ({propostas.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("contratos")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
+              activeTab === "contratos"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
+                : "bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] text-slate-400 hover:text-white"
+            )}
+          >
+            <FileSignature className="w-3.5 h-3.5" />
+            Contratos & Faturas ({contracts.length})
+          </button>
+        </div>
+        <DateRangeFilter dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
       </div>
 
       {activeTab === "propostas" ? (
         <div className="space-y-6">
-          <PropostasKPIs propostas={propostas as any} />
+          <PropostasKPIs propostas={filteredPropostas as any} allPropostas={propostas as any} />
 
           <PropostasTable
-            propostas={propostas as any}
+            propostas={filteredPropostas as any}
             proposalItems={proposalItems as any}
             search={search}
             onSearchChange={setSearch}
@@ -194,12 +223,12 @@ export default function Propostas() {
         <div className="space-y-6">
           <ContractsKPIs
             totalMRR={totalMRR}
-            ativos={contracts.filter((c: any) => c.status === "Ativo").length}
-            inadimplentes={contracts.filter((c: any) => c.status === "Inadimplente").length}
+            ativos={filteredContracts.filter((c: any) => c.status === "Ativo").length}
+            inadimplentes={filteredContracts.filter((c: any) => c.status === "Inadimplente").length}
           />
 
           <ContractsTable
-            contracts={contracts as any}
+            contracts={filteredContracts as any}
             searchQuery={contractSearch}
             onSearchChange={setContractSearch}
             onDelete={(id) => { deleteContract(id); toast.success("Contrato removido."); }}

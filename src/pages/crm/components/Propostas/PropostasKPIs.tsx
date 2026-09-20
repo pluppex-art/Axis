@@ -10,10 +10,24 @@ interface Proposta {
   valor: number;
   status: string;
   vendedor: string;
+  created_at?: string;
 }
 
-export function PropostasKPIs({ propostas }: { propostas: Proposta[] }) {
+// "Convertidas (Mês)" somava TODAS as propostas aceitas (histórico
+// inteiro), não só as do mês corrente — o rótulo prometia "mês" mas o
+// valor era o total acumulado. Sempre calculado sobre o mês corrente de
+// verdade, independente de qualquer filtro de data aplicado na página
+// (é um indicador fixo, não a lista filtrada).
+function isThisMonth(iso?: string): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+export function PropostasKPIs({ propostas, allPropostas }: { propostas: Proposta[]; allPropostas?: Proposta[] }) {
   const { formatCurrency } = useLocalization();
+  const convertidasMesBase = allPropostas ?? propostas;
   const stats = [
     {
       label: "Aguardando Aceite",
@@ -23,7 +37,7 @@ export function PropostasKPIs({ propostas }: { propostas: Proposta[] }) {
     },
     {
       label: "Convertidas (Mês)",
-      value: formatCurrency(propostas.filter(p => p.status === 'Aceita').reduce((acc, c) => acc + parseCurrencyBR(c.valor), 0)),
+      value: formatCurrency(convertidasMesBase.filter(p => p.status === 'Aceita' && isThisMonth(p.created_at)).reduce((acc, c) => acc + parseCurrencyBR(c.valor), 0)),
       icon: CheckCircle2,
       color: "text-success",
     },
