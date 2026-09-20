@@ -1600,6 +1600,44 @@ app.get("/api/crm/clientes-list", requireUser, async (req: any, res) => {
   }
 });
 
+/**
+ * Preview cacheado de `products` pro catálogo (src/pages/operative/Produtos.tsx,
+ * via DataContext.tsx). Este é o único dos três (leads/clientes/products)
+ * que já tinha algum cache — um sessionStorage de 5min por aba
+ * (cachedFetchAllRowsForTenant, ver DataContext.tsx), que cobre trocar de
+ * tenant e voltar na MESMA aba. Este preview cobre a lacuna que aquele não
+ * cobre: o primeiro carregamento de uma aba/dispositivo novo, compartilhado
+ * entre usuários do mesmo tenant. TTL um pouco mais folgado (30s) porque
+ * catálogo de produto muda com menos frequência que lead.
+ */
+app.get("/api/operative/produtos-list", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+    const cacheKey = `operative-produtos-list:tenant:${tenantId}`;
+
+    const cached = await cacheGet<any[]>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json({ data: cached });
+    }
+
+    const sb = req.supabase;
+    const { data, error } = await sb.from("products").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(2000);
+    if (error) {
+      console.error("[operative/produtos-list]", error.message);
+      return res.status(500).json({ error: "Erro ao buscar produtos." });
+    }
+
+    await cacheSet(cacheKey, data || [], 30);
+    res.setHeader("X-Cache", "MISS");
+    return res.json({ data: data || [] });
+  } catch (err: any) {
+    console.error("[operative/produtos-list]", err?.message);
+    return res.status(500).json({ error: "Erro ao buscar produtos." });
+  }
+});
+
 // ── API PÚBLICA ────────────────────────────────────────────────────────────
 
 // Fire-and-forget: nunca aguarda nem propaga erro pro chamador real — uma

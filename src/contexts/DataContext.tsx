@@ -879,6 +879,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // nunca sobrescrever dado fresco com uma prévia potencialmente mais velha
   // chegando atrasada.
   const leadsAuthoritativeLoadedRef = React.useRef(false);
+  // Mesma ideia, pro preview de products (ver GET /api/operative/produtos-list).
+  const productsAuthoritativeLoadedRef = React.useRef(false);
 
   useEffect(() => {
     // Agora que a carga pagina de verdade (várias requisições sequenciais
@@ -925,6 +927,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setNotifications([]);
     setMarketingLandingPages([]);
     setProducts([]);
+    productsAuthoritativeLoadedRef.current = false;
     setProposals([]);
     setProposalItems([]);
     setTurmas([]);
@@ -1044,7 +1047,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               setAppSettingsLoaded(true);
             },
           },
-          { name: 'products', promise: cachedFetchAllRowsForTenant('products', tenantId, true), apply: (res) => { if (res.data) setProducts(res.data.map(mapProductRow)); } },
+          { name: 'products', promise: cachedFetchAllRowsForTenant('products', tenantId, true), apply: (res) => { if (res.data) setProducts(res.data.map(mapProductRow)); productsAuthoritativeLoadedRef.current = true; } },
           { name: 'proposals', promise: fetchAllRowsForTenant('proposals', tenantId), apply: (res) => { if (res.data) setProposals(res.data); setProposalsLoaded(true); } },
           { name: 'proposal_items', promise: fetchAllRowsForTenant('proposal_items', tenantId), apply: (res) => { if (res.data) setProposalItems(res.data); } },
           // turmas/students: só usados nas páginas de Educação — movidos pro
@@ -1088,6 +1091,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             setLeads((json.data as any[]).map(mapLeadRow) as Lead[]);
           })
           .catch(() => { /* silencioso — a busca autoritativa (job 'leads' acima) segue normalmente */ });
+
+        // Mesma ideia pro catálogo de produtos — cobre o primeiro carregamento
+        // de uma aba nova, antes do sessionStorage (cachedFetchAllRowsForTenant)
+        // ter qualquer coisa pra servir.
+        apiFetch(`/api/operative/produtos-list?tenantId=${encodeURIComponent(tenantId)}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((json) => {
+            if (cancelled || productsAuthoritativeLoadedRef.current || !json?.data) return;
+            setProducts((json.data as any[]).map(mapProductRow));
+          })
+          .catch(() => { /* silencioso — a busca autoritativa (job 'products' acima) segue normalmente */ });
 
         // Falha total (retries esgotados, ex.: timeout do banco sob carga)
         // resolvia silenciosamente com `data: []` — a tela ficava mostrando
