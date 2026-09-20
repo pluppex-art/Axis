@@ -1,9 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseCurrencyBR } from '../../lib/utils';
 import { getMRR, getConversionRate, getActiveLeadsCount, getChurnRate } from '../../lib/revenueMetrics';
 import { FUNIS_DEFAULT } from '../settings/sections/crm/funisTypes';
+import { apiFetch } from '../../lib/apiClient';
+
+interface DashboardSummary {
+  totalRevenue: number;
+  conversionRate: number;
+  activeLeadsCount: number;
+  churnRate: number;
+}
 
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const FUNNEL_COLORS = ['bg-emerald-500', 'bg-emerald-400', 'bg-emerald-300', 'bg-emerald-200', 'bg-emerald-100'];
@@ -45,23 +53,67 @@ export function useDashboard() {
     return squads.filter(sq => (sq.faturamentoAlcancado / sq.meta) >= 0.9);
   }, [squads]);
 
+  // Resumo cacheado (Redis-SPY) das 4 métricas "hero" — GET /api/dashboard/summary
+  // em server.ts, mesma fórmula de src/lib/revenueMetrics.ts. Só usado quando
+  // não há filtro de data ativo (o endpoint agrega o tenant inteiro, sem
+  // recorte por período) — com filtro, sempre cai pro cálculo client-side
+  // abaixo, que já respeita dateFrom/dateTo corretamente. Puramente aditivo:
+  // se a chamada falhar ou ainda não tiver voltado, o cálculo client-side
+  // (que já roda de qualquer forma, sem custo extra real — os arrays já
+  // estão em memória por causa de outras telas) continua sendo usado.
+  const [serverSummary, setServerSummary] = useState<DashboardSummary | null>(null);
+  useEffect(() => {
+    setServerSummary(null);
+    if (dateFrom || dateTo) return;
+    let cancelled = false;
+    apiFetch("/api/dashboard/summary")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setServerSummary(data); })
+      .catch(() => { /* silencioso — cálculo client-side abaixo já cobre */ });
+    return () => { cancelled = true; };
+  }, [activeTenantId, dateFrom, dateTo]);
+
   // Stats Calculations — via camada única de métricas (src/lib/revenueMetrics.ts)
   // pra usar exatamente a mesma definição de MRR/conversão/leads ativos em
   // todos os dashboards do sistema, não uma fórmula própria por tela.
-  const totalRevenue = useMemo(() => getMRR(contracts), [contracts]);
-  const conversionRate = useMemo(() => getConversionRate(leads).toFixed(1), [leads]);
+  const totalRevenueClient = useMemo(() => getMRR(contracts), [contracts]);
+  const conversionRateClient = useMemo(() => getConversionRate(leads).toFixed(1), [leads]);
   // To Na Pista Boliche: pedido explícito do dono — "ativos" pra esse
   // tenant é o total de leads cadastrados (base de clientes), não a
   // definição padrão (aberto = nem Fechado nem Perdido). Faz sentido pro
   // negócio deles: reserva resolve rápido (confirma/comparece ou cancela),
   // então quase tudo termina Fechado/Perdido e sobra pouquíssimo "aberto"
   // pela regra padrão. Exceção só pra esse tenant — outras empresas no
-  // Spy continuam com getActiveLeadsCount (aberto de verdade).
+  // Spy continuam com getActiveLeadsCount (aberto de verdade). Mesma
+  // exceção replicada em server.ts (TO_NA_PISTA_TENANT_ID).
   const TO_NA_PISTA_TENANT_ID = '65469cc6-5cc6-4115-a48b-782e7250a10c';
-  const activeLeadsCount = useMemo(
+  const activeLeadsCountClient = useMemo(
     () => activeTenantId === TO_NA_PISTA_TENANT_ID ? leads.length : getActiveLeadsCount(leads),
     [leads, activeTenantId]
   );
+  const churnRateClient = useMemo(() => {
+    if (!appointments || appointments.length === 0) return getChurnRate(contracts);
+    const patientMap = new Map<string, Date>();
+    appointments.forEach(a => {
+      try {
+        const appointmentDate = new Date(a.date);
+        if (!isNaN(appointmentDate.getTime())) {
+          const existing = patientMap.get(a.patient);
+          if (!existing || appointmentDate > existing) patientMap.set(a.patient, appointmentDate);
+        }
+      } catch {}
+    });
+    const totalPatients = patientMap.size;
+    if (totalPatients === 0) return 0;
+    const now = new Date();
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const churnedPatients = Array.from(patientMap.values()).filter(d => d < ninetyDaysAgo).length;
+    return parseFloat(((churnedPatients / totalPatients) * 100).toFixed(1));
+  }, [appointments, contracts]);
+
+  const totalRevenue = serverSummary?.totalRevenue ?? totalRevenueClient;
+  const conversionRate = (serverSummary?.conversionRate ?? Number(conversionRateClient)).toFixed(1);
+  const activeLeadsCount = serverSummary?.activeLeadsCount ?? activeLeadsCountClient;
 
   // Performance chart: group leads by month of creation (last 7 months)
   const performanceData = useMemo(() => {
@@ -183,43 +235,10 @@ export function useDashboard() {
       .slice(0, 4);
   }, [leadActivities]);
 
-  // Churn Rate: usa a lógica de paciente/consulta quando o tenant tem agenda
-  // (nicho clínica); fora disso cai pra cancelados/total de contratos, senão
-  // o card ficava sempre travado em 0.0% pra qualquer tenant sem `appointments`.
-  const churnRate = useMemo(() => {
-    if (!appointments || appointments.length === 0) {
-      return getChurnRate(contracts);
-    }
-
-    // Get unique patients and their last visit date
-    const patientMap = new Map<string, Date>();
-    appointments.forEach(a => {
-      try {
-        const appointmentDate = new Date(a.date);
-        if (!isNaN(appointmentDate.getTime())) {
-          const patientName = a.patient;
-          const existing = patientMap.get(patientName);
-          if (!existing || appointmentDate > existing) {
-            patientMap.set(patientName, appointmentDate);
-          }
-        }
-      } catch {}
-    });
-
-    const totalPatients = patientMap.size;
-    if (totalPatients === 0) return 0;
-
-    // Count patients with no visit in last 90 days
-    const now = new Date();
-    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    
-    const churnedPatients = Array.from(patientMap.values()).filter(
-      lastVisitDate => lastVisitDate < ninetyDaysAgo
-    ).length;
-
-    const rate = (churnedPatients / totalPatients) * 100;
-    return parseFloat(rate.toFixed(1));
-  }, [appointments, contracts]);
+  // churnRateClient já calculado mais acima (mesma fórmula de antes, sem
+  // mudança de comportamento) — só decide aqui se usa o valor do cache do
+  // servidor ou o client-side, igual às outras 3 métricas "hero".
+  const churnRate = serverSummary?.churnRate ?? churnRateClient;
 
   return {
     leads,

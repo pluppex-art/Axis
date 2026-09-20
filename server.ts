@@ -345,13 +345,29 @@ app.get("/api/health/redis", async (_req, res) => {
   res.json(status);
 });
 
+// Mesma exceção de negócio documentada em src/pages/dashboard/useDashboard.ts:
+// pra esse tenant, "leads ativos" é a base inteira de leads cadastrados, não
+// a definição padrão (aberto = nem Fechado nem Perdido) — reserva resolve
+// rápido (confirma/comparece ou cancela), então quase tudo termina
+// Fechado/Perdido e sobraria pouquíssimo "aberto" pela regra padrão.
+const TO_NA_PISTA_TENANT_ID = "65469cc6-5cc6-4115-a48b-782e7250a10c";
+
 /**
- * Resumo agregado do dashboard (contagens de leads) por tenant, com
- * cache-aside no Redis-SPY (TTL curto — é um agregado, não precisa ser
- * em tempo real). tenant_id sempre resolvido no servidor a partir da sessão
- * (req.user.id via requireUser), nunca aceito do cliente. Se o Redis estiver
- * fora do ar, cacheGet/cacheSet apenas não fazem nada (ver server/redisClient.ts)
- * e a rota calcula direto no Supabase — sem essa rota quebrar.
+ * Resumo agregado do dashboard executivo (mesmas 4 métricas "hero" de
+ * src/lib/revenueMetrics.ts + useDashboard.ts: receita recorrente,
+ * conversão, leads ativos, churn), com cache-aside no Redis-SPY (TTL curto
+ * — são agregados, não precisam ser em tempo real). tenant_id sempre
+ * resolvido no servidor a partir da sessão (req.user.id via requireUser),
+ * nunca aceito do cliente. Se o Redis estiver fora do ar, cacheGet/cacheSet
+ * apenas não fazem nada (ver server/redisClient.ts) e a rota calcula direto
+ * no Supabase — sem essa rota quebrar.
+ *
+ * Só as 4 métricas "hero" (número grande no topo) — performanceData
+ * (tendência de 7 meses), salesRanking (fallback lead→produto→proposta) e
+ * funnelData (depende da configuração dinâmica de funil por tenant) ficam
+ * de fora de propósito: replicar a lógica deles no servidor tem risco real
+ * de divergir sutilmente do cálculo no cliente; continuam calculados lá,
+ * sem mudança nesta rodada.
  */
 app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
   try {
@@ -369,22 +385,66 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
       return res.json(cached);
     }
 
-    const baseLeadsQuery = () =>
-      req.supabase.from("leads").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId);
-    const [totalRes, hotRes, closedRes] = await Promise.all([
-      baseLeadsQuery(),
-      baseLeadsQuery().eq("priority", "Alta"),
-      baseLeadsQuery().eq("status", "Fechado"),
-    ]);
+    const sb = req.supabase;
 
-    const summary = {
-      leads: {
-        total: totalRes.count ?? 0,
-        hot: hotRes.count ?? 0,
-        closed: closedRes.count ?? 0,
-      },
-      cachedAt: new Date().toISOString(),
-    };
+    // Leads: conversão + ativos — mesma fórmula de getConversionRate/
+    // getActiveLeadsCount em src/lib/revenueMetrics.ts.
+    const leadsBase = () => sb.from("leads").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId);
+    const [leadsTotalRes, leadsWonRes, leadsOpenRes] = await Promise.all([
+      leadsBase(),
+      leadsBase().eq("status", "Fechado"),
+      leadsBase().not("status", "in", '("Fechado","Perdido")'),
+    ]);
+    const leadsTotal = leadsTotalRes.count ?? 0;
+    const leadsWon = leadsWonRes.count ?? 0;
+    const leadsOpen = leadsOpenRes.count ?? 0;
+    const conversionRate = leadsTotal > 0 ? Math.round((leadsWon / leadsTotal) * 1000) / 10 : 0;
+    const activeLeadsCount = tenantId === TO_NA_PISTA_TENANT_ID ? leadsTotal : leadsOpen;
+
+    // Contratos: mrr_value já é numeric de verdade (sem parsing de texto
+    // tipo parseCurrencyBR) — soma direta dos não cancelados/perdidos,
+    // mesma regra de getMRR().
+    const { data: contractsRows } = await sb.from("contracts")
+      .select("mrr_value,status").eq("tenant_id", tenantId);
+    const contracts = (contractsRows || []) as { mrr_value: number | null; status: string }[];
+    const totalRevenue = contracts
+      .filter((c) => c.status !== "Cancelado" && c.status !== "Perdido")
+      .reduce((sum, c) => sum + (Number(c.mrr_value) || 0), 0);
+
+    // Churn: mesma regra condicional de useDashboard.ts — tenant com agenda
+    // (appointments) usa churn por paciente (sem visita nos últimos 90 dias);
+    // senão, cai pra contratos cancelados/total.
+    const { count: appointmentsCount } = await sb.from("appointments")
+      .select("*", { count: "exact", head: true }).eq("tenant_id", tenantId);
+
+    let churnRate = 0;
+    if ((appointmentsCount ?? 0) > 0) {
+      const { data: apptRows } = await sb.from("appointments")
+        .select("patient,date").eq("tenant_id", tenantId);
+      const lastVisitByPatient = new Map<string, string>();
+      for (const a of (apptRows || []) as { patient: string | null; date: string | null }[]) {
+        if (!a.patient || !a.date) continue;
+        const prev = lastVisitByPatient.get(a.patient);
+        if (!prev || a.date > prev) lastVisitByPatient.set(a.patient, a.date);
+      }
+      const totalPatients = lastVisitByPatient.size;
+      if (totalPatients > 0) {
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        const cutoff = ninetyDaysAgo.toISOString().slice(0, 10);
+        let churned = 0;
+        for (const lastVisit of lastVisitByPatient.values()) {
+          if (lastVisit < cutoff) churned++;
+        }
+        churnRate = Math.round((churned / totalPatients) * 1000) / 10;
+      }
+    } else {
+      const totalContracts = contracts.length;
+      const cancelledContracts = contracts.filter((c) => c.status === "Cancelado").length;
+      churnRate = totalContracts > 0 ? Math.round((cancelledContracts / totalContracts) * 1000) / 10 : 0;
+    }
+
+    const summary = { totalRevenue, conversionRate, activeLeadsCount, churnRate, cachedAt: new Date().toISOString() };
 
     await cacheSet(cacheKey, summary, 60);
     res.setHeader("X-Cache", "MISS");
