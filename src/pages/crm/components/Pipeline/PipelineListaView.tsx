@@ -1,5 +1,9 @@
+import { useState, useEffect } from "react";
 import { Card } from "../../../../components/ui/card";
+import { Pagination } from "../../../../components/ui/Pagination";
 import { Search, Filter, Mail, Phone, Calendar, MoreHorizontal } from "lucide-react";
+
+const PAGE_SIZE = 50;
 
 interface PipelineListaViewProps {
   listaLeads: any[];
@@ -21,6 +25,16 @@ export function PipelineListaView({
   temperatureFilter, setTemperatureFilter, sortOrder, setSortOrder,
   setSelectedLead, updateLead,
 }: PipelineListaViewProps) {
+  // A visão de lista renderizava TODOS os leads filtrados como <tr>/<Card>
+  // de uma vez — com milhares de leads (Pipeline sem cap, ao contrário do
+  // Kanban), isso trava o navegador (DOM gigante), independente de quão
+  // rápido os dados chegam. Pagina só a renderização aqui — os dados já
+  // estão todos em memória, não é uma nova busca.
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [searchQuery, temperatureFilter, sortOrder, sellerFilter]);
+  const totalPages = Math.max(1, Math.ceil(listaLeads.length / PAGE_SIZE));
+  const pageLeads = listaLeads.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
   return (
     <>
       {/* Filters */}
@@ -70,7 +84,7 @@ export function PipelineListaView({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {listaLeads.map((lead: any) => (
+              {pageLeads.map((lead: any) => (
                 <tr key={lead.id} onClick={() => setSelectedLead(lead)}
                   className="hover:bg-white/[0.02] transition-colors cursor-pointer group">
                   <td className="px-6 py-4">
@@ -132,7 +146,7 @@ export function PipelineListaView({
 
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
-        {listaLeads.map((lead: any) => (
+        {pageLeads.map((lead: any) => (
           <Card key={lead.id} onClick={() => setSelectedLead(lead)}
             className="p-4 bg-[var(--color-surface-elevated)]/80 border-white/5 active:border-white/20 transition-all flex flex-col gap-3 cursor-pointer">
             <div className="flex justify-between items-start">
@@ -170,6 +184,8 @@ export function PipelineListaView({
           <div className="p-8 border border-dashed border-white/10 rounded-xl text-center text-slate-500">Nenhum lead encontrado</div>
         )}
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={listaLeads.length} pageSize={PAGE_SIZE} onPageChange={setPage} itemLabel="lead" />
     </>
   );
 }

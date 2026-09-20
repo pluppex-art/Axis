@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../../contexts/DataContext";
 import { PageContainer } from "../../components/PageContainer";
@@ -14,6 +14,9 @@ import {
 import { cn } from "../../lib/utils";
 import { toast } from "sonner";
 import { Reuniao } from "../../contexts/DataContextTypes";
+import { Pagination } from "../../components/ui/Pagination";
+
+const PAGE_SIZE = 30;
 
 type ViewMode = "lista" | "calendario";
 
@@ -79,6 +82,15 @@ export default function ReunioesList() {
       (r.closerName || "").toLowerCase().includes(q);
     return matchesTab && matchesSearch;
   }), [all, tab, search]);
+
+  // A visão de lista renderizava TODAS as reuniões filtradas como <Card> de
+  // uma vez — com milhares de reuniões, isso trava o navegador (DOM
+  // gigante), independente de quão rápido os dados chegam. Pagina só a
+  // renderização aqui — os dados já estão todos em memória.
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [tab, search]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageItems = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   const kpis = useMemo(() => ({
     total:       all.length,
@@ -211,7 +223,7 @@ export default function ReunioesList() {
                 </Card>
               ) : (
                 <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filtered.map((r) => (
+                  {pageItems.map((r) => (
                     <Card key={r.id} className="p-5 bg-[var(--color-surface-elevated)]/80 border-white/5 hover:border-white/[0.12] transition-all space-y-4">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0">
@@ -287,6 +299,8 @@ export default function ReunioesList() {
                   ))}
                 </div>
               )}
+
+              <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} itemLabel="reunião" />
             </>
           )}
 
