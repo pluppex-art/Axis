@@ -283,6 +283,62 @@ export async function createUserWithProfile(params: {
 }
 
 /**
+ * Liga/desliga o acesso de um usuário a trocar entre empresas clientes (seletor de tenant
+ * na Sidebar) — usado no cadastro/edição de membro da equipe. Escrever em `partners`/
+ * `tenant_partners` é restrito a master via RLS (is_super_admin()), então só funciona quando
+ * quem está chamando é master; a UI que aciona isso (NovoMembroModal/EditarColabModal) já
+ * esconde o toggle pra quem não é.
+ *
+ * Padrão "achar ou criar": cada tenant pode já ter (ou não) uma organização parceira própria
+ * auto-vinculada a si mesma (bootstrap de sessões anteriores, nem todo tenant tem) — em vez
+ * de assumir que existe, acha ou cria sob demanda. Genérico: funciona pra qualquer tenant,
+ * não hardcoded pra nenhum específico.
+ */
+export async function setUserPartnerTenantAccess(
+  userId: string,
+  tenantId: string,
+  tenantName: string,
+  enabled: boolean
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'Supabase não configurado.' };
+
+  if (!enabled) {
+    const { error } = await supabase.from('users').update({ partner_id: null }).eq('id', userId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  }
+
+  try {
+    let partnerId: string | null = null;
+    const { data: existingPartner } = await supabase
+      .from('partners').select('id').eq('tenant_id', tenantId).maybeSingle();
+
+    if (existingPartner?.id) {
+      partnerId = existingPartner.id;
+    } else {
+      const { data: created, error: createErr } = await supabase
+        .from('partners').insert({ tenant_id: tenantId, name: `${tenantName} (Parceiro)` })
+        .select('id').single();
+      if (createErr || !created) return { success: false, error: createErr?.message || 'Falha ao criar organização parceira.' };
+      partnerId = created.id;
+    }
+
+    const { data: existingLink } = await supabase
+      .from('tenant_partners').select('id').eq('tenant_id', tenantId).eq('partner_id', partnerId).maybeSingle();
+    if (!existingLink) {
+      const { error: linkErr } = await supabase.from('tenant_partners').insert({ tenant_id: tenantId, partner_id: partnerId });
+      if (linkErr) return { success: false, error: linkErr.message };
+    }
+
+    const { error: userErr } = await supabase.from('users').update({ partner_id: partnerId }).eq('id', userId);
+    if (userErr) return { success: false, error: userErr.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Erro desconhecido ao configurar acesso parceiro.' };
+  }
+}
+
+/**
  * Fetch all active tenants from database and transform to TenantModules format
  */
 export async function fetchTenants() {

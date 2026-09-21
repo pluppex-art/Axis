@@ -13,6 +13,8 @@ export type NovoMembroPayload = {
   cargo: string;
   departamento: string;
   squad: string;
+  filialId: string;
+  permiteTrocarEmpresa: boolean;
 };
 
 type NovoMembroModalProps = {
@@ -22,6 +24,12 @@ type NovoMembroModalProps = {
   title?: string;
   submitText?: string;
   initialValue?: Partial<NovoMembroPayload> | null;
+  /** Só master vê essa opção — escrever em partners/tenant_partners é restrito a
+   * master via RLS, então mostrar pra quem não é master criaria um controle que nunca
+   * funcionaria de verdade. */
+  canGrantTenantAccess?: boolean;
+  /** Lista de filiais do tenant ativo — o campo só aparece quando há mais de uma. */
+  filiais?: { id: string; nome: string }[];
 };
 
 // Gera uma senha temporária forte quando o admin deixa o campo em branco —
@@ -43,6 +51,8 @@ export function NovoMembroModal({
   title = "Novo Colaborador / Membro",
   submitText = "Adicionar à Equipe",
   initialValue,
+  canGrantTenantAccess = false,
+  filiais = [],
 }: NovoMembroModalProps) {
   const [nome, setNome] = useState(initialValue?.nome || "");
   const [email, setEmail] = useState(initialValue?.email || "");
@@ -52,6 +62,8 @@ export function NovoMembroModal({
   const [cargo, setCargo] = useState(initialValue?.cargo || "");
   const [departamento, setDepartamento] = useState(initialValue?.departamento || "");
   const [squad, setSquad] = useState("");
+  const [filialId, setFilialId] = useState(initialValue?.filialId || "");
+  const [permiteTrocarEmpresa, setPermiteTrocarEmpresa] = useState(initialValue?.permiteTrocarEmpresa ?? false);
   const [loading, setLoading] = useState(false);
   const { cargos, squads } = useData();
   const departamentoOptions = useDepartamentoOptions();
@@ -66,6 +78,8 @@ export function NovoMembroModal({
     setCargo(initialValue?.cargo || "");
     setDepartamento(initialValue?.departamento || "");
     setSquad("");
+    setFilialId(initialValue?.filialId || "");
+    setPermiteTrocarEmpresa(initialValue?.permiteTrocarEmpresa ?? false);
     setLoading(false);
   }, [isOpen, initialValue]);
 
@@ -88,6 +102,8 @@ export function NovoMembroModal({
         cargo: cargo.trim() || "Colaborador",
         departamento: departamento.trim() || "Geral",
         squad: squad.trim(),
+        filialId,
+        permiteTrocarEmpresa: canGrantTenantAccess && permiteTrocarEmpresa,
       });
     } finally {
       setLoading(false);
@@ -212,6 +228,39 @@ export function NovoMembroModal({
             </select>
           </div>
         </div>
+
+        {filiais.length > 1 && (
+          <div>
+            <label className={labelClass}>Filial</label>
+            <select
+              value={filialId}
+              onChange={(e) => setFilialId(e.target.value)}
+              className={inputBaseClass}
+            >
+              <option value="">Sem filial específica</option>
+              {filiais.map((f) => (
+                <option key={f.id} value={f.id}>{f.nome}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {canGrantTenantAccess && (
+          <label className="flex items-start gap-2.5 p-3 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={permiteTrocarEmpresa}
+              onChange={(e) => setPermiteTrocarEmpresa(e.target.checked)}
+              className="mt-0.5 w-3.5 h-3.5 accent-[var(--color-primary-blue)] cursor-pointer"
+            />
+            <span className="text-xs text-[var(--color-text-primary)]">
+              <span className="font-bold flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Permitir trocar entre empresas clientes</span>
+              <span className="block text-[var(--color-text-muted)] mt-0.5">
+                Libera o seletor de tenant na barra lateral — a pessoa passa a ver e alternar entre todos os tenants ativos, não só este.
+              </span>
+            </span>
+          </label>
+        )}
 
         <div className="flex items-center justify-end gap-2 pt-4 border-t border-[var(--color-border-subtle)]">
           <Button

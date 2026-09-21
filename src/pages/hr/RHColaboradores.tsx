@@ -7,7 +7,7 @@ import { useRHColaboradores } from "./hooks/useRHColaboradores";
 import { SquadsTabContent } from "./components/Squads/SquadsTabContent";
 import { NovoMembroModal } from "../../components/ui/modals/hr/NovoMembroModal";
 import { EditarColabModal } from "../../components/ui/modals/hr/EditarColabModal";
-import { supabase, createUserWithProfile } from "../../lib/supabase";
+import { supabase, createUserWithProfile, setUserPartnerTenantAccess } from "../../lib/supabase";
 import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { useAuth } from "../../contexts/AuthContext";
@@ -30,7 +30,8 @@ export default function RHColaboradores() {
     calcVariable, calcBonus, totalOTE,
   } = useRHColaboradores();
 
-  const { addColaborador, updateColaborador, deleteColaborador } = useData();
+  const { addColaborador, updateColaborador, deleteColaborador, empresaFiliais } = useData();
+  const filiaisOptions = empresaFiliais.map((f: any) => ({ id: f.id, nome: f.nome }));
   const { user, activeTenantId, activeTenantName } = useAuth();
   const [isMembroModalOpen, setIsMembroModalOpen] = useState(false);
   const [perfilColab, setPerfilColab] = useState<any | null>(null);
@@ -76,6 +77,16 @@ export default function RHColaboradores() {
         if (created?.success) {
           userId = created.userId ?? null;
         }
+
+        // Só chega aqui marcado se o modal mostrou a opção (canGrantTenantAccess=master) —
+        // escrever em partners/tenant_partners é restrito a master via RLS mesmo, então só
+        // funciona quando quem está criando já é master.
+        if (userId && data.permiteTrocarEmpresa) {
+          const granted = await setUserPartnerTenantAccess(userId, tenantId, activeTenantName || user?.tenantName || "Empresa", true);
+          if (!granted.success) {
+            toast.error(`Usuário criado, mas não foi possível liberar troca de empresa: ${granted.error}`);
+          }
+        }
       } catch (err) {
         console.warn("[RH] Auth notice:", err);
       }
@@ -94,6 +105,7 @@ export default function RHColaboradores() {
       desempenho: 100,
       tenant_id: tenantId,
       user_id: userId,
+      filial_id: data.filialId || null,
     });
     toast.success(`${data.nome} adicionado à equipe com sucesso!`);
     if (userId) {
@@ -103,6 +115,24 @@ export default function RHColaboradores() {
       });
     }
     setIsMembroModalOpen(false);
+  };
+
+  const handleSaveEditColab = async (id: string, updates: any, tenantAccess?: { userId: string; enabled: boolean }) => {
+    updateColaborador(id, updates);
+    toast.success(`${updates.nome} atualizado com sucesso!`);
+    if (tenantAccess) {
+      const result = await setUserPartnerTenantAccess(
+        tenantAccess.userId,
+        activeTenantId || user?.tenantId || "",
+        activeTenantName || user?.tenantName || "Empresa",
+        tenantAccess.enabled
+      );
+      if (!result.success) {
+        toast.error(`Não foi possível ${tenantAccess.enabled ? "liberar" : "revogar"} a troca de empresa: ${result.error}`);
+      } else {
+        toast.success(tenantAccess.enabled ? "Troca de empresa liberada para este usuário." : "Troca de empresa revogada.");
+      }
+    }
   };
 
   const handleChangeStatus = (colab: any, novoStatus: string) => {
@@ -202,10 +232,14 @@ export default function RHColaboradores() {
         />
       )}
 
-      <NovoMembroModal isOpen={isMembroModalOpen} onClose={() => setIsMembroModalOpen(false)} onSave={handleSaveMembro} />
+      <NovoMembroModal
+        isOpen={isMembroModalOpen} onClose={() => setIsMembroModalOpen(false)} onSave={handleSaveMembro}
+        canGrantTenantAccess={!!user?.isMaster} filiais={filiaisOptions}
+      />
       <EditarColabModal
         colab={editingColab} onClose={() => setEditingColab(null)}
-        onSave={(id, updates) => { updateColaborador(id, updates); toast.success(`${updates.nome} atualizado com sucesso!`); }}
+        onSave={handleSaveEditColab}
+        canGrantTenantAccess={!!user?.isMaster} filiais={filiaisOptions}
       />
       <ColaboradorPerfilModal colab={perfilColab} onClose={() => setPerfilColab(null)} />
     </PageContainer>
