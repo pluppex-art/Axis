@@ -13,6 +13,8 @@ import { confirmDialog } from "../../../components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
 import type { AuroraAgent } from "../../../contexts/DataContextTypes";
+import { useAgentPrompts } from "../../../hooks/useAgentPrompts";
+import { ViewPromptButton, InlinePromptEditor } from "./AgentPromptControls";
 
 // Catálogo padrão só exibido em memória enquanto o tenant não salvou nenhum
 // agente ainda — mesmo padrão já usado pros funis (FUNIS_DEFAULT em
@@ -55,12 +57,30 @@ function RoleIcon({ role }: { role?: string }) {
   return <Icon className="w-4 h-4 text-violet-400" />;
 }
 
+// Chave de prompt derivada do NOME (não do id, que muda quando um agente do
+// catálogo padrão em memória "materializa" em registro real no primeiro
+// toggle/edit — ver handleToggle abaixo). Prefixo "persona-" evita colidir
+// com as chaves fixas do outro bloco de agentes (radar/sdr/closer/aurora,
+// ligadas a workflows reais do n8n) — "Closer" (persona) e "closer"
+// (execução) são conceitos diferentes, não podem compartilhar prompt.
+function promptKeyForAgent(name: string): string {
+  const slug = name
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `persona-${slug}`;
+}
+
 type EditingState = { id?: string; name: string; role: string; description: string } | null;
 
 export function ConfigSistemaAuroraAgentes() {
   const { auroraAgents, addAuroraAgent, updateAuroraAgent, deleteAuroraAgent, toggleAuroraAgent, ensureNicheModulesLoaded } = useData();
   useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
   const [editing, setEditing] = useState<EditingState>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { prompts, loading: promptsLoading, savingKey: promptSavingKey, updatePrompt } = useAgentPrompts();
+  const promptByKey = new Map(prompts.map((p) => [p.agentKey, p]));
 
   const hasCustomAgents = auroraAgents.length > 0;
   const displayList = hasCustomAgents ? auroraAgents : AURORA_AGENTS_DEFAULT.map((a, i) => ({ ...a, id: `default-${i}`, active: true } as AuroraAgent));
@@ -103,7 +123,7 @@ export function ConfigSistemaAuroraAgentes() {
   const activeCount = displayList.filter((a) => a.active).length;
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
@@ -137,51 +157,75 @@ export function ConfigSistemaAuroraAgentes() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {displayList.map((agent) => (
-          <Card
-            key={agent.id}
-            className={`p-4 bg-[var(--color-surface-elevated)]/80 border flex items-start gap-3 transition-colors ${
-              agent.active ? "border-white/10" : "border-white/5 opacity-60"
-            }`}
-          >
-            <div className="w-9 h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0">
-              <RoleIcon role={agent.role} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-[var(--color-text-primary)] truncate">{agent.name}</p>
-                  {agent.role && (
-                    <span className="text-[9px] font-black uppercase tracking-widest text-violet-400">
-                      {agent.role}
-                    </span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+        {displayList.map((agent) => {
+          const promptKey = promptKeyForAgent(agent.name);
+          const isExpanded = expandedId === agent.id;
+          return (
+            <Card
+              key={agent.id}
+              className={`p-4 bg-[var(--color-surface-elevated)]/80 border transition-colors ${
+                agent.active ? "border-white/10" : "border-white/5 opacity-60"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0">
+                  <RoleIcon role={agent.role} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-[var(--color-text-primary)] truncate">{agent.name}</p>
+                      {agent.role && (
+                        <span className="text-[9px] font-black uppercase tracking-widest text-violet-400">
+                          {agent.role}
+                        </span>
+                      )}
+                    </div>
+                    <Switch checked={agent.active} onCheckedChange={() => handleToggle(agent)} />
+                  </div>
+                  {agent.description && <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{agent.description}</p>}
+
+                  <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-white/5 flex-wrap">
+                    <ViewPromptButton
+                      agentKey={agent.id}
+                      expandedKey={expandedId}
+                      setExpandedKey={setExpandedId}
+                    />
+                    {hasCustomAgents && (
+                      <>
+                        <button
+                          onClick={() => setEditing({ id: agent.id, name: agent.name, role: agent.role || "", description: agent.description || "" })}
+                          className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/10 rounded-lg transition-colors text-[10px] font-bold"
+                          title="Editar agente"
+                        >
+                          <Pencil className="w-3 h-3" /> Editar
+                        </button>
+                        <button
+                          onClick={() => handleDelete(agent)}
+                          className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-white/10 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors text-[10px] font-bold"
+                          title="Remover agente"
+                        >
+                          <Trash2 className="w-3 h-3" /> Remover
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {isExpanded && (
+                    <InlinePromptEditor
+                      agentKey={promptKey}
+                      agent={promptByKey.get(promptKey)}
+                      loading={promptsLoading}
+                      saving={promptSavingKey === promptKey}
+                      onSave={(text, name, description) => updatePrompt(promptKey, text, name, description)}
+                    />
                   )}
                 </div>
-                <Switch checked={agent.active} onCheckedChange={() => handleToggle(agent)} />
               </div>
-              {agent.description && <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{agent.description}</p>}
-              {hasCustomAgents && (
-                <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-white/5">
-                  <button
-                    onClick={() => setEditing({ id: agent.id, name: agent.name, role: agent.role || "", description: agent.description || "" })}
-                    className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/10 rounded-lg transition-colors text-[10px] font-bold"
-                    title="Editar agente"
-                  >
-                    <Pencil className="w-3 h-3" /> Editar
-                  </button>
-                  <button
-                    onClick={() => handleDelete(agent)}
-                    className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-white/10 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors text-[10px] font-bold"
-                    title="Remover agente"
-                  >
-                    <Trash2 className="w-3 h-3" /> Remover
-                  </button>
-                </div>
-              )}
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
 
       <Modal
