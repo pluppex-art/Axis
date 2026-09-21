@@ -73,13 +73,20 @@ function RoleIcon({ role }: { role?: string }) {
   return <Icon className="w-4 h-4 text-violet-400" />;
 }
 
-// Chave de prompt derivada do NOME (não do id, que muda quando um agente do
-// catálogo padrão em memória "materializa" em registro real no primeiro
-// toggle/edit — ver handleToggle abaixo). Prefixo "persona-" evita colidir
-// com as chaves fixas do outro bloco de agentes (radar/sdr/closer/aurora,
-// ligadas a workflows reais do n8n) — "Closer" (persona) e "closer"
-// (execução) são conceitos diferentes, não podem compartilhar prompt.
+// Os 4 agentes com workflow real no n8n usam chave FIXA (aurora/radar/sdr/closer) — é
+// exatamente o agent_key que o n8n (Helper - Checar Config Aurora Tenant, AURORA CORE,
+// Radar, Closer AI, Júlia SDR v2) já lê ao vivo por tenant. Nunca derivar esses 4 do nome:
+// o catálogo permite editar o nome de um agente (botão Editar), e se a chave mudasse junto
+// o vínculo com o n8n quebraria silenciosamente. As demais personas (decorativas, sem
+// workflow 1:1 ainda) seguem usando uma chave derivada do nome, prefixada "persona-" pra
+// nunca colidir com as 4 fixas.
+const FIXED_N8N_PROMPT_KEY: Record<string, string> = {
+  Aurora: "aurora",
+  ...EXECUTE_MODULE_BY_NAME,
+};
+
 function promptKeyForAgent(name: string): string {
+  if (FIXED_N8N_PROMPT_KEY[name]) return FIXED_N8N_PROMPT_KEY[name];
   const slug = name
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
     .toLowerCase()
