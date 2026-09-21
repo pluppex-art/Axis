@@ -958,6 +958,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setNichos([]);
     nicheModulesRef.current = { tenantId: null, started: false };
     reconciledProposalIdsRef.current.clear();
+    leadValueAppliedProposalIdsRef.current.clear();
     setFinanceCategories([]);
     setFinanceBankAccounts([]);
     setFinanceCentrosCusto([]);
@@ -2313,6 +2314,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Trava contra loop de feedback da reconciliação — ver comentário no uso
   // abaixo (dentro do bloco `jaExiste`).
   const reconciledProposalIdsRef = React.useRef<Set<string>>(new Set());
+  // Guarda separada da de contracts acima: `!jaExiste` (linha ~2344) depende do
+  // estado local `contracts`, que fica defasado durante uma rajada de re-execuções
+  // desse efeito (mesma causa raiz do bug documentado abaixo em "PATCH em milhares
+  // de contratos") — sem isso, cada re-execução que ainda não via o contrato já
+  // criado somava `prop.valor` de novo no lead. Achado em produção: leads da
+  // Fabiano Fagundes/To Na Pista Boliche e Hermando/Casa Sao Paulo com o valor real
+  // (proposals.valor) somado 5x (ex.: 3988 -> 19940, 11964 -> 59820).
+  const leadValueAppliedProposalIdsRef = React.useRef<Set<string>>(new Set());
 
   const syncAcceptedProposal = (prop: any, { silent = false }: { silent?: boolean } = {}) => {
     // BUG real (visto em produção: contrato/lançamento de "Casa Sao Paulo" e
@@ -2348,7 +2357,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // esta proposta específica é processada (`!jaExiste`), senão a
     // reconciliação (que roda de novo a cada mudança de propostas/contracts)
     // somaria o mesmo valor repetidas vezes.
-    if (!jaExiste && prop.lead_id) {
+    if (!jaExiste && prop.lead_id && !leadValueAppliedProposalIdsRef.current.has(prop.id)) {
+      leadValueAppliedProposalIdsRef.current.add(prop.id);
       const productIds = linkedItems.map((pi: any) => pi.product_id).filter(Boolean);
       const lead = (leads || []).find((l: any) => l.id === prop.lead_id);
       const newValue = (lead ? Number(lead.value) || 0 : 0) + (prop.valor || 0);
