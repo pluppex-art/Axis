@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Bot, Pencil, Sparkles, UserSearch, Eye, Radar, RefreshCw,
-  Handshake, Briefcase, LineChart, Search, Headset, Wallet, Megaphone, ClipboardList, Trash2,
+  Handshake, Briefcase, LineChart, Search, Headset, Wallet, Megaphone, ClipboardList, Trash2, Sunrise,
 } from "lucide-react";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
@@ -52,6 +52,7 @@ const AURORA_AGENTS_DEFAULT: Array<Pick<AuroraAgent, "name" | "role" | "descript
   { name: "Financeiro", role: "Financeiro", description: "Resumos de fluxo de caixa, contas e inadimplência." },
   { name: "Marketing", role: "Marketing", description: "Leitura de campanhas, landing pages e origem dos leads." },
   { name: "Organização", role: "Operações", description: "Tarefas pendentes, agenda e follow-ups do dia a dia." },
+  { name: "Briefing Diário", role: "Briefing", description: "Resumo executivo enviado por WhatsApp às 8h, com prioridades do dia personalizadas por pessoa." },
 ];
 
 const ROLE_ICONS: Record<string, typeof Bot> = {
@@ -66,6 +67,7 @@ const ROLE_ICONS: Record<string, typeof Bot> = {
   Financeiro: Wallet,
   Marketing: Megaphone,
   "Operações": ClipboardList,
+  Briefing: Sunrise,
 };
 
 function RoleIcon({ role }: { role?: string }) {
@@ -89,6 +91,7 @@ const FIXED_N8N_PROMPT_KEY: Record<string, string> = {
   "Pesquisa": "pesquisa", // Research Intelligence
   "Agente Secreto": "agente_secreto", // CRM Customer Intelligence
   "Atendimento": "atendimento", // Gerencia Customer Success
+  "Briefing Diário": "briefing_diario", // Autonomous Daily Briefing
 };
 
 function promptKeyForAgent(name: string): string {
