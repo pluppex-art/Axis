@@ -172,12 +172,13 @@ export function ConfigSistemaAuroraUso() {
               ) : <span />}
               <Button
                 type="button"
+                variant="ghost"
                 onClick={handleSaveCustomPrompt}
                 disabled={savingCustomPrompt || customPromptDraft === null || customPromptDraft === config.customPrompt}
-                className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg ${
+                className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none ${
                   customPromptDraft !== null && customPromptDraft !== config.customPrompt
-                    ? "bg-violet-500/25 text-violet-200 border border-violet-500/50 hover:bg-violet-500/35"
-                    : "bg-white/10 text-slate-400 border border-white/20"
+                    ? "bg-violet-500/25 !text-violet-200 border border-violet-500/50 hover:bg-violet-500/35"
+                    : "bg-white/10 !text-slate-400 border border-white/20"
                 }`}
               >
                 {savingCustomPrompt ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}

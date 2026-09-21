@@ -239,12 +239,13 @@ export function ConfigSistemaAuroraAgentes() {
                     {executeKey && (
                       <Button
                         type="button"
+                        variant="ghost"
                         onClick={() => handleToggleExecuteModule(executeKey)}
                         disabled={pendingExecuteKey === executeKey}
-                        className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg ${
+                        className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none ${
                           executeActive
-                            ? "bg-violet-500/25 text-violet-200 border border-violet-500/50"
-                            : "bg-white/10 text-slate-300 border border-white/20"
+                            ? "bg-violet-500/25 !text-violet-200 border border-violet-500/50"
+                            : "bg-white/10 !text-slate-300 border border-white/20"
                         }`}
                       >
                         {pendingExecuteKey === executeKey ? (

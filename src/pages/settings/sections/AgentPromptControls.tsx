@@ -21,8 +21,9 @@ export function ViewPromptButton({
   return (
     <Button
       type="button"
+      variant="ghost"
       onClick={() => setExpandedKey(isOpen ? null : agentKey)}
-      className="flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg bg-white/10 text-slate-200 border border-white/20 hover:bg-white/15"
+      className="flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none bg-white/10 !text-slate-200 border border-white/20 hover:bg-white/15"
     >
       <FileText className="w-3 h-3" />
       Ver prompt
@@ -85,12 +86,13 @@ export function InlinePromptEditor({
         </span>
         <Button
           type="button"
+          variant="ghost"
           onClick={() => onSave(value, agent.name, agent.description)}
           disabled={!dirty || saving}
-          className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg ${
+          className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none ${
             dirty
-              ? "bg-violet-500/25 text-violet-200 border border-violet-500/50 hover:bg-violet-500/35"
-              : "bg-white/10 text-slate-400 border border-white/20"
+              ? "bg-violet-500/25 !text-violet-200 border border-violet-500/50 hover:bg-violet-500/35"
+              : "bg-white/10 !text-slate-400 border border-white/20"
           }`}
         >
           {saving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
