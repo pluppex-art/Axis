@@ -26,6 +26,8 @@ const EXECUTE_MODULES: { key: string; label: string; description: string }[] = [
  * BASE de cada agente (Aurora/Radar/Júlia-SDR/Closer); `tenant_ai_config.custom_prompt`
  * (card "Instruções específicas deste tenant") é um contexto de negócio ANEXADO por cima,
  * um por tenant, sem variante padrão/override — já é isolado por tenant desde a origem.
+ * Ambos já são lidos ao vivo pelo n8n (Helper - Checar Config Aurora Tenant + AURORA CORE),
+ * cada um isolado por tenant/execução — salvar aqui já reflete na Aurora, sem passo manual.
  *
  * Importante (honestidade, nao fachada): so `auroraEnabled` e os 3 toggles de execucao abaixo
  * sao de fato enforcados hoje do lado do n8n. Permissao granular de leitura/escrita por
@@ -266,8 +268,9 @@ function ViewPromptButton({
  * afeta esse tenant — editar aqui nunca muda o que os outros tenants veem. Disponível pra
  * qualquer tenant admin, não só master — mesma tela, mesmo acesso em todo tenant.
  *
- * Depois de salvar, o node correspondente no n8n ainda precisa ser apontado pra ler daqui
- * em vez do texto fixo no nó — essa ponte automática ainda não existe, é dito no rodapé.
+ * O n8n (Helper - Checar Config Aurora Tenant + AURORA CORE) já lê esse valor ao vivo por
+ * tenant — salvar aqui reflete na próxima mensagem da Aurora, sem precisar tocar em nada
+ * no n8n.
  */
 function InlinePromptEditor({
   agentKey,
@@ -333,7 +336,7 @@ function InlinePromptEditor({
       />
       <p className="text-[10px] text-slate-600">
         Salvar aqui cria/atualiza só a versão deste tenant — não muda o padrão nem o que os outros tenants veem.
-        O workflow no n8n ainda precisa ser atualizado manualmente pra ler o prompt daqui.
+        O n8n já lê esse prompt ao vivo por tenant, isolado por execução.
         {agent.updatedAt && ` Última atualização: ${new Date(agent.updatedAt).toLocaleString("pt-BR")}.`}
       </p>
     </div>
