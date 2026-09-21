@@ -20,7 +20,7 @@ export function ColaboradorPerfilModal({ colab, onClose }: ColaboradorPerfilModa
             <X className="w-4 h-4" />
           </button>
           <div className="w-16 h-16 rounded-2xl bg-[var(--color-primary-blue)] text-white font-bold text-xl border-4 border-[var(--color-surface-elevated)] -mb-8 flex items-center justify-center shadow-md">
-            {colab.nome.substring(0, 2).toUpperCase()}
+            {(colab.nome || "?").substring(0, 2).toUpperCase()}
           </div>
         </div>
         <div className="p-6 pt-10 text-center space-y-4">

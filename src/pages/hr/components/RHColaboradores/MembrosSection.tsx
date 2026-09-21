@@ -83,7 +83,7 @@ export function MembrosSection({
               <div>
                 <div className="h-16 bg-[var(--color-primary-blue)]/10 flex items-end justify-center p-0 border-b border-[var(--color-border-subtle)]">
                   <div className="w-14 h-14 rounded-xl bg-[var(--color-primary-blue)] text-white font-bold text-lg border-2 border-[var(--color-surface-elevated)] -mb-7 flex items-center justify-center shadow-sm">
-                    {colab.nome.substring(0, 2).toUpperCase()}
+                    {(colab.nome || "?").substring(0, 2).toUpperCase()}
                   </div>
                 </div>
                 <div className="p-5 pt-9 text-center space-y-2">

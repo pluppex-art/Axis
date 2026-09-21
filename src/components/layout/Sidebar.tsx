@@ -34,10 +34,12 @@ export function Sidebar({
     setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }));
   };
 
-  // Master vê e troca de cliente (tenant); admin do próprio tenant (ou master, dentro
-  // do cliente ativo) vê e troca de filial daquele cliente.
+  // Master vê e troca de cliente (tenant); usuário de organização parceira (partnerId
+  // setado) também, mas só entre os tenants vinculados a ela em tenant_partners — RLS em
+  // `tenants` (has_tenant_access) já restringe tenantIdMap a isso, então o front só checa o
+  // papel. Admin do próprio tenant (ou master, dentro do cliente ativo) vê e troca de filial.
   const tenantOptions = Object.entries(tenantIdMap).map(([name, id]) => ({ id, name }));
-  const canSwitchTenant = !!user?.isMaster && tenantOptions.length > 0;
+  const canSwitchTenant = (!!user?.isMaster || !!user?.partnerId) && tenantOptions.length > 1;
   const canSwitchFilial = !!(user?.isMaster || user?.isTenantAdmin) && empresaFiliais.length > 0;
   const userCargo = cargos.find(c => c.nome === user?.role);
   const cargoModulos: string[] | null = userCargo && Array.isArray(userCargo.modulos) && userCargo.modulos.length > 0
@@ -92,7 +94,7 @@ export function Sidebar({
         {!isSidebarCollapsed && (canSwitchTenant || canSwitchFilial) && (
           <div className="px-2 pt-2 pb-1 space-y-0.5 shrink-0">
             {canSwitchTenant ? (
-              <div className="flex items-center gap-2.5 px-3 py-2 rounded-[var(--radius-control)] hover:bg-[var(--color-surface-sunken)] transition-colors" title="Trocar de cliente (master)">
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-[var(--radius-control)] hover:bg-[var(--color-surface-sunken)] transition-colors" title="Trocar de cliente">
                 <Building2 className="w-4 h-4 text-[var(--color-primary-blue)] shrink-0" />
                 <select
                   className="appearance-none bg-transparent border-none outline-none shadow-none ring-0 text-[var(--color-text-primary)] focus:outline-none focus:ring-0 focus:shadow-none text-xs font-bold cursor-pointer w-full truncate"

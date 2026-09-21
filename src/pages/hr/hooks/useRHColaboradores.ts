@@ -68,9 +68,9 @@ export function useRHColaboradores() {
     deleteSquad(id);
   };
 
-  const filtered = colaboradores.filter(c => 
-    c.nome.toLowerCase().includes(search.toLowerCase()) ||
-    c.cargo.toLowerCase().includes(search.toLowerCase())
+  const filtered = colaboradores.filter(c =>
+    (c.nome ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (c.cargo ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
   // OTE Calculations: Base + (Vendas * %comissao) + Performance_Bonus (if meta > 100%, +20% base)

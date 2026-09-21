@@ -115,8 +115,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const activeFilialId = filialOverride?.id ?? null;
   const activeFilialName = filialOverride?.name ?? null;
 
+  // Master troca pra qualquer tenant; usuário de organização parceira (partnerId setado)
+  // só troca pra tenants vinculados em tenant_partners — RLS em `tenants` (has_tenant_access)
+  // já garante isso no fetchTenantIdMap() que popula as opções, então aqui só bloqueia quem
+  // não tem nenhum dos dois papéis.
   const switchTenant = (id: string, name: string) => {
-    if (!user?.isMaster) return;
+    if (!user?.isMaster && !user?.partnerId) return;
     setTenantOverride(id === user.tenantId ? null : { id, name });
     setFilialOverride(null);
   };
