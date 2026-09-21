@@ -7,6 +7,13 @@ export interface AgentPrompt {
   name: string;
   description: string | null;
   prompt: string;
+  /**
+   * Snapshot somente-leitura do prompt REAL atualmente embutido no nó do n8n (systemMessage
+   * completo) — é sempre o mesmo pra todo mundo (vem só da linha default, tenant_id null,
+   * nunca da linha de override do tenant) e nunca é lido pelo n8n, é puramente informativo.
+   * null quando esse agente ainda não teve o snapshot cadastrado.
+   */
+  basePrompt: string | null;
   updatedAt: string | null;
   /** true quando o texto exibido já é a versão customizada deste tenant (não o padrão global). */
   isCustomized: boolean;
@@ -38,7 +45,7 @@ export function useAgentPrompts() {
     setLoading(true);
     const { data, error } = await supabase
       .from("ai_agent_prompts")
-      .select("agent_key, tenant_id, name, description, prompt, updated_at")
+      .select("agent_key, tenant_id, name, description, prompt, base_prompt, updated_at")
       .or(`tenant_id.is.null,tenant_id.eq.${activeTenantId}`)
       .order("agent_key", { ascending: true });
 
@@ -50,9 +57,13 @@ export function useAgentPrompts() {
     }
 
     // Uma linha padrão (tenant_id null) + possivelmente uma linha do tenant ativo por
-    // agente — a do tenant, quando existe, sempre vence a exibição.
+    // agente — a do tenant, quando existe, sempre vence a exibição. base_prompt só existe
+    // na linha padrão (é universal, o mesmo snapshot do n8n pra todo mundo), então guarda
+    // à parte pra não sumir quando a linha exibida acaba sendo a de override do tenant.
     const byAgent = new Map<string, any>();
+    const baseByAgent = new Map<string, string | null>();
     for (const row of data ?? []) {
+      if (row.tenant_id === null) baseByAgent.set(row.agent_key, row.base_prompt ?? null);
       const existing = byAgent.get(row.agent_key);
       if (!existing || row.tenant_id === activeTenantId) byAgent.set(row.agent_key, row);
     }
@@ -63,6 +74,7 @@ export function useAgentPrompts() {
         name: row.name,
         description: row.description,
         prompt: row.prompt ?? "",
+        basePrompt: baseByAgent.get(row.agent_key) ?? null,
         updatedAt: row.updated_at,
         isCustomized: row.tenant_id === activeTenantId,
       }))

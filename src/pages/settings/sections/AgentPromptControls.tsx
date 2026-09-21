@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Save, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { FileText, Save, RefreshCw, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import type { AgentPrompt } from "../../../hooks/useAgentPrompts";
 
@@ -67,6 +67,8 @@ export function InlinePromptEditor({
 }) {
   const [value, setValue] = useState(agent?.prompt ?? "");
   const [loadedFor, setLoadedFor] = useState<string | null>(agent ? agentKey : null);
+  const [showBase, setShowBase] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Só inicializa o textarea quando o prompt desse agente chega pela primeira vez — evita
   // sobrescrever o que o usuário já está digitando caso o hook recarregue no meio da edição.
@@ -81,8 +83,51 @@ export function InlinePromptEditor({
 
   const dirty = value !== agent.prompt;
 
+  const handleCopyBase = async () => {
+    if (!agent.basePrompt) return;
+    try {
+      await navigator.clipboard.writeText(agent.basePrompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard pode falhar em contexto não-seguro/sem permissão — sem crash, só não copia.
+    }
+  };
+
   return (
     <div className="pt-2 space-y-2 border-t border-[var(--color-border-subtle)] mt-1">
+      {agent.basePrompt && (
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            onClick={() => setShowBase((v) => !v)}
+            className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+          >
+            {showBase ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            Ver prompt completo atual (somente leitura)
+          </button>
+          {showBase && (
+            <div className="relative">
+              <pre className="w-full max-h-72 overflow-y-auto text-[11px] font-mono whitespace-pre-wrap bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg p-3 text-[var(--color-text-muted)]">
+                {agent.basePrompt}
+              </pre>
+              <button
+                type="button"
+                onClick={handleCopyBase}
+                title="Copiar"
+                className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-bold uppercase px-2 py-1 rounded-md bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+              >
+                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copied ? "Copiado" : "Copiar"}
+              </button>
+            </div>
+          )}
+          <p className="text-[10px] text-[var(--color-text-faint)]">
+            Este é o comportamento real que o agente já tem hoje, embutido no n8n — mostrado aqui só pra
+            transparência. Editar aqui não muda isso; use o campo abaixo para adicionar instruções por cima.
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 pt-2">
         <span
           className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide border ${
