@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  Bot, Pencil, Sparkles, UserSearch, Eye, Radar, RefreshCw,
+  Bot, Pencil, Sparkles, UserSearch, Eye, Radar,
   Handshake, Briefcase, LineChart, Search, Headset, Wallet, Megaphone, ClipboardList, Trash2, Sunrise,
 } from "lucide-react";
 import { Card } from "../../../components/ui/card";
@@ -22,10 +22,10 @@ import { ViewPromptButton, InlinePromptEditor } from "./AgentPromptControls";
 const AURORA_CORE_ID = "aurora-core";
 
 // Os 3 agentes que a Aurora pode de fato ACIONAR (workflows reais no n8n, controlados por
-// tenant_ai_config.allowed_execute_modules) — antes viviam num card separado "Agentes que a
-// Aurora pode acionar"; agora aparecem aqui, junto do resto, com um toggle extra
-// Liberado/Bloqueado. Casados pelo NOME com o catálogo abaixo (mesmo agente, duas facetas:
-// persona exibida vs. permissão de execução real).
+// tenant_ai_config.allowed_execute_modules) — antes tinham um botão Liberado/Bloqueado
+// separado do switch de ativo/inativo; agora é o MESMO switch do card (ver isExecuteActive/
+// handleToggle abaixo) — só esses 3 controlam essa tabela em vez de aurora_agents.active,
+// pra não duplicar controle nem ter um botão a mais que só repetia a mesma decisão.
 const EXECUTE_MODULE_BY_NAME: Record<string, string> = {
   "Radar de Oportunidades": "radar",
   "Júlia — SDR": "sdr",
@@ -130,11 +130,37 @@ export function ConfigSistemaAuroraAgentes() {
   } as AuroraAgent;
   const displayList: AuroraAgent[] = [auroraCoreEntry, ...personaList];
 
+  // Convencao da tabela: array vazio = tudo liberado (nenhuma restricao adicional).
+  const executeRestricted = (config?.allowedExecuteModules.length ?? 0) > 0;
+  const isExecuteActive = (moduleKey: string) =>
+    !executeRestricted || (config?.allowedExecuteModules.includes(moduleKey) ?? false);
+
+  const handleToggleExecuteModule = async (moduleKey: string) => {
+    if (!config) return;
+    setPendingExecuteKey(moduleKey);
+    const current = config.allowedExecuteModules;
+    const next = isExecuteActive(moduleKey)
+      // Desligando: se ainda não havia restrição (array vazio = tudo liberado), vira uma
+      // lista explícita com todos OS OUTROS agentes de execução, senão eles perderiam acesso
+      // junto — só quando já era uma lista explícita é que basta remover esta chave dela.
+      ? (executeRestricted ? current.filter((k) => k !== moduleKey) : Object.values(EXECUTE_MODULE_BY_NAME).filter((k) => k !== moduleKey))
+      : [...current, moduleKey];
+    await updateTenantAiConfig({ allowedExecuteModules: next });
+    setPendingExecuteKey(null);
+  };
+
   const handleToggle = async (agent: AuroraAgent) => {
     if (agent.id === AURORA_CORE_ID) {
       setSavingAuroraCore(true);
       await updateTenantAiConfig({ auroraEnabled: !(config?.auroraEnabled ?? true) });
       setSavingAuroraCore(false);
+      return;
+    }
+    // Radar de Oportunidades/Júlia-SDR/Closer: o switch já É o controle de execução real
+    // (tenant_ai_config.allowed_execute_modules) — não um botão Liberado/Bloqueado à parte.
+    const executeKey = EXECUTE_MODULE_BY_NAME[agent.name];
+    if (executeKey) {
+      await handleToggleExecuteModule(executeKey);
       return;
     }
     if (!hasCustomAgents) {
@@ -148,19 +174,6 @@ export function ConfigSistemaAuroraAgentes() {
       return;
     }
     toggleAuroraAgent(agent.id);
-  };
-
-  // Convencao da tabela: array vazio = tudo liberado (nenhuma restricao adicional).
-  const executeRestricted = (config?.allowedExecuteModules.length ?? 0) > 0;
-  const handleToggleExecuteModule = async (moduleKey: string) => {
-    if (!config) return;
-    setPendingExecuteKey(moduleKey);
-    const current = config.allowedExecuteModules;
-    const next = current.includes(moduleKey)
-      ? current.filter((k) => k !== moduleKey)
-      : [...current, moduleKey];
-    await updateTenantAiConfig({ allowedExecuteModules: next });
-    setPendingExecuteKey(null);
   };
 
   const handleSave = () => {
@@ -216,12 +229,14 @@ export function ConfigSistemaAuroraAgentes() {
           const promptKey = promptKeyForAgent(agent.name);
           const isExpanded = expandedId === agent.id;
           const executeKey = EXECUTE_MODULE_BY_NAME[agent.name];
-          const executeActive = !executeRestricted || (config?.allowedExecuteModules.includes(executeKey) ?? false);
+          // Pros 3 agentes de execução, o switch reflete allowed_execute_modules (a permissão
+          // real), não aurora_agents.active — pra qualquer outro agente, active mesmo.
+          const isActive = executeKey ? isExecuteActive(executeKey) : agent.active;
           return (
             <Card
               key={agent.id}
               className={`p-4 bg-[var(--color-surface-elevated)]/80 border transition-colors ${
-                agent.active ? "border-[var(--color-border-default)]" : "border-[var(--color-border-subtle)] opacity-60"
+                isActive ? "border-[var(--color-border-default)]" : "border-[var(--color-border-subtle)] opacity-60"
               }`}
             >
               <div className="flex items-start gap-3">
@@ -239,8 +254,11 @@ export function ConfigSistemaAuroraAgentes() {
                       )}
                     </div>
                     <Switch
-                      checked={agent.active}
-                      disabled={agent.id === AURORA_CORE_ID && savingAuroraCore}
+                      checked={isActive}
+                      disabled={
+                        (agent.id === AURORA_CORE_ID && savingAuroraCore) ||
+                        (!!executeKey && pendingExecuteKey === executeKey)
+                      }
                       onCheckedChange={() => handleToggle(agent)}
                     />
                   </div>
@@ -252,27 +270,6 @@ export function ConfigSistemaAuroraAgentes() {
                       expandedKey={expandedId}
                       setExpandedKey={setExpandedId}
                     />
-                    {executeKey && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => handleToggleExecuteModule(executeKey)}
-                        disabled={pendingExecuteKey === executeKey}
-                        className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none border ${
-                          executeActive
-                            ? "bg-violet-100 !text-violet-700 border-violet-300 dark:bg-violet-500/25 dark:!text-violet-200 dark:border-violet-500/50"
-                            : "bg-[var(--color-surface-sunken)] !text-[var(--color-text-muted)] border-[var(--color-border-default)]"
-                        }`}
-                      >
-                        {pendingExecuteKey === executeKey ? (
-                          <RefreshCw className="w-3 h-3 animate-spin" />
-                        ) : executeActive ? (
-                          "Liberado"
-                        ) : (
-                          "Bloqueado"
-                        )}
-                      </Button>
-                    )}
                     {hasCustomAgents && agent.id !== AURORA_CORE_ID && (
                       <>
                         <button
