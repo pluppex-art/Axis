@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Bot, Power, ShieldAlert, RefreshCw, Radar as RadarIcon } from "lucide-react";
+import { Bot, Power, ShieldAlert, RefreshCw, Radar as RadarIcon, FileText, Save, Lock } from "lucide-react";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { useTenantAiConfig } from "../../../hooks/useTenantAiConfig";
+import { useAgentPrompts } from "../../../hooks/useAgentPrompts";
 import { useAuth } from "../../../contexts/AuthContext";
 
 const EXECUTE_MODULES: { key: string; label: string; description: string }[] = [
@@ -23,7 +24,7 @@ const EXECUTE_MODULES: { key: string; label: string; description: string }[] = [
  */
 export function ConfigInteligenciaArtificialAurora() {
   const { config, loading, saving, update } = useTenantAiConfig();
-  const { activeTenantName } = useAuth();
+  const { activeTenantName, user } = useAuth();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const handleToggleAurora = async () => {
@@ -132,6 +133,20 @@ export function ConfigInteligenciaArtificialAurora() {
             </div>
           </Card>
 
+          {user?.isMaster ? (
+            <AgentPromptsSection />
+          ) : (
+            <Card className="p-5 bg-white/5 border border-white/10 space-y-2">
+              <h3 className="font-bold text-xs text-slate-300 flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5" /> Prompts dos agentes — acesso restrito
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                O texto que rege o comportamento da Aurora e dos agentes é compartilhado entre todas as empresas da
+                plataforma, por isso só a administração master pode visualizar ou editar.
+              </p>
+            </Card>
+          )}
+
           <Card className="p-5 bg-amber-500/5 border border-amber-500/20 space-y-2">
             <h3 className="font-bold text-xs text-amber-400 flex items-center gap-2">
               <ShieldAlert className="w-3.5 h-3.5" /> Ainda não existe nesta tela
@@ -143,6 +158,96 @@ export function ConfigInteligenciaArtificialAurora() {
             </p>
           </Card>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Prompts dos agentes (Aurora core + Radar/Júlia-SDR/Closer AI) — texto lido/escrito em
+ * `ai_agent_prompts`, master-only (ver useAgentPrompts). Depois de salvar aqui, o node
+ * correspondente no n8n ainda precisa ser apontado pra ler daqui — isso não acontece
+ * sozinho, é dito explicitamente no aviso abaixo, mesma honestidade do resto da tela.
+ */
+function AgentPromptsSection() {
+  const { prompts, loading, savingKey, updatePrompt } = useAgentPrompts();
+
+  return (
+    <Card className="p-6 bg-[var(--color-surface-elevated)]/80 border border-white/10 space-y-4">
+      <div>
+        <h3 className="font-bold text-xs uppercase tracking-widest text-violet-400 flex items-center gap-2">
+          <FileText className="w-3.5 h-3.5" />
+          <span>Prompts dos agentes</span>
+        </h3>
+        <p className="text-xs text-slate-500 mt-1">
+          Texto que rege o comportamento de cada agente. Editar aqui salva no S.P.Y., mas o workflow no n8n
+          ainda precisa ser atualizado manualmente pra ler o prompt daqui em vez do texto fixo no nó — essa
+          ponte automática ainda não existe.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-slate-500">Carregando prompts...</p>
+      ) : (
+        <div className="space-y-4">
+          {prompts.map((agent) => (
+            <AgentPromptEditor
+              key={agent.agentKey}
+              agent={agent}
+              saving={savingKey === agent.agentKey}
+              onSave={(text) => updatePrompt(agent.agentKey, text)}
+            />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function AgentPromptEditor({
+  agent,
+  saving,
+  onSave,
+}: {
+  agent: { agentKey: string; name: string; description: string | null; prompt: string; updatedAt: string | null };
+  saving: boolean;
+  onSave: (text: string) => void;
+}) {
+  const [value, setValue] = useState(agent.prompt);
+  const dirty = value !== agent.prompt;
+
+  return (
+    <div className="p-3 bg-[var(--color-surface)] border border-white/5 rounded-xl space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-white">{agent.name}</p>
+          {agent.description && <p className="text-xs text-slate-500">{agent.description}</p>}
+        </div>
+        <Button
+          type="button"
+          onClick={() => onSave(value)}
+          disabled={!dirty || saving}
+          className={`shrink-0 flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg ${
+            dirty
+              ? "bg-violet-500/15 text-violet-300 border border-violet-500/30 hover:bg-violet-500/25"
+              : "bg-white/5 text-slate-600 border border-white/10"
+          }`}
+        >
+          {saving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+          {saving ? "Salvando..." : "Salvar"}
+        </Button>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Cole aqui o texto atual do prompt (copiado do nó correspondente no n8n)..."
+        rows={6}
+        className="w-full text-xs font-mono bg-black/20 border border-white/10 rounded-lg p-3 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-y"
+      />
+      {agent.updatedAt && (
+        <p className="text-[10px] text-slate-600">
+          Última atualização: {new Date(agent.updatedAt).toLocaleString("pt-BR")}
+        </p>
       )}
     </div>
   );
