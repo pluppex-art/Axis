@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, Power, ShieldAlert, RefreshCw, Radar as RadarIcon, FileText, Save, Lock } from "lucide-react";
+import { Bot, Power, ShieldAlert, RefreshCw, Radar as RadarIcon, FileText, Save } from "lucide-react";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { useTenantAiConfig } from "../../../hooks/useTenantAiConfig";
@@ -24,7 +24,7 @@ const EXECUTE_MODULES: { key: string; label: string; description: string }[] = [
  */
 export function ConfigInteligenciaArtificialAurora() {
   const { config, loading, saving, update } = useTenantAiConfig();
-  const { activeTenantName, user } = useAuth();
+  const { activeTenantName } = useAuth();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const handleToggleAurora = async () => {
@@ -133,19 +133,7 @@ export function ConfigInteligenciaArtificialAurora() {
             </div>
           </Card>
 
-          {user?.isMaster ? (
-            <AgentPromptsSection />
-          ) : (
-            <Card className="p-5 bg-white/5 border border-white/10 space-y-2">
-              <h3 className="font-bold text-xs text-slate-300 flex items-center gap-2">
-                <Lock className="w-3.5 h-3.5" /> Prompts dos agentes — acesso restrito
-              </h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                O texto que rege o comportamento da Aurora e dos agentes é compartilhado entre todas as empresas da
-                plataforma, por isso só a administração master pode visualizar ou editar.
-              </p>
-            </Card>
-          )}
+          <AgentPromptsSection />
 
           <Card className="p-5 bg-amber-500/5 border border-amber-500/20 space-y-2">
             <h3 className="font-bold text-xs text-amber-400 flex items-center gap-2">
@@ -165,9 +153,12 @@ export function ConfigInteligenciaArtificialAurora() {
 
 /**
  * Prompts dos agentes (Aurora core + Radar/Júlia-SDR/Closer AI) — texto lido/escrito em
- * `ai_agent_prompts`, master-only (ver useAgentPrompts). Depois de salvar aqui, o node
- * correspondente no n8n ainda precisa ser apontado pra ler daqui — isso não acontece
- * sozinho, é dito explicitamente no aviso abaixo, mesma honestidade do resto da tela.
+ * `ai_agent_prompts` (ver useAgentPrompts). Padrão "default + override": existe um texto
+ * padrão global (mantido por master) e cada tenant pode salvar sua PRÓPRIA versão, que só
+ * afeta esse tenant — editar aqui nunca muda o que os outros tenants veem. Depois de
+ * salvar, o node correspondente no n8n ainda precisa ser apontado pra ler daqui — isso
+ * não acontece sozinho, é dito explicitamente no aviso abaixo, mesma honestidade do
+ * resto da tela.
  */
 function AgentPromptsSection() {
   const { prompts, loading, savingKey, updatePrompt } = useAgentPrompts();
@@ -180,9 +171,10 @@ function AgentPromptsSection() {
           <span>Prompts dos agentes</span>
         </h3>
         <p className="text-xs text-slate-500 mt-1">
-          Texto que rege o comportamento de cada agente. Editar aqui salva no S.P.Y., mas o workflow no n8n
-          ainda precisa ser atualizado manualmente pra ler o prompt daqui em vez do texto fixo no nó — essa
-          ponte automática ainda não existe.
+          Texto que rege o comportamento de cada agente. Salvar aqui cria/atualiza a versão
+          deste tenant, sem alterar o padrão nem o que os outros tenants veem. O workflow no
+          n8n ainda precisa ser atualizado manualmente pra ler o prompt daqui em vez do
+          texto fixo no nó — essa ponte automática ainda não existe.
         </p>
       </div>
 
@@ -195,7 +187,7 @@ function AgentPromptsSection() {
               key={agent.agentKey}
               agent={agent}
               saving={savingKey === agent.agentKey}
-              onSave={(text) => updatePrompt(agent.agentKey, text)}
+              onSave={(text) => updatePrompt(agent.agentKey, text, agent.name, agent.description)}
             />
           ))}
         </div>
@@ -209,7 +201,7 @@ function AgentPromptEditor({
   saving,
   onSave,
 }: {
-  agent: { agentKey: string; name: string; description: string | null; prompt: string; updatedAt: string | null };
+  agent: { agentKey: string; name: string; description: string | null; prompt: string; updatedAt: string | null; isCustomized: boolean };
   saving: boolean;
   onSave: (text: string) => void;
 }) {
@@ -220,7 +212,18 @@ function AgentPromptEditor({
     <div className="p-3 bg-[var(--color-surface)] border border-white/5 rounded-xl space-y-2">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-bold text-white">{agent.name}</p>
+          <p className="text-sm font-bold text-white flex items-center gap-2">
+            {agent.name}
+            <span
+              className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${
+                agent.isCustomized
+                  ? "bg-violet-500/15 text-violet-300 border border-violet-500/30"
+                  : "bg-white/5 text-slate-500 border border-white/10"
+              }`}
+            >
+              {agent.isCustomized ? "Customizado" : "Padrão"}
+            </span>
+          </p>
           {agent.description && <p className="text-xs text-slate-500">{agent.description}</p>}
         </div>
         <Button
