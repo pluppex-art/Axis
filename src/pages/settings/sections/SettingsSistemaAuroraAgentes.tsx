@@ -104,7 +104,10 @@ function promptKeyForAgent(name: string): string {
   return `persona-${slug}`;
 }
 
-type EditingState = { id?: string; name: string; role: string; description: string } | null;
+// originalName é o nome de quando o modal abriu (nunca muda com o que o usuário digita) —
+// é ele que decide se o campo Nome fica travado (ver isN8nLinked no JSX), pra nunca deixar
+// alguém "destravar" a proteção só digitando um nome diferente antes de salvar.
+type EditingState = { id?: string; name: string; originalName: string; role: string; description: string } | null;
 
 export function ConfigSistemaAuroraAgentes() {
   const { auroraAgents, addAuroraAgent, updateAuroraAgent, deleteAuroraAgent, toggleAuroraAgent, ensureNicheModulesLoaded } = useData();
@@ -178,6 +181,18 @@ export function ConfigSistemaAuroraAgentes() {
 
   const handleSave = () => {
     if (!editing?.name.trim()) { toast.error("Nome do agente é obrigatório."); return; }
+    if (!hasCustomAgents) {
+      // Catálogo ainda em memória — a primeira edição materializa todo mundo de uma vez
+      // (mesmo padrão do handleToggle/handleDelete abaixo): o agente editado entra com os
+      // valores novos, os demais exatamente como estavam no catálogo padrão.
+      addAuroraAgent({ name: editing.name, role: editing.role, description: editing.description, active: true });
+      AURORA_AGENTS_DEFAULT.filter((a) => a.name !== editing.originalName).forEach((a) => {
+        addAuroraAgent({ name: a.name, role: a.role, description: a.description, active: true });
+      });
+      toast.success("Agente atualizado.");
+      setEditing(null);
+      return;
+    }
     if (editing.id) {
       updateAuroraAgent(editing.id, { name: editing.name, role: editing.role, description: editing.description });
       toast.success("Agente atualizado.");
@@ -193,6 +208,14 @@ export function ConfigSistemaAuroraAgentes() {
       title: "Remover agente",
       description: `Remover "${agent.name}" da lista de agentes vinculados à Aurora? Essa ação não pode ser desfeita.`,
     }))) return;
+    if (!hasCustomAgents) {
+      // Catálogo ainda em memória — materializa todo mundo, exceto o agente removido.
+      AURORA_AGENTS_DEFAULT.filter((a) => a.name !== agent.name).forEach((a) => {
+        addAuroraAgent({ name: a.name, role: a.role, description: a.description, active: true });
+      });
+      toast.success(`"${agent.name}" removido.`);
+      return;
+    }
     deleteAuroraAgent(agent.id);
     toast.success("Agente removido.");
   };
@@ -270,10 +293,10 @@ export function ConfigSistemaAuroraAgentes() {
                       expandedKey={expandedId}
                       setExpandedKey={setExpandedId}
                     />
-                    {hasCustomAgents && agent.id !== AURORA_CORE_ID && (
+                    {agent.id !== AURORA_CORE_ID && (
                       <>
                         <button
-                          onClick={() => setEditing({ id: agent.id, name: agent.name, role: agent.role || "", description: agent.description || "" })}
+                          onClick={() => setEditing({ id: agent.id, name: agent.name, originalName: agent.name, role: agent.role || "", description: agent.description || "" })}
                           className="flex items-center gap-1 px-2 py-1 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-elevated)] rounded-lg transition-colors text-[10px] font-bold"
                           title="Editar agente"
                         >
@@ -317,19 +340,34 @@ export function ConfigSistemaAuroraAgentes() {
           </div>
         }
       >
-        {editing && (
-          <div className="space-y-4">
-            <FormField label="Nome do Agente">
-              <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Ex: Closer" />
-            </FormField>
-            <FormField label="Papel/Função">
-              <Input value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })} placeholder="Ex: Vendas" />
-            </FormField>
-            <FormField label="Descrição">
-              <Input value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="O que esse agente faz" />
-            </FormField>
-          </div>
-        )}
+        {editing && (() => {
+          const isN8nLinked = !!FIXED_N8N_PROMPT_KEY[editing.originalName];
+          return (
+            <div className="space-y-4">
+              <FormField label="Nome do Agente">
+                <Input
+                  value={editing.name}
+                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                  placeholder="Ex: Closer"
+                  disabled={isN8nLinked}
+                />
+                {isN8nLinked && (
+                  <p className="text-[10px] text-[var(--color-text-faint)] mt-1">
+                    Este agente já está ligado a um workflow real no n8n — o nome fica travado pra não perder essa
+                    conexão (renomear faria o prompt customizado parar de ser lido). Papel e descrição podem ser
+                    editados livremente.
+                  </p>
+                )}
+              </FormField>
+              <FormField label="Papel/Função">
+                <Input value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })} placeholder="Ex: Vendas" />
+              </FormField>
+              <FormField label="Descrição">
+                <Input value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="O que esse agente faz" />
+              </FormField>
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );

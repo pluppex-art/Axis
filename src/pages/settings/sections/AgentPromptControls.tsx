@@ -3,10 +3,9 @@ import { FileText, Save, RefreshCw, ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "../../../components/ui/button";
 import type { AgentPrompt } from "../../../hooks/useAgentPrompts";
 
-// Compartilhado entre a seção de controle da Aurora (radar/sdr/closer/aurora, chaves fixas
-// ligadas a workflows reais do n8n) e o catálogo de agentes/personas (chaves derivadas do
-// nome, ver promptKeyForAgent em SettingsSistemaAuroraAgentes.tsx) — extraído aqui pra
-// evitar import circular entre os dois arquivos que agora usam os dois componentes.
+// Usado pelo catálogo de agentes/personas (SettingsSistemaAuroraAgentes.tsx) — cada agente
+// usa uma chave FIXA (ver FIXED_N8N_PROMPT_KEY lá) quando tem workflow real ligado no n8n,
+// ou uma chave derivada do nome (promptKeyForAgent) quando ainda não tem.
 //
 // Cores por CSS var (--color-text-*, --color-surface-*, --color-border-*), não Tailwind
 // slate/violet cru: essa tela é usada nos dois temas (claro/escuro, toggle via classe
@@ -46,9 +45,12 @@ export function ViewPromptButton({
  * afeta esse tenant — editar aqui nunca muda o que os outros tenants veem. Disponível pra
  * qualquer tenant admin, não só master — mesma tela, mesmo acesso em todo tenant.
  *
- * O n8n (Helper - Checar Config Aurora Tenant + AURORA CORE) já lê esse valor ao vivo por
- * tenant — salvar aqui reflete na próxima mensagem da Aurora, sem precisar tocar em nada
- * no n8n.
+ * IMPORTANTE (não é um "substituir o prompt"): cada agente com workflow real no n8n já tem
+ * seu próprio comportamento/prompt embutido no nó — o texto salvo aqui é um bloco ADICIONAL
+ * de contexto/instrução específico do tenant, somado por cima do comportamento padrão, nunca
+ * uma substituição dele. O n8n já lê esse valor ao vivo por tenant (isolado por execução,
+ * nunca cacheado nem compartilhado entre tenants) — salvar aqui reflete na próxima chamada do
+ * agente, sem precisar tocar em nada no n8n.
  */
 export function InlinePromptEditor({
   agentKey,
@@ -109,13 +111,13 @@ export function InlinePromptEditor({
       <textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Cole aqui o texto atual do prompt (copiado do nó correspondente no n8n)..."
+        placeholder="Instruções adicionais para este agente, específicas da sua empresa (ex: um produto especial, uma regra de atendimento, um jeito de falar)..."
         rows={6}
         className="w-full text-xs font-mono bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg p-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-faint)] focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-y"
       />
       <p className="text-[10px] text-[var(--color-text-faint)]">
-        Salvar aqui cria/atualiza só a versão deste tenant — não muda o padrão nem o que os outros tenants veem.
-        O n8n já lê esse prompt ao vivo por tenant, isolado por execução.
+        Isto é somado ao comportamento padrão do agente, nunca o substitui — não cole o prompt inteiro aqui.
+        Salvar cria/atualiza só a versão deste tenant, isolada por execução — não muda o padrão nem o que os outros tenants veem.
         {agent.updatedAt && ` Última atualização: ${new Date(agent.updatedAt).toLocaleString("pt-BR")}.`}
       </p>
     </div>
