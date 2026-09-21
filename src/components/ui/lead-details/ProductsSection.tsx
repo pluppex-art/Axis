@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Card } from "../card";
 import { Button } from "../button";
 import { Badge } from "../badge";
-import { FileText, Plus, Edit3, Check, Package } from "lucide-react";
+import { EmptyState } from "../empty-state";
+import { FileText, Plus, Edit3, Check, Package, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
 import { useLocalization } from "../../../contexts/LocalizationContext";
@@ -21,13 +22,12 @@ interface ProductsSectionProps {
 }
 
 /**
- * Antes era o "Mini PDV & Orçamento": composição comercial/margem, recorrência e taxa de
- * implantação por item, catálogo inteiro pra buscar/clicar, tudo dentro do Lead Detalhes —
- * informação e controles demais pra quem só quer registrar um produto vendido. Substituído
- * por um botão único ("+ Novo Produto") que abre AddProdutoLeadModal — mesma automação de
- * fechamento de venda de antes (proposta + financeiro + lead), sem a interface de PDV aqui
- * dentro. O que sobra nesta tela é só status: a proposta comercial já vinculada ao lead, se
- * houver.
+ * Antes era o "Mini PDV & Orçamento" inteiro embutido aqui: composição comercial/margem,
+ * recorrência e implantação por item, forma de pagamento e o catálogo, tudo junto ocupando
+ * a aba inteira. Os mesmos campos continuam existindo — só que dentro de AddProdutoLeadModal
+ * (aberto pelo "+ Novo Produto", ou clicando direto num item da lista abaixo), não mais
+ * espalhados pela aba. Aqui fica só: a proposta já vinculada ao lead (se houver) e a lista de
+ * produtos do catálogo.
  */
 export function ProductsSection({
   availableProducts = [],
@@ -42,8 +42,22 @@ export function ProductsSection({
   const { formatCurrency } = useLocalization();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [prefillProductId, setPrefillProductId] = useState<string | undefined>(undefined);
+  const [searchTerm, setSearchTerm] = useState("");
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
   const [currentProposalData, setCurrentProposalData] = useState<PropostaEditorData | null>(null);
+
+  const filteredProducts = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return availableProducts.filter((p) =>
+      (p.name || "").toLowerCase().includes(term) || (p.category || "").toLowerCase().includes(term)
+    );
+  }, [availableProducts, searchTerm]);
+
+  const openAddModal = (productId?: string) => {
+    setPrefillProductId(productId);
+    setIsAddModalOpen(true);
+  };
 
   const existingProposal = useMemo(() => {
     if (!leadId) return null;
@@ -199,27 +213,71 @@ export function ProductsSection({
         </Card>
       )}
 
-      <Card className="p-6 bg-[var(--color-surface-elevated)] border border-dashed border-[var(--color-border-subtle)] text-center flex flex-col items-center justify-center gap-2.5">
-        <div className="w-10 h-10 rounded-xl bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)] flex items-center justify-center">
-          <Package className="w-5 h-5" />
+      <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-2">
+            <Package className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Produtos ({filteredProducts.length})
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => openAddModal()}
+            className="h-8 text-[11px] font-bold gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" /> Novo Produto
+          </Button>
         </div>
-        <p className="text-xs font-bold text-[var(--color-text-primary)]">Adicionar um produto a este cliente</p>
-        <p className="text-[11px] text-[var(--color-text-muted)] max-w-sm">
-          Gera a proposta, lança o valor no financeiro e atualiza o lead automaticamente.
-        </p>
-        <Button
-          type="button"
-          onClick={() => setIsAddModalOpen(true)}
-          className="text-xs font-bold gap-1.5 mt-1"
-        >
-          <Plus className="w-3.5 h-3.5" /> Novo Produto
-        </Button>
+
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-faint)]" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar por nome ou categoria..."
+            className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] pl-8 pr-3 py-1.5 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+          />
+        </div>
+
+        {filteredProducts.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto scrollbar-thin pr-1">
+            {filteredProducts.map((prod) => (
+              <button
+                key={prod.id}
+                type="button"
+                onClick={() => openAddModal(prod.id)}
+                className="p-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)] hover:border-[var(--color-primary-blue)]/50 hover:bg-[var(--color-primary-blue)]/5 transition-all flex items-center justify-between gap-2 text-left cursor-pointer"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-[var(--color-text-primary)] truncate">{prod.name}</p>
+                  <span className="text-[9px] text-[var(--color-text-faint)] uppercase font-semibold">
+                    {prod.category} {prod.recurrence && "• Recorrente"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs font-mono font-black text-emerald-600">{formatCurrency(Number(prod.price) || 0)}</span>
+                  <div className="w-5 h-5 rounded flex items-center justify-center bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)]">
+                    <Plus className="w-3 h-3" />
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Package}
+            title="Nenhum produto no catálogo"
+            description="Use o botão '+ Novo Produto' pra cadastrar."
+            className="py-6"
+          />
+        )}
       </Card>
 
       <AddProdutoLeadModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         availableProducts={availableProducts}
+        initialProductId={prefillProductId}
         leadId={leadId}
         leadName={leadName}
         companyName={companyName}

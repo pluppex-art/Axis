@@ -1,14 +1,25 @@
-import { useEffect, useState } from "react";
-import { Package, Loader2, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Loader2, Zap, Plus, Sparkles, RefreshCw, Wrench, ChevronUp, ChevronDown,
+  Receipt, Percent, DollarSign, Layers, TrendingUp, TrendingDown,
+  CreditCard, Banknote, QrCode, FileText, Calendar, ArrowRightLeft,
+} from "lucide-react";
 import { Modal } from "../../modal";
 import { Button } from "../../button";
 import { useData } from "../../../../contexts/DataContext";
 import { useLocalization } from "../../../../contexts/LocalizationContext";
+import { cn } from "../../../../lib/utils";
 import { toast } from "sonner";
 
 const PAYMENT_OPTIONS = [
-  "Pix", "Cartão de Crédito", "Boleto Bancário", "Cartão de Débito",
-  "Dinheiro", "Transferência / TED", "Link de Pagamento", "A Prazo (Crediário)",
+  { id: "Pix", label: "Pix", icon: QrCode },
+  { id: "Cartão de Crédito", label: "Crédito", icon: CreditCard },
+  { id: "Boleto Bancário", label: "Boleto", icon: FileText },
+  { id: "Cartão de Débito", label: "Débito", icon: CreditCard },
+  { id: "Dinheiro", label: "Dinheiro", icon: Banknote },
+  { id: "Transferência / TED", label: "TED", icon: ArrowRightLeft },
+  { id: "Link de Pagamento", label: "Link Pgto.", icon: Zap },
+  { id: "A Prazo (Crediário)", label: "A Prazo", icon: Calendar },
 ] as const;
 
 interface AddProdutoLeadModalProps {
@@ -19,25 +30,25 @@ interface AddProdutoLeadModalProps {
   leadName?: string;
   companyName?: string;
   seller?: string;
+  /** Pré-seleciona o produto ao abrir (clique num item da lista na aba Produtos). */
+  initialProductId?: string;
   /** Chamado depois que a venda é fechada com sucesso, pra quem chamou registrar no
    * histórico de alterações do lead (setAlterationLogs) sem esse modal precisar saber
    * desse detalhe. */
   onDone?: (summary: string) => void;
 }
 
-const labelClass = "text-xs font-bold text-[var(--color-text-muted)] mb-1 block";
+const labelClass = "text-[10px] font-bold uppercase text-[var(--color-text-muted)] mb-1 block";
 const inputClass =
   "w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] transition-all";
 
 /**
- * Substitui o antigo "Mini PDV" embutido no Lead Detalhes — que expunha composição
- * comercial/margem, recorrência/implantação por item e catálogo inteiro dentro da tela do
- * lead, informação demais pra quem só quer registrar um produto vendido. Aqui é só: produto,
- * quantidade, forma de pagamento — mas fecha a venda de verdade (mesma automação de antes):
- * cria a proposta com o item, lança o valor a receber no financeiro, acumula no lead e marca
- * como Fechado. Recorrência/prazo de contrato vêm do próprio cadastro do produto (sem
- * controle nessa tela) — quem precisar negociar um prazo diferente do padrão do catálogo
- * ainda tem a tela de Propostas pra isso.
+ * Substitui o antigo "Mini PDV" embutido inline no Lead Detalhes — mesmos campos de lá
+ * (recorrência/vigência, implantação, desconto, composição comercial, forma de pagamento,
+ * parcelas, cadastro rápido de produto novo), só que dentro de um modal em vez de ocupar a
+ * aba inteira. A aba Produtos (ProductsSection.tsx) agora só lista os produtos — quem quer
+ * vender abre esse modal, que continua fechando a venda de verdade: cria a proposta com o
+ * item, lança o valor a receber no financeiro, acumula no lead e marca como Fechado.
  */
 export function AddProdutoLeadModal({
   isOpen,
@@ -47,34 +58,129 @@ export function AddProdutoLeadModal({
   leadName,
   companyName,
   seller,
+  initialProductId,
   onDone,
 }: AddProdutoLeadModalProps) {
-  const { createProposalWithItems, addFinanceEntry, updateLead, addNotification, leads } = useData();
+  const { createProposalWithItems, addFinanceEntry, updateLead, addNotification, leads, addProduct } = useData();
   const { formatCurrency } = useLocalization();
 
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [formaPagamento, setFormaPagamento] = useState<(typeof PAYMENT_OPTIONS)[number]>("Pix");
+  const [itemIsRecurring, setItemIsRecurring] = useState<boolean | null>(null);
+  const [contractMonths, setContractMonths] = useState<number | null>(null);
+  const [customMonthsDraft, setCustomMonthsDraft] = useState("");
+  const [hasImplementation, setHasImplementation] = useState<boolean | null>(null);
+  const [implementationFee, setImplementationFee] = useState<number | null>(null);
+  const [discountValue, setDiscountValue] = useState(0);
+  const [isFinancialBreakdownOpen, setIsFinancialBreakdownOpen] = useState(true);
+
+  const [formaPagamento, setFormaPagamento] = useState<string>("Pix");
   const [parcelas, setParcelas] = useState(1);
+  const [detalhesPagamento, setDetalhesPagamento] = useState("");
   const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
 
+  // Cadastro rápido de produto novo (direto no catálogo) — mesmo formulário de antes.
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newProdName, setNewProdName] = useState("");
+  const [newProdPrice, setNewProdPrice] = useState("");
+  const [newProdCost, setNewProdCost] = useState("");
+  const [newProdCommission, setNewProdCommission] = useState("5");
+  const [newProdStock, setNewProdStock] = useState("10");
+  const [newProdCategory, setNewProdCategory] = useState("Serviços");
+  const [newProdIsRecurring, setNewProdIsRecurring] = useState(false);
+  const [newProdMonths, setNewProdMonths] = useState("12");
+  const [newProdHasImpl, setNewProdHasImpl] = useState(false);
+  const [newProdImplFee, setNewProdImplFee] = useState("0");
+  const [creatingProduct, setCreatingProduct] = useState(false);
+
   useEffect(() => {
     if (!isOpen) return;
-    setProductId("");
+    setProductId(initialProductId || "");
     setQuantity(1);
+    setItemIsRecurring(null);
+    setContractMonths(null);
+    setCustomMonthsDraft("");
+    setHasImplementation(null);
+    setImplementationFee(null);
+    setDiscountValue(0);
     setFormaPagamento("Pix");
     setParcelas(1);
+    setDetalhesPagamento("");
     setDataPagamento(new Date().toISOString().slice(0, 10));
     setSaving(false);
-  }, [isOpen]);
+    setShowCreateForm(false);
+    setNewProdName(""); setNewProdPrice(""); setNewProdCost("");
+    setNewProdCommission("5"); setNewProdStock("10"); setNewProdCategory("Serviços");
+    setNewProdIsRecurring(false); setNewProdMonths("12"); setNewProdHasImpl(false); setNewProdImplFee("0");
+  }, [isOpen, initialProductId]);
 
   const product = availableProducts.find((p) => p.id === productId);
-  const isRecurring = !!(product?.recurrence || product?.typeAttributes?.isRecurring || product?.type === "Assinatura" || product?.category === "Software");
-  const contractMonths = product ? (product.contractMonths || product.typeAttributes?.contractMonths || (isRecurring ? 12 : 1)) : 1;
+
+  const isRecurring = itemIsRecurring ?? !!(product?.recurrence || product?.typeAttributes?.isRecurring || product?.type === "Assinatura" || product?.category === "Software");
+  const months = contractMonths ?? (product?.contractMonths || product?.typeAttributes?.contractMonths || (isRecurring ? 12 : 1));
+  const implFee = implementationFee ?? (hasImplementation === false ? 0 : (product?.implementationFee || product?.typeAttributes?.implementationFee || (product?.category === "Implantação" ? Number(product?.price) || 0 : 0)));
+  const showImplToggle = hasImplementation ?? implFee > 0;
+
   const unitPrice = Number(product?.price) || 0;
-  const finalTotal = isRecurring ? unitPrice * quantity * contractMonths : unitPrice * quantity;
-  const valorParcela = parcelas > 1 ? finalTotal / parcelas : finalTotal;
+  const monthlyPrice = unitPrice * quantity;
+  const contractTotal = isRecurring ? monthlyPrice * months + (showImplToggle ? implFee : 0) : monthlyPrice + (showImplToggle ? implFee : 0);
+  const finalTotal = Math.max(0, contractTotal - (discountValue || 0));
+  const totalCost = (Number(product?.cost) || 0) * quantity;
+  const totalCommission = contractTotal * ((Number(product?.commission) || 0) / 100);
+  const netProfit = finalTotal - totalCost - totalCommission;
+  const marginPercent = finalTotal > 0 ? Math.round((netProfit / finalTotal) * 100) : 0;
+
+  const totalMonthlyMRR = isRecurring ? monthlyPrice : 0;
+  const totalOnetime = !isRecurring ? monthlyPrice : 0;
+  const totalImplementation = showImplToggle ? implFee : 0;
+  const firstPaymentTotal = Math.max(0, totalImplementation + totalMonthlyMRR + totalOnetime - (discountValue || 0));
+
+  const valorParcela = useMemo(() => (parcelas > 1 ? finalTotal / parcelas : finalTotal), [finalTotal, parcelas]);
+
+  const handleCreateProduct = async () => {
+    if (!newProdName.trim() || !newProdPrice) {
+      toast.error("Informe o Nome e Preço de Venda do produto.");
+      return;
+    }
+    const priceNum = parseFloat(newProdPrice.replace(",", ".")) || 0;
+    if (priceNum <= 0) {
+      toast.error("O preço deve ser maior que zero.");
+      return;
+    }
+    setCreatingProduct(true);
+    try {
+      // addProduct tem retorno void na tipagem (a implementação real devolve o registro
+      // criado, mas o tipo não reflete isso) — gera o id aqui em vez de depender do retorno,
+      // assim funciona não importa como a assinatura for tipada.
+      const newId = crypto.randomUUID();
+      await addProduct({
+        id: newId,
+        name: newProdName.trim(),
+        price: priceNum,
+        cost: parseFloat(newProdCost.replace(",", ".")) || 0,
+        commission: parseFloat(newProdCommission.replace(",", ".")) || 0,
+        category: newProdCategory,
+        active: true,
+        currentStock: parseInt(newProdStock) || 0,
+        is_recurring: newProdIsRecurring,
+        recurring_period: newProdIsRecurring ? "monthly" : null,
+        implementation_fee: newProdHasImpl ? (parseFloat(newProdImplFee.replace(",", ".")) || 0) : 0,
+        type_attributes: {
+          isRecurring: newProdIsRecurring,
+          contractMonths: newProdIsRecurring ? (parseInt(newProdMonths) || 12) : 1,
+          implementationFee: newProdHasImpl ? (parseFloat(newProdImplFee.replace(",", ".")) || 0) : 0,
+        },
+      });
+      setProductId(newId);
+      toast.success(`"${newProdName.trim()}" cadastrado no catálogo.`);
+      setShowCreateForm(false);
+    } catch (err: any) {
+      toast.error("Erro ao cadastrar produto: " + err?.message);
+    } finally {
+      setCreatingProduct(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!product) {
@@ -84,6 +190,25 @@ export function AddProdutoLeadModal({
     setSaving(true);
     try {
       const clientName = companyName || leadName || "Cliente";
+      const items: any[] = [{
+        productId: product.id,
+        descricao: isRecurring ? `${product.name} (Assinatura Recorrente — ${months} meses)` : product.name,
+        quantidade: isRecurring ? months * quantity : quantity,
+        precoUnitario: unitPrice,
+        billingType: isRecurring ? "recurring" : "one_time",
+        contractMonths: isRecurring ? months : null,
+      }];
+      if (showImplToggle && implFee > 0) {
+        items.push({
+          productId: product.id,
+          descricao: `Taxa de Implantação e Setup Inicial — ${product.name}`,
+          quantidade: 1,
+          precoUnitario: implFee,
+          billingType: "one_time",
+          contractMonths: null,
+        });
+      }
+
       await createProposalWithItems({
         titulo: `Proposta Comercial — ${clientName}`,
         cliente: clientName,
@@ -94,23 +219,17 @@ export function AddProdutoLeadModal({
         leadId: leadId || null,
         tipo: "itens",
         conteudoTexto: null,
-        itens: [{
-          productId: product.id,
-          descricao: isRecurring ? `${product.name} (Assinatura Recorrente — ${contractMonths} meses)` : product.name,
-          quantidade: isRecurring ? contractMonths * quantity : quantity,
-          precoUnitario: unitPrice,
-          billingType: isRecurring ? "recurring" : "one_time",
-          contractMonths: isRecurring ? contractMonths : null,
-        }],
+        itens: items,
       });
 
       const dueDate = dataPagamento || new Date().toISOString().slice(0, 10);
       const isInstantPayment = formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito";
       const formattedDate = new Date(dueDate + "T12:00:00").toLocaleDateString("pt-BR");
       const installmentInfo = parcelas > 1 ? ` (${parcelas}x de ${formatCurrency(valorParcela)})` : " (À Vista)";
+      const paymentInfoStr = `Forma: ${formaPagamento}${installmentInfo} | Data: ${formattedDate}${detalhesPagamento ? ` - Obs: ${detalhesPagamento}` : ""}`;
 
       await addFinanceEntry({
-        description: `Venda — ${clientName} | ${product.name} | Forma: ${formaPagamento}${installmentInfo} | Data: ${formattedDate}`,
+        description: `Venda — ${clientName} | ${product.name} | ${paymentInfoStr}`,
         category: "Vendas / Serviços",
         value: finalTotal,
         type: "Receber",
@@ -130,6 +249,14 @@ export function AddProdutoLeadModal({
           status: "Fechado",
           scoreIA: 100,
           temperature: "quente",
+          customFields: {
+            tags: ["Venda", formaPagamento, `${parcelas}x`],
+            formaPagamento,
+            parcelas,
+            valorParcela,
+            dataPagamento: dueDate,
+            detalhesPagamento,
+          },
         });
       }
 
@@ -140,7 +267,9 @@ export function AddProdutoLeadModal({
         link_url: "/app/crm/propostas",
       });
 
-      toast.success("Produto adicionado e venda fechada com sucesso!");
+      toast.success("⚡ Venda concluída e automatizada!", {
+        description: "Proposta criada, contas a receber provisionado e lead atualizado.",
+      });
       onDone?.(`⚡ Produto "${product.name}" adicionado — venda de ${formatCurrency(finalTotal)} via ${formaPagamento}${installmentInfo} (Data: ${formattedDate}): proposta gerada, contas a receber lançado e lead atualizado.`);
       onClose();
     } catch (err: any) {
@@ -151,70 +280,295 @@ export function AddProdutoLeadModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Novo Produto" maxWidth="max-w-lg">
-      <div className="space-y-4">
-        <div>
-          <label className={labelClass}>Produto *</label>
-          <select value={productId} onChange={(e) => setProductId(e.target.value)} className={inputClass}>
-            <option value="">Selecione um produto...</option>
-            {availableProducts.map((p) => (
-              <option key={p.id} value={p.id}>{p.name} — {formatCurrency(Number(p.price) || 0)}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={labelClass}>Quantidade</label>
-            <input
-              type="number" min={1} value={quantity}
-              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Vencimento</label>
-            <input
-              type="date" value={dataPagamento}
-              onChange={(e) => setDataPagamento(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={labelClass}>Forma de pagamento</label>
-            <select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value as any)} className={inputClass}>
-              {PAYMENT_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
+    <Modal isOpen={isOpen} onClose={onClose} title="Novo Produto" maxWidth="max-w-2xl">
+      <div className="space-y-4 max-h-[75vh] overflow-y-auto scrollbar-thin pr-1">
+        {/* ── PRODUTO ── */}
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <label className={labelClass}>Produto *</label>
+            <select value={productId} onChange={(e) => setProductId(e.target.value)} className={inputClass}>
+              <option value="">Selecione um produto...</option>
+              {availableProducts.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} — {formatCurrency(Number(p.price) || 0)}</option>
               ))}
             </select>
           </div>
-          <div>
-            <label className={labelClass}>Parcelas</label>
-            <select value={parcelas} onChange={(e) => setParcelas(Number(e.target.value))} className={inputClass}>
-              <option value={1}>1x à vista</option>
-              {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
-                <option key={n} value={n}>{n}x</option>
-              ))}
-            </select>
-          </div>
+          <Button
+            type="button"
+            variant={showCreateForm ? "secondary" : "outline"}
+            onClick={() => setShowCreateForm((v) => !v)}
+            className="h-[34px] text-[11px] font-bold gap-1.5 shrink-0"
+          >
+            {showCreateForm ? <ChevronUp className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+            Novo no Catálogo
+          </Button>
         </div>
 
-        {product && (
-          <div className="p-3 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] flex items-center justify-between text-xs">
-            <span className="text-[var(--color-text-muted)] flex items-center gap-1.5">
-              <Package className="w-3.5 h-3.5" />
-              {isRecurring ? `Recorrente • ${contractMonths} meses` : "Pagamento único"}
-            </span>
-            <span className="font-mono font-black text-emerald-500">
-              {parcelas > 1 ? `${parcelas}x de ${formatCurrency(valorParcela)}` : formatCurrency(finalTotal)}
-            </span>
+        {/* ── CADASTRO RÁPIDO DE PRODUTO NOVO ── */}
+        {showCreateForm && (
+          <div className="p-3.5 rounded-xl border border-[var(--color-primary-blue)]/30 bg-[var(--color-surface-sunken)] space-y-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" />
+              <span className="text-[11px] font-black uppercase text-[var(--color-text-primary)]">Cadastrar Produto/Serviço no Catálogo</span>
+            </div>
+            <div>
+              <label className={labelClass}>Nome *</label>
+              <input value={newProdName} onChange={(e) => setNewProdName(e.target.value)} placeholder="Ex: Consultoria de Vendas Premium" className={inputClass} />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div>
+                <label className={labelClass}>Preço (R$) *</label>
+                <input value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} placeholder="0,00" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Custo (R$)</label>
+                <input value={newProdCost} onChange={(e) => setNewProdCost(e.target.value)} placeholder="0,00" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Comissão (%)</label>
+                <input value={newProdCommission} onChange={(e) => setNewProdCommission(e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Estoque</label>
+                <input type="number" value={newProdStock} onChange={(e) => setNewProdStock(e.target.value)} className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className={labelClass}>Categoria</label>
+              <select value={newProdCategory} onChange={(e) => setNewProdCategory(e.target.value)} className={inputClass}>
+                {["Serviços", "Software", "Implantação", "Mentoria", "Curso/Turma", "Assinatura", "Físico"].map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-2.5 rounded-lg bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)]">
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={newProdIsRecurring} onChange={(e) => setNewProdIsRecurring(e.target.checked)} className="w-3.5 h-3.5 accent-[var(--color-primary-blue)]" />
+                  <span className="text-[11px] font-bold text-[var(--color-text-primary)] flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Cobrança Recorrente</span>
+                </label>
+                {newProdIsRecurring && (
+                  <div className="flex items-center gap-1 pl-5">
+                    {["1", "3", "6", "12", "24"].map((m) => (
+                      <button key={m} type="button" onClick={() => setNewProdMonths(m)}
+                        className={cn("px-2 py-0.5 rounded text-[10px] font-mono font-bold", newProdMonths === m ? "bg-[var(--color-primary-blue)] text-white" : "bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)]")}>
+                        {m}m
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={newProdHasImpl} onChange={(e) => setNewProdHasImpl(e.target.checked)} className="w-3.5 h-3.5 accent-amber-500" />
+                  <span className="text-[11px] font-bold text-[var(--color-text-primary)] flex items-center gap-1"><Wrench className="w-3 h-3 text-amber-500" /> Taxa de Implantação</span>
+                </label>
+                {newProdHasImpl && (
+                  <input value={newProdImplFee} onChange={(e) => setNewProdImplFee(e.target.value)} placeholder="0,00" className={cn(inputClass, "ml-5 w-[calc(100%-1.25rem)]")} />
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button type="button" onClick={handleCreateProduct} disabled={creatingProduct} className="h-8 text-xs font-bold gap-1.5">
+                <Plus className="w-3.5 h-3.5" /> {creatingProduct ? "Cadastrando..." : "Cadastrar e Selecionar"}
+              </Button>
+            </div>
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border-subtle)]">
+        {product && (
+          <>
+            {/* ── QUANTIDADE / RECORRÊNCIA / VIGÊNCIA / IMPLANTAÇÃO ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelClass}>Quantidade</label>
+                <input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Tipo de cobrança</label>
+                <button
+                  type="button"
+                  onClick={() => setItemIsRecurring(!isRecurring)}
+                  className={cn(
+                    "w-full h-[34px] px-3 rounded-[var(--radius-control)] border text-xs font-bold flex items-center gap-1.5 transition-colors",
+                    isRecurring
+                      ? "bg-[var(--color-primary-blue)]/15 border-[var(--color-primary-blue)]/40 text-[var(--color-primary-blue)]"
+                      : "bg-[var(--color-surface-sunken)] border-[var(--color-border-default)] text-[var(--color-text-muted)]"
+                  )}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> {isRecurring ? "Recorrente" : "Pontual"}
+                </button>
+              </div>
+            </div>
+
+            {isRecurring && (
+              <div className="flex items-center gap-1.5 flex-wrap p-2.5 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)]">
+                <span className="text-[10px] font-bold text-[var(--color-text-muted)] shrink-0">Vigência:</span>
+                {[1, 3, 6, 12, 24].map((m) => (
+                  <button key={m} type="button" onClick={() => { setContractMonths(m); setCustomMonthsDraft(""); }}
+                    className={cn("px-2 py-0.5 rounded-md font-mono font-bold text-[10px]", months === m ? "bg-[var(--color-primary-blue)] text-white" : "text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]")}>
+                    {m}m
+                  </button>
+                ))}
+                <input
+                  type="number" min={1} placeholder="Outro"
+                  value={customMonthsDraft || ([1, 3, 6, 12, 24].includes(months) ? "" : String(months))}
+                  onChange={(e) => {
+                    setCustomMonthsDraft(e.target.value);
+                    const v = parseInt(e.target.value, 10);
+                    if (v > 0) setContractMonths(v);
+                  }}
+                  className="w-14 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded px-1.5 py-0.5 text-[10px] text-center font-mono font-bold"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-2.5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={showImplToggle} onChange={(e) => setHasImplementation(e.target.checked)} className="w-3.5 h-3.5 accent-amber-500" />
+                <span className="text-[11px] font-bold text-[var(--color-text-primary)] flex items-center gap-1"><Wrench className="w-3 h-3 text-amber-500" /> Taxa de Implantação/Setup</span>
+              </label>
+              {showImplToggle && (
+                <input
+                  type="number" min={0} step={50} value={implFee}
+                  onChange={(e) => setImplementationFee(Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="w-28 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-2 py-1 text-xs font-mono font-bold text-amber-600"
+                />
+              )}
+            </div>
+
+            <div>
+              <label className={labelClass}>Desconto (R$)</label>
+              <input
+                type="number" min={0} value={discountValue}
+                onChange={(e) => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                className={inputClass}
+              />
+            </div>
+
+            {/* ── COMPOSIÇÃO COMERCIAL & FINANCEIRA ── */}
+            <div className="bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3">
+              <div className="flex items-center justify-between text-[10px] uppercase font-black text-[var(--color-text-muted)]">
+                <span className="flex items-center gap-1.5"><Receipt className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Composição Comercial & Financeira</span>
+                <div className="flex items-center gap-2.5">
+                  <span className="flex items-center gap-1 text-emerald-600 font-mono font-bold"><Percent className="w-3 h-3" /> Margem: {marginPercent}%</span>
+                  <button type="button" onClick={() => setIsFinancialBreakdownOpen((v) => !v)} className="text-[var(--color-text-primary)]">
+                    {isFinancialBreakdownOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+              {isFinancialBreakdownOpen && (
+                <div className="space-y-2.5 animate-in fade-in">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                    <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-[var(--color-border-subtle)] space-y-1">
+                      <span className="text-[9px] text-[var(--color-primary-blue)] flex items-center gap-1 uppercase font-bold"><DollarSign className="w-2.5 h-2.5" /> 1º Vencimento</span>
+                      <span className="text-[var(--color-text-primary)] font-black text-xs block">{formatCurrency(firstPaymentTotal)}</span>
+                    </div>
+                    <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-[var(--color-border-subtle)] space-y-1">
+                      <span className="text-[9px] text-[var(--color-text-muted)] flex items-center gap-1 uppercase font-bold"><RefreshCw className="w-2.5 h-2.5" /> Mensalidade</span>
+                      <span className="text-[var(--color-text-primary)] font-bold text-xs block">{formatCurrency(totalMonthlyMRR)}</span>
+                    </div>
+                    <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-[var(--color-border-subtle)] space-y-1">
+                      <span className="text-[9px] text-[var(--color-text-muted)] flex items-center gap-1 uppercase font-bold"><Layers className="w-2.5 h-2.5" /> Implantação</span>
+                      <span className="text-amber-600 font-bold text-xs block">{formatCurrency(totalImplementation)}</span>
+                    </div>
+                    <div className="bg-[var(--color-surface-elevated)] p-2.5 rounded-lg border border-emerald-500/20 space-y-1">
+                      <span className="text-[9px] text-emerald-600 flex items-center gap-1 uppercase font-bold"><TrendingUp className="w-2.5 h-2.5" /> Total Contrato</span>
+                      <span className="text-emerald-600 font-black text-xs block">{formatCurrency(finalTotal)}</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs font-mono pt-2 border-t border-[var(--color-border-subtle)]">
+                    <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-[var(--color-border-subtle)] space-y-0.5">
+                      <span className="text-[9px] text-[var(--color-text-faint)] flex items-center gap-1 uppercase"><TrendingDown className="w-2.5 h-2.5" /> Custos</span>
+                      <span className="text-rose-500 font-bold text-[11px] block">{formatCurrency(totalCost)}</span>
+                    </div>
+                    <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-[var(--color-border-subtle)] space-y-0.5">
+                      <span className="text-[9px] text-[var(--color-text-faint)] flex items-center gap-1 uppercase"><Percent className="w-2.5 h-2.5" /> Comissão</span>
+                      <span className="text-amber-600 font-bold text-[11px] block">{formatCurrency(totalCommission)}</span>
+                    </div>
+                    <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-[var(--color-border-subtle)] space-y-0.5">
+                      <span className="text-[9px] text-[var(--color-text-faint)] flex items-center gap-1 uppercase"><TrendingUp className="w-2.5 h-2.5" /> Lucro</span>
+                      <span className="text-emerald-600 font-bold text-[11px] block">{formatCurrency(netProfit)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── FORMA DE PAGAMENTO & PARCELAS ── */}
+            <div className="bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3">
+              <label className={labelClass}>Como foi o pagamento:</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {PAYMENT_OPTIONS.map((method) => {
+                  const isSelected = formaPagamento === method.id;
+                  const Icon = method.icon;
+                  return (
+                    <button
+                      key={method.id}
+                      type="button"
+                      onClick={() => {
+                        setFormaPagamento(method.id);
+                        if (method.id === "Pix" || method.id === "Dinheiro" || method.id === "Cartão de Débito") {
+                          setDataPagamento(new Date().toISOString().slice(0, 10));
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all",
+                        isSelected
+                          ? "bg-[var(--color-primary-blue)]/15 border-[var(--color-primary-blue)] text-[var(--color-text-primary)] font-bold"
+                          : "bg-[var(--color-surface-elevated)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-default)]"
+                      )}
+                    >
+                      <Icon className={cn("w-4 h-4 shrink-0", isSelected ? "text-[var(--color-primary-blue)]" : "text-[var(--color-text-faint)]")} />
+                      <span className="text-[11px] whitespace-nowrap">{method.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className={labelClass}>Vencimento</label>
+                  <input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className={inputClass} />
+                  <div className="flex items-center gap-1 mt-1">
+                    {[["Hoje", 0], ["+7d", 7], ["+15d", 15], ["+30d", 30]].map(([label, days]) => (
+                      <button key={label as string} type="button"
+                        onClick={() => setDataPagamento(new Date(Date.now() + (days as number) * 86400000).toISOString().slice(0, 10))}
+                        className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]">
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Parcelas</label>
+                  <select value={parcelas} onChange={(e) => setParcelas(Number(e.target.value))} className={inputClass}>
+                    <option value={1}>1x à vista ({formatCurrency(finalTotal)})</option>
+                    {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map((n) => (
+                      <option key={n} value={n}>{n}x de {formatCurrency(finalTotal / n)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Observação</label>
+                  <input value={detalhesPagamento} onChange={(e) => setDetalhesPagamento(e.target.value)} placeholder="Ex: Cartão Visa final 4022" className={inputClass} />
+                </div>
+              </div>
+
+              <div className="p-2 bg-[var(--color-surface-elevated)] rounded-lg border border-[var(--color-border-subtle)] flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="text-[var(--color-text-muted)]">
+                  <strong className="text-[var(--color-text-primary)]">{formaPagamento}</strong>
+                  {dataPagamento && <> • {new Date(dataPagamento + "T12:00:00").toLocaleDateString("pt-BR")}</>}
+                </span>
+                <span className="font-mono font-black text-emerald-600">
+                  {parcelas > 1 ? `${parcelas}x de ${formatCurrency(valorParcela)}` : `${formatCurrency(finalTotal)} à vista`}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border-subtle)] sticky bottom-0 bg-[var(--color-surface-elevated)]">
           <Button type="button" variant="outline" onClick={onClose} className="h-9 px-4 text-xs font-bold">
             Cancelar
           </Button>
@@ -225,7 +579,7 @@ export function AddProdutoLeadModal({
             className="h-9 px-5 text-xs font-bold gap-1.5"
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-            {saving ? "Processando..." : "Adicionar & Fechar Venda"}
+            {saving ? "Processando..." : "Concluir Venda & Automatizar Tudo"}
           </Button>
         </div>
       </div>
