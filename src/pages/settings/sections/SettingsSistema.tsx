@@ -117,14 +117,14 @@ export function ConfigSistemaAuroraUso() {
   const creditsUsed = Math.round((percent / 100) * CREDITS_PER_CYCLE);
   const creditsLeft = Math.max(0, CREDITS_PER_CYCLE - creditsUsed);
   const barColor = usage?.limitReached ? "bg-rose-500" : percent >= 90 ? "bg-amber-500" : "bg-violet-500";
-  const textColor = usage?.limitReached ? "text-rose-400" : percent >= 90 ? "text-amber-400" : "text-violet-400";
+  const textColor = usage?.limitReached ? "text-rose-600 dark:text-rose-400" : percent >= 90 ? "text-amber-600 dark:text-amber-400" : "text-violet-600 dark:text-violet-400";
 
   return (
     <div className="max-w-3xl space-y-6 animate-in fade-in duration-300 pb-12">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Aurora — Controle, Consumo & Agentes</h1>
-          <p className="text-sm text-slate-400">
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">Aurora — Controle, Consumo & Agentes</h1>
+          <p className="text-sm text-[var(--color-text-muted)]">
             O que a Aurora pode fazer, seu consumo de IA no ciclo mensal e os agentes vinculados, tudo pra{" "}
             {activeTenantName ?? "sua empresa"}.
           </p>
@@ -142,16 +142,16 @@ export function ConfigSistemaAuroraUso() {
       </div>
 
       {configLoading || !config ? (
-        <p className="text-xs text-slate-500">Carregando configuração...</p>
+        <p className="text-xs text-[var(--color-text-muted)]">Carregando configuração...</p>
       ) : (
         <>
-          <Card className="p-6 bg-[var(--color-surface-elevated)]/80 border border-white/10 space-y-3">
+          <Card className="p-6 bg-[var(--color-surface-elevated)]/80 border border-[var(--color-border-default)] space-y-3">
             <div>
-              <h3 className="font-bold text-xs uppercase tracking-widest text-violet-400 flex items-center gap-2">
+              <h3 className="font-bold text-xs uppercase tracking-widest text-violet-600 dark:text-violet-400 flex items-center gap-2">
                 <FileText className="w-3.5 h-3.5" />
                 <span>Instruções específicas deste tenant</span>
               </h3>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">
                 Contexto de negócio anexado ao prompt da Aurora só para {activeTenantName ?? "esta empresa"} (ex.: termos,
                 produtos, tom de voz específicos). Buscado direto pelo tenant a cada execução no n8n — nunca compartilhado
                 com outros tenants.
@@ -162,11 +162,11 @@ export function ConfigSistemaAuroraUso() {
               onChange={(e) => setCustomPromptDraft(e.target.value)}
               placeholder="Ex.: Somos uma boliche/lazer familiar, sempre trate reservas como 'partidas', evite jargão técnico..."
               rows={5}
-              className="w-full text-xs font-mono bg-black/20 border border-white/10 rounded-lg p-3 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-y"
+              className="w-full text-xs font-mono bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg p-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-faint)] focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-y"
             />
             <div className="flex items-center justify-between">
               {config.updatedAt ? (
-                <p className="text-[10px] text-slate-600">
+                <p className="text-[10px] text-[var(--color-text-faint)]">
                   Última atualização: {new Date(config.updatedAt).toLocaleString("pt-BR")}
                 </p>
               ) : <span />}
@@ -175,10 +175,10 @@ export function ConfigSistemaAuroraUso() {
                 variant="ghost"
                 onClick={handleSaveCustomPrompt}
                 disabled={savingCustomPrompt || customPromptDraft === null || customPromptDraft === config.customPrompt}
-                className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none ${
+                className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none border ${
                   customPromptDraft !== null && customPromptDraft !== config.customPrompt
-                    ? "bg-violet-500/25 !text-violet-200 border border-violet-500/50 hover:bg-violet-500/35"
-                    : "bg-white/10 !text-slate-400 border border-white/20"
+                    ? "bg-violet-100 !text-violet-700 border-violet-300 hover:bg-violet-200 dark:bg-violet-500/25 dark:!text-violet-200 dark:border-violet-500/50 dark:hover:bg-violet-500/35"
+                    : "bg-[var(--color-surface-sunken)] !text-[var(--color-text-faint)] border-[var(--color-border-default)]"
                 }`}
               >
                 {savingCustomPrompt ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
@@ -189,16 +189,16 @@ export function ConfigSistemaAuroraUso() {
         </>
       )}
 
-      <Card className="p-6 bg-[var(--color-surface-elevated)]/80 border border-white/10 space-y-5">
-        <h3 className="font-bold text-xs uppercase tracking-widest text-violet-400 flex items-center gap-2">
+      <Card className="p-6 bg-[var(--color-surface-elevated)]/80 border border-[var(--color-border-default)] space-y-5">
+        <h3 className="font-bold text-xs uppercase tracking-widest text-violet-600 dark:text-violet-400 flex items-center gap-2">
           <Gauge className="w-3.5 h-3.5" />
           <span>Consumo do ciclo atual</span>
         </h3>
 
         {usageLoading ? (
-          <p className="text-xs text-slate-500">Carregando consumo...</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Carregando consumo...</p>
         ) : !usage || usage.tokensLimit === null ? (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-[var(--color-text-muted)]">
             Nenhum limite configurado para este tenant ainda — a Aurora está liberada sem restrição de consumo.
           </p>
         ) : (
@@ -206,11 +206,11 @@ export function ConfigSistemaAuroraUso() {
             <div className="space-y-2">
               <div className="flex items-baseline justify-between">
                 <span className={`text-3xl font-black tabular-nums ${textColor}`}>{percent.toFixed(1)}%</span>
-                <span className="text-xs text-slate-400 tabular-nums">
+                <span className="text-xs text-[var(--color-text-muted)] tabular-nums">
                   {formatFull(creditsUsed)} / {formatFull(CREDITS_PER_CYCLE)} créditos
                 </span>
               </div>
-              <div className="h-2.5 w-full rounded-full bg-white/[0.06] overflow-hidden">
+              <div className="h-2.5 w-full rounded-full bg-[var(--color-surface-sunken)] overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all ${barColor}`}
                   style={{ width: `${Math.max(1, Math.min(100, percent))}%` }}
@@ -220,46 +220,46 @@ export function ConfigSistemaAuroraUso() {
 
             {usage.limitReached && (
               <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl">
-                <p className="text-xs text-rose-400 leading-relaxed">
+                <p className="text-xs text-rose-600 dark:text-rose-400 leading-relaxed">
                   Limite atingido — a Aurora está bloqueada até o próximo ciclo ou até um upgrade de plano.
                 </p>
               </div>
             )}
             {!usage.limitReached && percent >= 90 && (
               <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-                <p className="text-xs text-amber-400 leading-relaxed">
+                <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
                   Consumo perto do limite deste ciclo — a Aurora bloqueia automaticamente ao atingir 100%.
                 </p>
               </div>
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-              <div className="bg-[var(--color-surface)] border border-white/5 p-3 rounded-xl space-y-0.5">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Plano</p>
-                <p className="font-bold text-white">{usage.planName ?? "—"}</p>
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border-subtle)] p-3 rounded-xl space-y-0.5">
+                <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">Plano</p>
+                <p className="font-bold text-[var(--color-text-primary)]">{usage.planName ?? "—"}</p>
               </div>
-              <div className="bg-[var(--color-surface)] border border-white/5 p-3 rounded-xl space-y-0.5">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Restam no mês</p>
-                <p className="font-bold text-white">{formatFull(creditsLeft)} créditos</p>
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border-subtle)] p-3 rounded-xl space-y-0.5">
+                <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">Restam no mês</p>
+                <p className="font-bold text-[var(--color-text-primary)]">{formatFull(creditsLeft)} créditos</p>
               </div>
-              <div className="bg-[var(--color-surface)] border border-white/5 p-3 rounded-xl space-y-0.5">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Renova em</p>
-                <p className="font-bold text-white">{daysLeftInCycle()} dias</p>
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border-subtle)] p-3 rounded-xl space-y-0.5">
+                <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">Renova em</p>
+                <p className="font-bold text-[var(--color-text-primary)]">{daysLeftInCycle()} dias</p>
               </div>
             </div>
           </>
         )}
       </Card>
 
-      <div className="pt-4 border-t border-white/10">
+      <div className="pt-4 border-t border-[var(--color-border-default)]">
         <ConfigSistemaAuroraAgentes />
       </div>
 
       <Card className="p-5 bg-amber-500/5 border border-amber-500/20 space-y-2">
-        <h3 className="font-bold text-xs text-amber-400 flex items-center gap-2">
+        <h3 className="font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2">
           <ShieldAlert className="w-3.5 h-3.5" /> Ainda não existe nesta tela
         </h3>
-        <p className="text-xs text-amber-200/70 leading-relaxed">
+        <p className="text-xs text-amber-800/70 dark:text-amber-200/70 leading-relaxed">
           Permissão granular de leitura/escrita por ferramenta (ex: "Aurora pode ler leads mas não criar"),
           conexão com sistemas externos do cliente e integrações/APIs de terceiros fazem parte de fases
           futuras do projeto de integração — ainda não estão implementadas, e esta tela não finge que estão.

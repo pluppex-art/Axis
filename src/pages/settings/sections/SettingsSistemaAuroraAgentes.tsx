@@ -73,16 +73,22 @@ function RoleIcon({ role }: { role?: string }) {
   return <Icon className="w-4 h-4 text-violet-400" />;
 }
 
-// Os 4 agentes com workflow real no n8n usam chave FIXA (aurora/radar/sdr/closer) — é
-// exatamente o agent_key que o n8n (Helper - Checar Config Aurora Tenant, AURORA CORE,
-// Radar, Closer AI, Júlia SDR v2) já lê ao vivo por tenant. Nunca derivar esses 4 do nome:
-// o catálogo permite editar o nome de um agente (botão Editar), e se a chave mudasse junto
-// o vínculo com o n8n quebraria silenciosamente. As demais personas (decorativas, sem
-// workflow 1:1 ainda) seguem usando uma chave derivada do nome, prefixada "persona-" pra
-// nunca colidir com as 4 fixas.
+// Todo agente do catálogo com workflow real no n8n usa chave FIXA — é exatamente o agent_key
+// que o n8n já lê ao vivo por tenant (ver cada workflow entre parênteses). Nunca derivar esses
+// do nome: o catálogo permite editar o nome de um agente (botão Editar), e se a chave mudasse
+// junto o vínculo com o n8n quebraria silenciosamente. As personas sem workflow 1:1 continuam
+// usando uma chave derivada do nome, prefixada "persona-" pra nunca colidir com as fixas.
 const FIXED_N8N_PROMPT_KEY: Record<string, string> = {
-  Aurora: "aurora",
-  ...EXECUTE_MODULE_BY_NAME,
+  Aurora: "aurora", // Helper - Checar Config Aurora Tenant + AURORA CORE
+  ...EXECUTE_MODULE_BY_NAME, // Radar, Júlia SDR v2, Closer AI
+  "Diretoria": "diretoria", // CEO AI
+  "Agente Comercial": "agente_comercial", // CCO AI
+  "Financeiro": "financeiro", // CFO AI
+  "Marketing": "marketing", // CMO AI
+  "Organização": "organizacao", // COO AI
+  "Pesquisa": "pesquisa", // Research Intelligence
+  "Agente Secreto": "agente_secreto", // CRM Customer Intelligence
+  "Atendimento": "atendimento", // Gerencia Customer Success
 };
 
 function promptKeyForAgent(name: string): string {
@@ -184,11 +190,11 @@ export function ConfigSistemaAuroraAgentes() {
           <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
             <Bot className="w-5 h-5 text-violet-400" /> Agentes vinculados à Aurora
           </h2>
-          <p className="text-sm text-slate-400 mt-0.5">
+          <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
             Cada agente pode ser ativado ou desativado — a Aurora não age em nome de um agente inativo quando ele é citado diretamente na conversa.
           </p>
         </div>
-        <span className="shrink-0 text-[11px] font-bold text-slate-300 bg-white/10 border border-white/20 rounded-full px-3 py-1.5 whitespace-nowrap">
+        <span className="shrink-0 text-[11px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-full px-3 py-1.5 whitespace-nowrap">
           {activeCount}/{displayList.length} ativos
         </span>
       </div>
@@ -196,7 +202,7 @@ export function ConfigSistemaAuroraAgentes() {
       {!hasCustomAgents && (
         <div className="p-3 bg-violet-500/10 border border-violet-500/20 rounded-xl flex items-start gap-2">
           <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />
-          <p className="text-[11px] text-slate-400 leading-relaxed">
+          <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
             Nenhum agente foi salvo ainda — mostrando o catálogo padrão. Ative/desative ou edite algum pra começar a personalizar por sua empresa.
           </p>
         </div>
@@ -212,7 +218,7 @@ export function ConfigSistemaAuroraAgentes() {
             <Card
               key={agent.id}
               className={`p-4 bg-[var(--color-surface-elevated)]/80 border transition-colors ${
-                agent.active ? "border-white/10" : "border-white/5 opacity-60"
+                agent.active ? "border-[var(--color-border-default)]" : "border-[var(--color-border-subtle)] opacity-60"
               }`}
             >
               <div className="flex items-start gap-3">
@@ -235,9 +241,9 @@ export function ConfigSistemaAuroraAgentes() {
                       onCheckedChange={() => handleToggle(agent)}
                     />
                   </div>
-                  {agent.description && <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{agent.description}</p>}
+                  {agent.description && <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed">{agent.description}</p>}
 
-                  <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-white/5 flex-wrap">
+                  <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-[var(--color-border-subtle)] flex-wrap">
                     <ViewPromptButton
                       agentKey={agent.id}
                       expandedKey={expandedId}
@@ -249,10 +255,10 @@ export function ConfigSistemaAuroraAgentes() {
                         variant="ghost"
                         onClick={() => handleToggleExecuteModule(executeKey)}
                         disabled={pendingExecuteKey === executeKey}
-                        className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none ${
+                        className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none border ${
                           executeActive
-                            ? "bg-violet-500/25 !text-violet-200 border border-violet-500/50"
-                            : "bg-white/10 !text-slate-300 border border-white/20"
+                            ? "bg-violet-100 !text-violet-700 border-violet-300 dark:bg-violet-500/25 dark:!text-violet-200 dark:border-violet-500/50"
+                            : "bg-[var(--color-surface-sunken)] !text-[var(--color-text-muted)] border-[var(--color-border-default)]"
                         }`}
                       >
                         {pendingExecuteKey === executeKey ? (
@@ -268,14 +274,14 @@ export function ConfigSistemaAuroraAgentes() {
                       <>
                         <button
                           onClick={() => setEditing({ id: agent.id, name: agent.name, role: agent.role || "", description: agent.description || "" })}
-                          className="flex items-center gap-1 px-2 py-1 bg-white/10 border border-white/20 text-slate-300 hover:text-slate-100 hover:bg-white/15 rounded-lg transition-colors text-[10px] font-bold"
+                          className="flex items-center gap-1 px-2 py-1 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-elevated)] rounded-lg transition-colors text-[10px] font-bold"
                           title="Editar agente"
                         >
                           <Pencil className="w-3 h-3" /> Editar
                         </button>
                         <button
                           onClick={() => handleDelete(agent)}
-                          className="flex items-center gap-1 px-2 py-1 bg-white/10 border border-white/20 text-slate-300 hover:text-rose-300 hover:bg-rose-500/15 rounded-lg transition-colors text-[10px] font-bold"
+                          className="flex items-center gap-1 px-2 py-1 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors text-[10px] font-bold"
                           title="Remover agente"
                         >
                           <Trash2 className="w-3 h-3" /> Remover

@@ -7,6 +7,13 @@ import type { AgentPrompt } from "../../../hooks/useAgentPrompts";
 // ligadas a workflows reais do n8n) e o catálogo de agentes/personas (chaves derivadas do
 // nome, ver promptKeyForAgent em SettingsSistemaAuroraAgentes.tsx) — extraído aqui pra
 // evitar import circular entre os dois arquivos que agora usam os dois componentes.
+//
+// Cores por CSS var (--color-text-*, --color-surface-*, --color-border-*), não Tailwind
+// slate/violet cru: essa tela é usada nos dois temas (claro/escuro, toggle via classe
+// `.dark` no <html>, ver index.css) e slate-200/violet-200 etc. só ficam legíveis no
+// escuro — no claro (fundo branco) o texto pálido some quase por completo. O acento
+// violeta usa par claro/escuro explícito (bg-violet-100/dark:bg-violet-500/25 etc.) porque
+// não existe variável de tema pra essa cor de destaque especificamente.
 
 export function ViewPromptButton({
   agentKey,
@@ -23,7 +30,7 @@ export function ViewPromptButton({
       type="button"
       variant="ghost"
       onClick={() => setExpandedKey(isOpen ? null : agentKey)}
-      className="flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none bg-white/10 !text-slate-200 border border-white/20 hover:bg-white/15"
+      className="flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] hover:bg-[var(--color-surface-elevated)]"
     >
       <FileText className="w-3 h-3" />
       Ver prompt
@@ -67,19 +74,19 @@ export function InlinePromptEditor({
   }
 
   if (loading || !agent) {
-    return <p className="text-xs text-slate-500 pt-2">Carregando prompt...</p>;
+    return <p className="text-xs text-[var(--color-text-muted)] pt-2">Carregando prompt...</p>;
   }
 
   const dirty = value !== agent.prompt;
 
   return (
-    <div className="pt-2 space-y-2 border-t border-white/5 mt-1">
+    <div className="pt-2 space-y-2 border-t border-[var(--color-border-subtle)] mt-1">
       <div className="flex items-center justify-between gap-3 pt-2">
         <span
-          className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${
+          className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide border ${
             agent.isCustomized
-              ? "bg-violet-500/25 text-violet-200 border border-violet-500/50"
-              : "bg-white/10 text-slate-300 border border-white/20"
+              ? "bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-500/25 dark:text-violet-200 dark:border-violet-500/50"
+              : "bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] border-[var(--color-border-default)]"
           }`}
         >
           {agent.isCustomized ? "Customizado por este tenant" : "Padrão global"}
@@ -89,10 +96,10 @@ export function InlinePromptEditor({
           variant="ghost"
           onClick={() => onSave(value, agent.name, agent.description)}
           disabled={!dirty || saving}
-          className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none ${
+          className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg shadow-none border ${
             dirty
-              ? "bg-violet-500/25 !text-violet-200 border border-violet-500/50 hover:bg-violet-500/35"
-              : "bg-white/10 !text-slate-400 border border-white/20"
+              ? "bg-violet-100 !text-violet-700 border-violet-300 hover:bg-violet-200 dark:bg-violet-500/25 dark:!text-violet-200 dark:border-violet-500/50 dark:hover:bg-violet-500/35"
+              : "bg-[var(--color-surface-sunken)] !text-[var(--color-text-faint)] border-[var(--color-border-default)]"
           }`}
         >
           {saving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
@@ -104,9 +111,9 @@ export function InlinePromptEditor({
         onChange={(e) => setValue(e.target.value)}
         placeholder="Cole aqui o texto atual do prompt (copiado do nó correspondente no n8n)..."
         rows={6}
-        className="w-full text-xs font-mono bg-black/20 border border-white/10 rounded-lg p-3 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-y"
+        className="w-full text-xs font-mono bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg p-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-faint)] focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-y"
       />
-      <p className="text-[10px] text-slate-600">
+      <p className="text-[10px] text-[var(--color-text-faint)]">
         Salvar aqui cria/atualiza só a versão deste tenant — não muda o padrão nem o que os outros tenants veem.
         O n8n já lê esse prompt ao vivo por tenant, isolado por execução.
         {agent.updatedAt && ` Última atualização: ${new Date(agent.updatedAt).toLocaleString("pt-BR")}.`}
