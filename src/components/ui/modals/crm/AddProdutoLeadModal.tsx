@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Loader2, Zap, Plus, Sparkles, RefreshCw, Wrench, ChevronUp, ChevronDown,
+  Loader2, Zap, RefreshCw, Wrench, ChevronUp, ChevronDown,
   Receipt, Percent, DollarSign, Layers, TrendingUp, TrendingDown,
   CreditCard, Banknote, QrCode, FileText, Calendar, ArrowRightLeft,
 } from "lucide-react";
@@ -61,7 +61,7 @@ export function AddProdutoLeadModal({
   initialProductId,
   onDone,
 }: AddProdutoLeadModalProps) {
-  const { createProposalWithItems, addFinanceEntry, updateLead, addNotification, leads, addProduct } = useData();
+  const { createProposalWithItems, addFinanceEntry, updateLead, addNotification, leads } = useData();
   const { formatCurrency } = useLocalization();
 
   const [productId, setProductId] = useState("");
@@ -80,20 +80,6 @@ export function AddProdutoLeadModal({
   const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
 
-  // Cadastro rápido de produto novo (direto no catálogo) — mesmo formulário de antes.
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newProdName, setNewProdName] = useState("");
-  const [newProdPrice, setNewProdPrice] = useState("");
-  const [newProdCost, setNewProdCost] = useState("");
-  const [newProdCommission, setNewProdCommission] = useState("5");
-  const [newProdStock, setNewProdStock] = useState("10");
-  const [newProdCategory, setNewProdCategory] = useState("Serviços");
-  const [newProdIsRecurring, setNewProdIsRecurring] = useState(false);
-  const [newProdMonths, setNewProdMonths] = useState("12");
-  const [newProdHasImpl, setNewProdHasImpl] = useState(false);
-  const [newProdImplFee, setNewProdImplFee] = useState("0");
-  const [creatingProduct, setCreatingProduct] = useState(false);
-
   useEffect(() => {
     if (!isOpen) return;
     setProductId(initialProductId || "");
@@ -109,10 +95,6 @@ export function AddProdutoLeadModal({
     setDetalhesPagamento("");
     setDataPagamento(new Date().toISOString().slice(0, 10));
     setSaving(false);
-    setShowCreateForm(false);
-    setNewProdName(""); setNewProdPrice(""); setNewProdCost("");
-    setNewProdCommission("5"); setNewProdStock("10"); setNewProdCategory("Serviços");
-    setNewProdIsRecurring(false); setNewProdMonths("12"); setNewProdHasImpl(false); setNewProdImplFee("0");
   }, [isOpen, initialProductId]);
 
   const product = availableProducts.find((p) => p.id === productId);
@@ -137,50 +119,6 @@ export function AddProdutoLeadModal({
   const firstPaymentTotal = Math.max(0, totalImplementation + totalMonthlyMRR + totalOnetime - (discountValue || 0));
 
   const valorParcela = useMemo(() => (parcelas > 1 ? finalTotal / parcelas : finalTotal), [finalTotal, parcelas]);
-
-  const handleCreateProduct = async () => {
-    if (!newProdName.trim() || !newProdPrice) {
-      toast.error("Informe o Nome e Preço de Venda do produto.");
-      return;
-    }
-    const priceNum = parseFloat(newProdPrice.replace(",", ".")) || 0;
-    if (priceNum <= 0) {
-      toast.error("O preço deve ser maior que zero.");
-      return;
-    }
-    setCreatingProduct(true);
-    try {
-      // addProduct tem retorno void na tipagem (a implementação real devolve o registro
-      // criado, mas o tipo não reflete isso) — gera o id aqui em vez de depender do retorno,
-      // assim funciona não importa como a assinatura for tipada.
-      const newId = crypto.randomUUID();
-      await addProduct({
-        id: newId,
-        name: newProdName.trim(),
-        price: priceNum,
-        cost: parseFloat(newProdCost.replace(",", ".")) || 0,
-        commission: parseFloat(newProdCommission.replace(",", ".")) || 0,
-        category: newProdCategory,
-        active: true,
-        currentStock: parseInt(newProdStock) || 0,
-        is_recurring: newProdIsRecurring,
-        recurring_period: newProdIsRecurring ? "monthly" : null,
-        implementation_fee: newProdHasImpl ? (parseFloat(newProdImplFee.replace(",", ".")) || 0) : 0,
-        type_attributes: {
-          isRecurring: newProdIsRecurring,
-          contractMonths: newProdIsRecurring ? (parseInt(newProdMonths) || 12) : 1,
-          implementationFee: newProdHasImpl ? (parseFloat(newProdImplFee.replace(",", ".")) || 0) : 0,
-        },
-      });
-      setProductId(newId);
-      toast.success(`"${newProdName.trim()}" cadastrado no catálogo.`);
-      setShowCreateForm(false);
-    } catch (err: any) {
-      toast.error("Erro ao cadastrar produto: " + err?.message);
-    } finally {
-      setCreatingProduct(false);
-    }
-  };
 
   const handleSubmit = async () => {
     if (!product) {
@@ -283,98 +221,15 @@ export function AddProdutoLeadModal({
     <Modal isOpen={isOpen} onClose={onClose} title="Novo Produto" maxWidth="max-w-2xl">
       <div className="space-y-4 max-h-[75vh] overflow-y-auto scrollbar-thin pr-1">
         {/* ── PRODUTO ── */}
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
-            <label className={labelClass}>Produto *</label>
-            <select value={productId} onChange={(e) => setProductId(e.target.value)} className={inputClass}>
-              <option value="">Selecione um produto...</option>
-              {availableProducts.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} — {formatCurrency(Number(p.price) || 0)}</option>
-              ))}
-            </select>
-          </div>
-          <Button
-            type="button"
-            variant={showCreateForm ? "secondary" : "outline"}
-            onClick={() => setShowCreateForm((v) => !v)}
-            className="h-[34px] text-[11px] font-bold gap-1.5 shrink-0"
-          >
-            {showCreateForm ? <ChevronUp className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-            Novo no Catálogo
-          </Button>
+        <div>
+          <label className={labelClass}>Produto *</label>
+          <select value={productId} onChange={(e) => setProductId(e.target.value)} className={inputClass}>
+            <option value="">Selecione um produto...</option>
+            {availableProducts.map((p) => (
+              <option key={p.id} value={p.id}>{p.name} — {formatCurrency(Number(p.price) || 0)}</option>
+            ))}
+          </select>
         </div>
-
-        {/* ── CADASTRO RÁPIDO DE PRODUTO NOVO ── */}
-        {showCreateForm && (
-          <div className="p-3.5 rounded-xl border border-[var(--color-primary-blue)]/30 bg-[var(--color-surface-sunken)] space-y-3 animate-in fade-in slide-in-from-top-2">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" />
-              <span className="text-[11px] font-black uppercase text-[var(--color-text-primary)]">Cadastrar Produto/Serviço no Catálogo</span>
-            </div>
-            <div>
-              <label className={labelClass}>Nome *</label>
-              <input value={newProdName} onChange={(e) => setNewProdName(e.target.value)} placeholder="Ex: Consultoria de Vendas Premium" className={inputClass} />
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <div>
-                <label className={labelClass}>Preço (R$) *</label>
-                <input value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} placeholder="0,00" className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Custo (R$)</label>
-                <input value={newProdCost} onChange={(e) => setNewProdCost(e.target.value)} placeholder="0,00" className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Comissão (%)</label>
-                <input value={newProdCommission} onChange={(e) => setNewProdCommission(e.target.value)} className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Estoque</label>
-                <input type="number" value={newProdStock} onChange={(e) => setNewProdStock(e.target.value)} className={inputClass} />
-              </div>
-            </div>
-            <div>
-              <label className={labelClass}>Categoria</label>
-              <select value={newProdCategory} onChange={(e) => setNewProdCategory(e.target.value)} className={inputClass}>
-                {["Serviços", "Software", "Implantação", "Mentoria", "Curso/Turma", "Assinatura", "Físico"].map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-2.5 rounded-lg bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)]">
-              <div className="space-y-1.5">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={newProdIsRecurring} onChange={(e) => setNewProdIsRecurring(e.target.checked)} className="w-3.5 h-3.5 accent-[var(--color-primary-blue)]" />
-                  <span className="text-[11px] font-bold text-[var(--color-text-primary)] flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Cobrança Recorrente</span>
-                </label>
-                {newProdIsRecurring && (
-                  <div className="flex items-center gap-1 pl-5">
-                    {["1", "3", "6", "12", "24"].map((m) => (
-                      <button key={m} type="button" onClick={() => setNewProdMonths(m)}
-                        className={cn("px-2 py-0.5 rounded text-[10px] font-mono font-bold", newProdMonths === m ? "bg-[var(--color-primary-blue)] text-white" : "bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)]")}>
-                        {m}m
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={newProdHasImpl} onChange={(e) => setNewProdHasImpl(e.target.checked)} className="w-3.5 h-3.5 accent-amber-500" />
-                  <span className="text-[11px] font-bold text-[var(--color-text-primary)] flex items-center gap-1"><Wrench className="w-3 h-3 text-amber-500" /> Taxa de Implantação</span>
-                </label>
-                {newProdHasImpl && (
-                  <input value={newProdImplFee} onChange={(e) => setNewProdImplFee(e.target.value)} placeholder="0,00" className={cn(inputClass, "ml-5 w-[calc(100%-1.25rem)]")} />
-                )}
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <Button type="button" onClick={handleCreateProduct} disabled={creatingProduct} className="h-8 text-xs font-bold gap-1.5">
-                <Plus className="w-3.5 h-3.5" /> {creatingProduct ? "Cadastrando..." : "Cadastrar e Selecionar"}
-              </Button>
-            </div>
-          </div>
-        )}
 
         {product && (
           <>
