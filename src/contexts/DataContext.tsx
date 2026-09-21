@@ -421,6 +421,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [appointmentsRaw, setAppointments] = useState<Appointment[]>(() => getDefaultAppointments() as Appointment[]);
 
   const leads = useMemo(() => filterByFilial(leadsRaw), [leadsRaw, activeFilialId]);
+  // Ticket médio dos leads Fechado do tenant — usado só como ESTIMATIVA de
+  // exibição pra leads "Novo" sem valor/produto ainda (ex.: cliente cadastrado
+  // que nunca reservou/comprou). Nunca escreve em leads.value nem entra em
+  // somas reais de receita/pipeline (getPipelineValue, dashboard summary) —
+  // só o card mostra, com marcação visual de "estimado", pra não misturar com
+  // valor de venda de verdade. Mesma regra pra qualquer tenant, não hardcoded.
+  const avgWonTicket = useMemo(() => {
+    const won = leads.filter(l => l.status === "Fechado" && parseCurrencyBR(l.value) > 0);
+    if (won.length === 0) return 0;
+    return won.reduce((s, l) => s + parseCurrencyBR(l.value), 0) / won.length;
+  }, [leads]);
   const tasks = useMemo(() => filterByFilial(tasksRaw), [tasksRaw, activeFilialId]);
   const contracts = useMemo(() => filterByFilial(contractsRaw), [contractsRaw, activeFilialId]);
   const appointments = useMemo(() => filterByFilial(appointmentsRaw), [appointmentsRaw, activeFilialId]);
@@ -2590,7 +2601,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <DataContext.Provider value={{
-      leads, tasks, contracts, notifications, leadActivities, financeEntries, appointments,
+      leads, avgWonTicket, tasks, contracts, notifications, leadActivities, financeEntries, appointments,
       theme, toggleTheme,
       addLead, updateLead, deleteLead, moveLead,
       addTask, updateTask, deleteTask, addContract, updateContract, deleteContract,

@@ -69,7 +69,7 @@ export function LeadCard({
   setSelectedLead, handleTransferToComercial, handleExportIAResume,
   setWebhookModalLead, currentPipeline,
 }: LeadCardProps) {
-  const { products, squads, proposals, proposalItems } = useData();
+  const { products, squads, proposals, proposalItems, avgWonTicket } = useData();
   const { formatCurrency } = useLocalization();
 
   const isDragging    = draggedLeadId === item.id;
@@ -108,11 +108,21 @@ export function LeadCard({
   // ignorava quantidade, preço histórico da venda e compras repetidas do
   // mesmo produto — só entra como fallback se o lead genuinamente não tiver
   // valor nenhum ainda.
+  // Lead genuinamente sem venda/produto/proposta ainda (ex.: cliente cadastrado
+  // que nunca reservou) — em vez de "R$ 0" (parece erro/dado quebrado), mostra
+  // o ticket médio dos negócios Fechado do tenant como ESTIMATIVA, marcada com
+  // "~" e estilo diferenciado. Não é valor real — só um sinal de potencial.
+  const hasRealValue = parseCurrencyBR(item.value) > 0 || linkedProducts.length > 0 || !!linkedProposalValue;
+  const isEstimated = !hasRealValue && avgWonTicket > 0;
   const displayValue = parseCurrencyBR(item.value) > 0
     ? formatCurrency(parseCurrencyBR(item.value))
     : linkedProducts.length > 0
       ? formatCurrency(linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0))
-      : (linkedProposalValue ? formatCurrency(Number(linkedProposalValue)) : 'R$ 0');
+      : linkedProposalValue
+        ? formatCurrency(Number(linkedProposalValue))
+        : isEstimated
+          ? `~${formatCurrency(avgWonTicket)}`
+          : 'R$ 0';
 
   const leadSquad = (squads as any[]).find(s =>
     (s.membros || []).some((m: string) => m === item.seller || m === item.sellerId)
@@ -333,7 +343,15 @@ export function LeadCard({
         {/* Footer — value + creation date + idle */}
         <div className="flex items-center justify-between pt-2 border-t border-[var(--color-border-subtle)] gap-1.5">
           <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="font-mono text-xs font-black text-emerald-600 dark:text-emerald-400 leading-none flex items-center gap-1">
+            <span
+              className={cn(
+                "font-mono text-xs font-black leading-none flex items-center gap-1",
+                isEstimated
+                  ? "text-[var(--color-text-muted)] italic"
+                  : "text-emerald-600 dark:text-emerald-400"
+              )}
+              title={isEstimated ? "Estimativa (ticket médio) — este lead ainda não tem venda/produto vinculado" : undefined}
+            >
               {displayValue}
               {!!contractMonths && (
                 <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400" title="Duração do contrato vendida">

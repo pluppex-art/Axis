@@ -152,6 +152,7 @@ export interface Reuniao {
 
 export interface DataContextType {
   leads: Lead[];
+  avgWonTicket: number;
   tasks: Task[];
   contracts: Contract[];
   notifications: Notification[];
