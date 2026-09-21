@@ -99,7 +99,6 @@ import {
   ConfigIntegracoesSMTP,
   ConfigSistemaBackups,
   ConfigSistemaAuroraUso,
-  ConfigInteligenciaArtificialAurora,
   ConfigIntegracoesSDR,
   ConfigFinanceiroSquads,
   ConfigFinanceiroBloqueioPeriodo,
@@ -496,7 +495,9 @@ function AppContent() {
 
             <Route path="sistema/backups" element={<ConfigSistemaBackups />} />
             <Route path="sistema/aurora" element={<ConfigSistemaAuroraUso />} />
-            <Route path="ia/aurora" element={<ConfigInteligenciaArtificialAurora />} />
+            {/* Páginas "Aurora" e "Aurora — Consumo & Agentes" foram unificadas em uma só
+                (sistema/aurora) — redirect pra quem tiver o link antigo salvo. */}
+            <Route path="ia/aurora" element={<Navigate to="/app/configuracoes/sistema/aurora" replace />} />
 
             <Route path="*" element={<SettingsGenericForm />} />
           </Route>

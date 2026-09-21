@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
-import { Building, Plug, Columns3, Briefcase, Zap, Wallet, Bell, HardDrive, Bot } from "lucide-react";
+import { Building, Plug, Columns3, Briefcase, Zap, Wallet, Bell, HardDrive } from "lucide-react";
 import { SectionSidebar, type SectionNavGroup } from "../../components/layout/SectionSidebar";
 
 export default function SettingsLayout() {
@@ -101,17 +101,12 @@ export default function SettingsLayout() {
       title: "Sistema",
       icon: HardDrive,
       items: [
-        ...(isModuleEnabled("aurora") ? [{ title: "Aurora (Consumo & Agentes)", path: "/app/configuracoes/sistema/aurora" }] : []),
+        // Página única de Aurora (controle, prompts, consumo e agentes) — era duas
+        // páginas separadas ("Aurora" em Inteligência Artificial + esta), unificadas.
+        ...(isModuleEnabled("aurora") ? [{ title: "Aurora (Controle, Consumo & Agentes)", path: "/app/configuracoes/sistema/aurora" }] : []),
         { title: "Backups automáticos", path: "/app/configuracoes/sistema/backups" },
       ],
     },
-    ...((user?.isMaster || user?.isTenantAdmin) && isModuleEnabled("aurora") ? [{
-      title: "Inteligência Artificial",
-      icon: Bot,
-      items: [
-        { title: "Aurora", path: "/app/configuracoes/ia/aurora" },
-      ],
-    }] : []),
   ];
 
   return (
