@@ -65,6 +65,10 @@ export function getChurnRate(contracts: ContractLike[], opts?: { months?: number
 
 const isWon = (l: LeadLike) => l.status === "Fechado";
 const isOpen = (l: LeadLike) => l.status !== "Fechado" && l.status !== "Perdido";
+// "Ativo" = ainda não marcado como perdido (inclui Fechado — cliente convertido
+// continua contando como ativo). Diferente de isOpen: pipeline em aberto/hot
+// leads continuam sem contar Fechado, só essa contagem de leads muda.
+const isNotLost = (l: LeadLike) => l.status !== "Perdido";
 
 export function getWonDeals(leads: LeadLike[]): { count: number; value: number } {
   const won = leads.filter(isWon);
@@ -72,7 +76,7 @@ export function getWonDeals(leads: LeadLike[]): { count: number; value: number }
 }
 
 export function getActiveLeadsCount(leads: LeadLike[]): number {
-  return leads.filter(isOpen).length;
+  return leads.filter(isNotLost).length;
 }
 
 export function getConversionRate(leads: LeadLike[]): number {

@@ -422,7 +422,11 @@ app.get("/api/dashboard/summary", requireUser, async (req: any, res) => {
     const leadsWon = leadsAll.filter((l) => l.status === "Fechado").length;
     const leadsOpenRows = leadsAll.filter((l) => l.status !== "Fechado" && l.status !== "Perdido");
     const conversionRate = leadsTotal > 0 ? Math.round((leadsWon / leadsTotal) * 1000) / 10 : 0;
-    const activeLeadsCount = leadsOpenRows.length;
+    // "Ativo" = não perdido (Fechado conta como ativo — cliente convertido).
+    // Igual a src/lib/revenueMetrics.ts:getActiveLeadsCount — diferente de
+    // leadsOpenRows, que segue excluindo Fechado pro valor de pipeline em
+    // aberto/leads quentes abaixo (esses continuam sendo "ainda não fechados").
+    const activeLeadsCount = leadsAll.filter((l) => l.status !== "Perdido").length;
     const valorPipelineAberto = leadsOpenRows.reduce((s, l) => s + (Number(l.value) || 0), 0);
     const leadsQuentes = leadsOpenRows.filter((l) => (l.scoreIA ?? 0) > 80).length;
 
