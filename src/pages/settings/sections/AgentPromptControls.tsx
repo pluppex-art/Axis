@@ -22,7 +22,7 @@ export function ViewPromptButton({
     <Button
       type="button"
       onClick={() => setExpandedKey(isOpen ? null : agentKey)}
-      className="flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10"
+      className="flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg bg-white/10 text-slate-200 border border-white/20 hover:bg-white/15"
     >
       <FileText className="w-3 h-3" />
       Ver prompt
@@ -77,8 +77,8 @@ export function InlinePromptEditor({
         <span
           className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${
             agent.isCustomized
-              ? "bg-violet-500/15 text-violet-300 border border-violet-500/30"
-              : "bg-white/5 text-slate-500 border border-white/10"
+              ? "bg-violet-500/25 text-violet-200 border border-violet-500/50"
+              : "bg-white/10 text-slate-300 border border-white/20"
           }`}
         >
           {agent.isCustomized ? "Customizado por este tenant" : "Padrão global"}
@@ -89,8 +89,8 @@ export function InlinePromptEditor({
           disabled={!dirty || saving}
           className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg ${
             dirty
-              ? "bg-violet-500/15 text-violet-300 border border-violet-500/30 hover:bg-violet-500/25"
-              : "bg-white/5 text-slate-600 border border-white/10"
+              ? "bg-violet-500/25 text-violet-200 border border-violet-500/50 hover:bg-violet-500/35"
+              : "bg-white/10 text-slate-400 border border-white/20"
           }`}
         >
           {saving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}

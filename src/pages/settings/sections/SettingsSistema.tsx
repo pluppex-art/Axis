@@ -1,16 +1,11 @@
 import { useState } from "react";
-import {
-  ShieldCheck, HardDrive, ExternalLink, RefreshCw, Gauge, Power, ShieldAlert,
-  Radar as RadarIcon, FileText, Save,
-} from "lucide-react";
+import { ShieldCheck, HardDrive, ExternalLink, RefreshCw, Gauge, ShieldAlert, FileText, Save } from "lucide-react";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { useAuroraTokenUsage } from "../../../hooks/useAuroraTokenUsage";
 import { useTenantAiConfig } from "../../../hooks/useTenantAiConfig";
-import { useAgentPrompts } from "../../../hooks/useAgentPrompts";
 import { useAuth } from "../../../contexts/AuthContext";
 import { ConfigSistemaAuroraAgentes } from "./SettingsSistemaAuroraAgentes";
-import { ViewPromptButton, InlinePromptEditor } from "./AgentPromptControls";
 
 // Esta tela mostrava um painel inteiro de "backup" que não fazia nada:
 // destino de storage (S3/GCS/SFTP), botão "Criar Snapshot Agora" e um card
@@ -72,12 +67,6 @@ function formatFull(n: number): string {
 // sempre "% consumido do ciclo" aplicado sobre os 10 mil créditos do pacote.
 const CREDITS_PER_CYCLE = 10000;
 
-const EXECUTE_MODULES: { key: string; label: string; description: string }[] = [
-  { key: "radar", label: "Radar (prospecção ativa)", description: "Aurora pode buscar empresas reais (Google Maps) e propor cadastro como lead." },
-  { key: "sdr", label: "Júlia / SDR", description: "Aurora pode acionar a Júlia para abordar um lead pelo WhatsApp." },
-  { key: "closer", label: "Closer AI", description: "Aurora pode consultar técnicas de negociação/fechamento." },
-];
-
 /**
  * Configurações → Sistema → Aurora — página única (era duas: "Aurora" em Inteligência
  * Artificial e "Aurora — Consumo & Agentes" em Sistema; unificadas a pedido, já que o
@@ -90,26 +79,24 @@ const EXECUTE_MODULES: { key: string; label: string; description: string }[] = [
  * (isModuleEnabled em SettingsLayout.tsx) — nenhum gate extra de master/admin, disponível
  * pra qualquer tenant e qualquer usuário dele, igual em todo o sistema.
  *
+ * O liga/desliga geral da Aurora e os toggles de execução (radar/sdr/closer, antes num card
+ * "Agentes que a Aurora pode acionar" separado) foram consolidados dentro de
+ * ConfigSistemaAuroraAgentes — o card "Aurora" vira só mais uma entrada da lista de agentes,
+ * e os 3 agentes de execução ganham o toggle Liberado/Bloqueado junto do resto. Menos telas
+ * fazendo a mesma coisa de jeitos diferentes.
+ *
  * Dois mecanismos complementares de prompt, não redundantes: `ai_agent_prompts` é o texto
  * BASE de cada agente (Aurora/Radar/Júlia-SDR/Closer); `tenant_ai_config.custom_prompt`
  * (card "Instruções específicas deste tenant") é um contexto de negócio ANEXADO por cima,
  * um por tenant, sem variante padrão/override — já é isolado por tenant desde a origem.
  * Ambos já são lidos ao vivo pelo n8n (Helper - Checar Config Aurora Tenant + AURORA CORE),
  * cada um isolado por tenant/execução — salvar aqui já reflete na Aurora, sem passo manual.
- *
- * Importante (honestidade, nao fachada): so `auroraEnabled` e os 3 toggles de execucao
- * abaixo sao de fato enforcados hoje do lado do n8n. Permissao granular de leitura/escrita
- * por ferramenta ainda nao existe — fica para uma fase futura, e essa tela nao finge que
- * existe.
  */
 export function ConfigSistemaAuroraUso() {
   const { usage, loading: usageLoading, refresh } = useAuroraTokenUsage();
-  const { config, loading: configLoading, saving, update } = useTenantAiConfig();
+  const { config, loading: configLoading, update } = useTenantAiConfig();
   const { activeTenantName } = useAuth();
-  const { prompts, loading: promptsLoading, savingKey: promptSavingKey, updatePrompt } = useAgentPrompts();
   const [refreshing, setRefreshing] = useState(false);
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [customPromptDraft, setCustomPromptDraft] = useState<string | null>(null);
   const [savingCustomPrompt, setSavingCustomPrompt] = useState(false);
 
@@ -125,28 +112,6 @@ export function ConfigSistemaAuroraUso() {
     await update({ customPrompt: customPromptDraft });
     setSavingCustomPrompt(false);
   };
-
-  const handleToggleAurora = async () => {
-    if (!config) return;
-    setPendingKey("aurora_enabled");
-    await update({ auroraEnabled: !config.auroraEnabled });
-    setPendingKey(null);
-  };
-
-  const handleToggleExecuteModule = async (moduleKey: string) => {
-    if (!config) return;
-    setPendingKey(moduleKey);
-    const current = config.allowedExecuteModules;
-    const next = current.includes(moduleKey)
-      ? current.filter((k) => k !== moduleKey)
-      : [...current, moduleKey];
-    await update({ allowedExecuteModules: next });
-    setPendingKey(null);
-  };
-
-  // Convencao da tabela: array vazio = tudo liberado (nenhuma restricao adicional).
-  const executeRestricted = (config?.allowedExecuteModules.length ?? 0) > 0;
-  const promptByKey = new Map(prompts.map((p) => [p.agentKey, p]));
 
   const percent = usage?.percentUsed ?? 0;
   const creditsUsed = Math.round((percent / 100) * CREDITS_PER_CYCLE);
@@ -180,50 +145,6 @@ export function ConfigSistemaAuroraUso() {
         <p className="text-xs text-slate-500">Carregando configuração...</p>
       ) : (
         <>
-          <Card className="p-6 bg-[var(--color-surface-elevated)]/80 border border-white/10 space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <Power className={`w-5 h-5 mt-0.5 ${config.auroraEnabled ? "text-emerald-400" : "text-rose-400"}`} />
-                <div>
-                  <h3 className="font-bold text-sm">Aurora ativada</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed max-w-md">
-                    Desativar aqui faz a Aurora recusar educadamente qualquer mensagem desta empresa (chat pessoal e WhatsApp da equipe) até reativar.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <ViewPromptButton agentKey="aurora" expandedKey={expandedKey} setExpandedKey={setExpandedKey} />
-                <Button
-                  type="button"
-                  onClick={handleToggleAurora}
-                  disabled={saving && pendingKey === "aurora_enabled"}
-                  className={`font-bold text-xs px-4 py-2 rounded-xl ${
-                    config.auroraEnabled
-                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25"
-                      : "bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/25"
-                  }`}
-                >
-                  {saving && pendingKey === "aurora_enabled" ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  ) : config.auroraEnabled ? (
-                    "Ativada"
-                  ) : (
-                    "Desativada"
-                  )}
-                </Button>
-              </div>
-            </div>
-            {expandedKey === "aurora" && (
-              <InlinePromptEditor
-                agentKey="aurora"
-                agent={promptByKey.get("aurora")}
-                loading={promptsLoading}
-                saving={promptSavingKey === "aurora"}
-                onSave={(text, name, description) => updatePrompt("aurora", text, name, description)}
-              />
-            )}
-          </Card>
-
           <Card className="p-6 bg-[var(--color-surface-elevated)]/80 border border-white/10 space-y-3">
             <div>
               <h3 className="font-bold text-xs uppercase tracking-widest text-violet-400 flex items-center gap-2">
@@ -255,64 +176,13 @@ export function ConfigSistemaAuroraUso() {
                 disabled={savingCustomPrompt || customPromptDraft === null || customPromptDraft === config.customPrompt}
                 className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg ${
                   customPromptDraft !== null && customPromptDraft !== config.customPrompt
-                    ? "bg-violet-500/15 text-violet-300 border border-violet-500/30 hover:bg-violet-500/25"
-                    : "bg-white/5 text-slate-600 border border-white/10"
+                    ? "bg-violet-500/25 text-violet-200 border border-violet-500/50 hover:bg-violet-500/35"
+                    : "bg-white/10 text-slate-400 border border-white/20"
                 }`}
               >
                 {savingCustomPrompt ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 {savingCustomPrompt ? "Salvando..." : "Salvar"}
               </Button>
-            </div>
-          </Card>
-
-          <Card className="p-6 bg-[var(--color-surface-elevated)]/80 border border-white/10 space-y-4">
-            <h3 className="font-bold text-xs uppercase tracking-widest text-violet-400 flex items-center gap-2">
-              <RadarIcon className="w-3.5 h-3.5" />
-              <span>Agentes que a Aurora pode acionar</span>
-            </h3>
-            <p className="text-xs text-slate-500 -mt-2">
-              Além do módulo estar contratado, a Aurora só aciona um agente abaixo se ele estiver marcado aqui. Nenhum marcado = sem restrição extra (segue só o módulo contratado).
-            </p>
-            <div className="space-y-2">
-              {EXECUTE_MODULES.map((mod) => {
-                const active = !executeRestricted || config.allowedExecuteModules.includes(mod.key);
-                return (
-                  <div key={mod.key} className="bg-[var(--color-surface)] border border-white/5 rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between gap-3 p-3">
-                      <div>
-                        <p className="text-sm font-bold text-white">{mod.label}</p>
-                        <p className="text-xs text-slate-500">{mod.description}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <ViewPromptButton agentKey={mod.key} expandedKey={expandedKey} setExpandedKey={setExpandedKey} />
-                        <Button
-                          type="button"
-                          onClick={() => handleToggleExecuteModule(mod.key)}
-                          disabled={saving && pendingKey === mod.key}
-                          className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg ${
-                            active
-                              ? "bg-violet-500/15 text-violet-300 border border-violet-500/30"
-                              : "bg-white/5 text-slate-500 border border-white/10"
-                          }`}
-                        >
-                          {saving && pendingKey === mod.key ? <RefreshCw className="w-3 h-3 animate-spin" /> : active ? "Liberado" : "Bloqueado"}
-                        </Button>
-                      </div>
-                    </div>
-                    {expandedKey === mod.key && (
-                      <div className="px-3 pb-3">
-                        <InlinePromptEditor
-                          agentKey={mod.key}
-                          agent={promptByKey.get(mod.key)}
-                          loading={promptsLoading}
-                          saving={promptSavingKey === mod.key}
-                          onSave={(text, name, description) => updatePrompt(mod.key, text, name, description)}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
             </div>
           </Card>
         </>

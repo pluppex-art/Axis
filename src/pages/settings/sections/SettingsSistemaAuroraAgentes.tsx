@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
-  Bot, Plus, Trash2, Pencil, Sparkles, UserSearch, Eye, Radar,
-  Handshake, Briefcase, LineChart, Search, Headset, Wallet, Megaphone, ClipboardList,
+  Bot, Pencil, Sparkles, UserSearch, Eye, Radar, RefreshCw,
+  Handshake, Briefcase, LineChart, Search, Headset, Wallet, Megaphone, ClipboardList, Trash2,
 } from "lucide-react";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
@@ -14,7 +14,23 @@ import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
 import type { AuroraAgent } from "../../../contexts/DataContextTypes";
 import { useAgentPrompts } from "../../../hooks/useAgentPrompts";
+import { useTenantAiConfig } from "../../../hooks/useTenantAiConfig";
 import { ViewPromptButton, InlinePromptEditor } from "./AgentPromptControls";
+
+// Card "Aurora" (núcleo) — id sintético, não é uma linha de aurora_agents. Liga/desliga
+// aqui grava em tenant_ai_config.aurora_enabled (useTenantAiConfig), não em aurora_agents.
+const AURORA_CORE_ID = "aurora-core";
+
+// Os 3 agentes que a Aurora pode de fato ACIONAR (workflows reais no n8n, controlados por
+// tenant_ai_config.allowed_execute_modules) — antes viviam num card separado "Agentes que a
+// Aurora pode acionar"; agora aparecem aqui, junto do resto, com um toggle extra
+// Liberado/Bloqueado. Casados pelo NOME com o catálogo abaixo (mesmo agente, duas facetas:
+// persona exibida vs. permissão de execução real).
+const EXECUTE_MODULE_BY_NAME: Record<string, string> = {
+  "Radar de Oportunidades": "radar",
+  "Júlia — SDR": "sdr",
+  "Closer": "closer",
+};
 
 // Catálogo padrão só exibido em memória enquanto o tenant não salvou nenhum
 // agente ainda — mesmo padrão já usado pros funis (FUNIS_DEFAULT em
@@ -81,11 +97,30 @@ export function ConfigSistemaAuroraAgentes() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { prompts, loading: promptsLoading, savingKey: promptSavingKey, updatePrompt } = useAgentPrompts();
   const promptByKey = new Map(prompts.map((p) => [p.agentKey, p]));
+  const { config, update: updateTenantAiConfig } = useTenantAiConfig();
+  const [pendingExecuteKey, setPendingExecuteKey] = useState<string | null>(null);
+  const [savingAuroraCore, setSavingAuroraCore] = useState(false);
 
   const hasCustomAgents = auroraAgents.length > 0;
-  const displayList = hasCustomAgents ? auroraAgents : AURORA_AGENTS_DEFAULT.map((a, i) => ({ ...a, id: `default-${i}`, active: true } as AuroraAgent));
+  const personaList = hasCustomAgents ? auroraAgents : AURORA_AGENTS_DEFAULT.map((a, i) => ({ ...a, id: `default-${i}`, active: true } as AuroraAgent));
+  // "Aurora" (núcleo) entra como a primeira entrada da mesma lista — deixa de ser um card
+  // separado no topo da página. Toggle dela vai pro tenant_ai_config, não pro aurora_agents.
+  const auroraCoreEntry: AuroraAgent = {
+    id: AURORA_CORE_ID,
+    name: "Aurora",
+    role: "Núcleo",
+    description: "Orquestradora central — desativar aqui faz a Aurora recusar educadamente qualquer mensagem desta empresa (chat pessoal e WhatsApp da equipe) até reativar.",
+    active: config?.auroraEnabled ?? true,
+  } as AuroraAgent;
+  const displayList: AuroraAgent[] = [auroraCoreEntry, ...personaList];
 
-  const handleToggle = (agent: AuroraAgent) => {
+  const handleToggle = async (agent: AuroraAgent) => {
+    if (agent.id === AURORA_CORE_ID) {
+      setSavingAuroraCore(true);
+      await updateTenantAiConfig({ auroraEnabled: !(config?.auroraEnabled ?? true) });
+      setSavingAuroraCore(false);
+      return;
+    }
     if (!hasCustomAgents) {
       // Ainda é só o catálogo padrão em memória — a primeira interação
       // materializa o agente como registro real no tenant.
@@ -97,6 +132,19 @@ export function ConfigSistemaAuroraAgentes() {
       return;
     }
     toggleAuroraAgent(agent.id);
+  };
+
+  // Convencao da tabela: array vazio = tudo liberado (nenhuma restricao adicional).
+  const executeRestricted = (config?.allowedExecuteModules.length ?? 0) > 0;
+  const handleToggleExecuteModule = async (moduleKey: string) => {
+    if (!config) return;
+    setPendingExecuteKey(moduleKey);
+    const current = config.allowedExecuteModules;
+    const next = current.includes(moduleKey)
+      ? current.filter((k) => k !== moduleKey)
+      : [...current, moduleKey];
+    await updateTenantAiConfig({ allowedExecuteModules: next });
+    setPendingExecuteKey(null);
   };
 
   const handleSave = () => {
@@ -133,19 +181,9 @@ export function ConfigSistemaAuroraAgentes() {
             Cada agente pode ser ativado ou desativado — a Aurora não age em nome de um agente inativo quando ele é citado diretamente na conversa.
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[11px] font-bold text-slate-400 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 whitespace-nowrap">
-            {activeCount}/{displayList.length} ativos
-          </span>
-          <Button
-            type="button"
-            onClick={() => setEditing({ name: "", role: "", description: "" })}
-            size="sm"
-            className="bg-violet-600 hover:bg-violet-500 text-white border border-violet-600 font-bold uppercase tracking-wider"
-          >
-            <Plus className="w-3.5 h-3.5" /> Novo Agente
-          </Button>
-        </div>
+        <span className="shrink-0 text-[11px] font-bold text-slate-300 bg-white/10 border border-white/20 rounded-full px-3 py-1.5 whitespace-nowrap">
+          {activeCount}/{displayList.length} ativos
+        </span>
       </div>
 
       {!hasCustomAgents && (
@@ -161,6 +199,8 @@ export function ConfigSistemaAuroraAgentes() {
         {displayList.map((agent) => {
           const promptKey = promptKeyForAgent(agent.name);
           const isExpanded = expandedId === agent.id;
+          const executeKey = EXECUTE_MODULE_BY_NAME[agent.name];
+          const executeActive = !executeRestricted || (config?.allowedExecuteModules.includes(executeKey) ?? false);
           return (
             <Card
               key={agent.id}
@@ -182,7 +222,11 @@ export function ConfigSistemaAuroraAgentes() {
                         </span>
                       )}
                     </div>
-                    <Switch checked={agent.active} onCheckedChange={() => handleToggle(agent)} />
+                    <Switch
+                      checked={agent.active}
+                      disabled={agent.id === AURORA_CORE_ID && savingAuroraCore}
+                      onCheckedChange={() => handleToggle(agent)}
+                    />
                   </div>
                   {agent.description && <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{agent.description}</p>}
 
@@ -192,18 +236,38 @@ export function ConfigSistemaAuroraAgentes() {
                       expandedKey={expandedId}
                       setExpandedKey={setExpandedId}
                     />
-                    {hasCustomAgents && (
+                    {executeKey && (
+                      <Button
+                        type="button"
+                        onClick={() => handleToggleExecuteModule(executeKey)}
+                        disabled={pendingExecuteKey === executeKey}
+                        className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg ${
+                          executeActive
+                            ? "bg-violet-500/25 text-violet-200 border border-violet-500/50"
+                            : "bg-white/10 text-slate-300 border border-white/20"
+                        }`}
+                      >
+                        {pendingExecuteKey === executeKey ? (
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                        ) : executeActive ? (
+                          "Liberado"
+                        ) : (
+                          "Bloqueado"
+                        )}
+                      </Button>
+                    )}
+                    {hasCustomAgents && agent.id !== AURORA_CORE_ID && (
                       <>
                         <button
                           onClick={() => setEditing({ id: agent.id, name: agent.name, role: agent.role || "", description: agent.description || "" })}
-                          className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/10 rounded-lg transition-colors text-[10px] font-bold"
+                          className="flex items-center gap-1 px-2 py-1 bg-white/10 border border-white/20 text-slate-300 hover:text-slate-100 hover:bg-white/15 rounded-lg transition-colors text-[10px] font-bold"
                           title="Editar agente"
                         >
                           <Pencil className="w-3 h-3" /> Editar
                         </button>
                         <button
                           onClick={() => handleDelete(agent)}
-                          className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-white/10 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors text-[10px] font-bold"
+                          className="flex items-center gap-1 px-2 py-1 bg-white/10 border border-white/20 text-slate-300 hover:text-rose-300 hover:bg-rose-500/15 rounded-lg transition-colors text-[10px] font-bold"
                           title="Remover agente"
                         >
                           <Trash2 className="w-3 h-3" /> Remover
