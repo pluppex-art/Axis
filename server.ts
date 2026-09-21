@@ -16,50 +16,19 @@ import nodemailer from "nodemailer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface ChatContact {
-  id: string;
-  name: string;
-  avatar: string;
-  channel: "WhatsApp" | "Instagram" | "Email";
-  lastMessage: string;
-  time: string;
-  unread: number;
-  online: boolean;
-  phone?: string;
-  email?: string;
-  tags?: string[];
-  slaStatus?: string;
-}
-
-interface ChatMessage {
-  id: string;
-  text: string;
-  sender: "me" | "them";
-  time: string;
-  status?: "sent" | "read";
-  timestamp: number;
-}
-
 // ── In-Memory State ────────────────────────────────────────────────────────
 //
-// contacts/messages do simulador de WhatsApp eram arrays únicos e globais no
-// processo — sem tenant_id, qualquer usuário autenticado de QUALQUER tenant
-// via esses mesmos contatos/mensagens simulados de outro tenant. Agora seguem
-// o mesmo padrão já usado logo abaixo pra sources/customFields/etc.
-// (tenantBucket): um bucket por tenant, resolvido via current_tenant_id()
-// (RPC, roda com a sessão real do chamador).
+// Contatos/mensagens de WhatsApp NÃO vivem mais em memória — persistem de
+// verdade em chat_contacts/chat_messages (RLS por tenant), populadas pelo
+// webhook real do WAHA (ver POST /api/whatsapp/webhook/:instanceId). O
+// simulador em memória que existia aqui (contactsByTenant/messagesByTenant)
+// foi removido — ver SECURITY_AUDIT.md item A9/A10 pro histórico do problema
+// que isso resolveu (tabelas não existiam, estado se perdia a cada
+// redeploy/reciclagem de instância serverless).
 //
-// Instâncias de WhatsApp NÃO vivem mais em memória — ver
+// Instâncias de WhatsApp também não vivem em memória — ver
 // server/whatsappProvider.ts + rotas /api/whatsapp/instances abaixo, que
-// agora persistem de verdade na tabela whatsapp_instances (RLS por tenant).
-
-const contactsByTenant: Record<string, ChatContact[]> = {};
-const messagesByTenant: Record<string, Record<string, ChatMessage[]>> = {};
-
-function tenantMessages(tenantId: string): Record<string, ChatMessage[]> {
-  if (!messagesByTenant[tenantId]) messagesByTenant[tenantId] = {};
-  return messagesByTenant[tenantId];
-}
+// persistem de verdade na tabela whatsapp_instances (RLS por tenant).
 
 // Fallback in-memory de /api/settings/:category para quando não há tabela
 // crm_<categoria> no banco (sources/custom-fields/task-categories/templates
@@ -191,7 +160,7 @@ async function callGroq(prompt: string): Promise<string> {
 
 async function callGemini(prompt: string): Promise<string> {
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3.6-flash",
     contents: prompt,
   });
   let text = "";
@@ -2436,7 +2405,7 @@ app.post("/api/leads/suggest-tags", requireUser, async (req, res) => {
   if (!process.env.GEMINI_API_KEY) return res.json({ tags: ["Interesse", "Novo Lead", "PME"] });
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: `Suggest 3-5 relevant tags for a lead with the following info:
       Name: ${name}
       Company: ${company}
@@ -2468,7 +2437,7 @@ app.post("/api/ai/student-performance-insight", requireUser, async (req, res) =>
       ? grades.map((g: any) => `${g.subject}: ${g.value}`).join(", ")
       : "sem notas lançadas ainda";
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: `Você é um coordenador pedagógico. Analise o desempenho deste aluno e escreva 2-3 frases objetivas
 em português, destacando pontos fortes, riscos de evasão/desengajamento e uma recomendação prática.
 Nome: ${name || "Aluno"}
@@ -2497,7 +2466,7 @@ app.post("/api/ai/solar-analyze-fatura", requireUser, async (req, res) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: [
         {
           role: "user",
@@ -2632,7 +2601,7 @@ app.post("/api/leads/calculate-score", requireUser, async (req, res) => {
   if (process.env.GEMINI_API_KEY) {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-3.6-flash",
         contents: `Analyze this CRM lead and its recent activities, and compute:
         1. An AI score (0 to 100) indicating closeness to buying or closing.
         2. A lead temperature ('frio', 'morno', or 'quente').
@@ -2737,7 +2706,7 @@ app.post("/api/ai/performance-audit", requireUser, async (req, res) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: `Você é o Master IA do S.P.Y. CRM. Analise estes indicadores:
       MRR: ${mrr}, CAC: ${cac}, LTV: ${ltv}, Leads: ${leadsCount}, Fechamentos: ${dealsCount}.
       Gere 3 recomendações estratégicas baseadas em dados para otimizar o ROI.
@@ -2774,7 +2743,7 @@ app.post("/api/ai/content-script", requireUser, async (req, res) => {
   if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: "Chave de IA não configurada." });
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: `Você é um redator de conteúdo para redes sociais. Crie um roteiro curto (15-30 segundos de leitura) para um post de "${platform || "Instagram"}" com o tema "${title}". Contexto adicional: ${desc || "nenhum"}.
       Retorne estritamente um JSON: {"script": string, "hashtags": string[]} (hashtags sem o caractere #, só a palavra).`,
       config: {
@@ -2800,7 +2769,7 @@ app.post("/api/ai/pipeline-audit", requireUser, async (req, res) => {
   if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: "IA Offline" });
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: `Analise a etapa "${stageName}" do funil com estes leads:
       ${JSON.stringify(leads.map((l: any) => ({ name: l.name, score: l.scoreIA, temp: l.temperature })))}
       Forneça um insight rápido e uma ação imediata para o vendedor.
@@ -2830,7 +2799,7 @@ app.post("/api/ai/marketing-advisor", requireUser, async (req, res) => {
       return acc;
     }, {});
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: `Análise de Marketing:
       Gasto Total: R$ ${spent}
       Conversão por Origem: ${JSON.stringify(sourceData)}
@@ -2856,7 +2825,7 @@ app.post("/api/ai/settings-audit", requireUser, async (req, res) => {
   if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: "IA Offline" });
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: `Você é o Auditor Master do S.P.Y. CRM. Analise esta configuração de ${type}:
       ${JSON.stringify(config)}
       Identifique possíveis gargalos, regras redundantes ou melhorias na lógica.
@@ -2967,7 +2936,7 @@ app.post("/api/ai/suggest-new-config", requireUser, async (req, res) => {
   if (!process.env.GEMINI_API_KEY) return res.json({ suggestion: null });
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: `Você é um consultor de CRM. Sugira um exemplo para "${type}".
       NÃO inclua campos como 'target'. Use os campos exatos abaixo.
       Responda APENAS com JSON:
@@ -2990,7 +2959,7 @@ app.post("/api/ai/generic-insight", requireUser, async (req, res) => {
   }
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: `Você é o cérebro analítico do S.P.Y. CRM.
       Contexto da solicitação: ${context}.
       Dados brutos para análise: ${JSON.stringify(data)}.
@@ -3145,18 +3114,25 @@ const AURORA_TOOLS = [
   },
 ];
 
-async function runAuroraTool(name: string, args: any, supabaseClient: any): Promise<any> {
+// `tenantId` é opcional pro caminho autenticado (req.supabase já escopa por
+// RLS) mas OBRIGATÓRIO na prática pro caminho novo do auto-reply do WhatsApp
+// (runAuroraAutoReply abaixo, que usa supabaseService — bypassa RLS de
+// propósito porque o webhook do WAHA não tem sessão de usuário). Filtra
+// explicitamente por tenant_id sempre que fornecido — redundante mas
+// inofensivo no caminho com RLS, essencial no caminho sem RLS.
+async function runAuroraTool(name: string, args: any, supabaseClient: any, tenantId?: string): Promise<any> {
   const dias = Number(args?.dias) > 0 ? Number(args.dias) : 3;
+  const scoped = (q: any) => (tenantId ? q.eq("tenant_id", tenantId) : q);
 
   if (name === "leads_sem_contato") {
     const cutoff = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
-    const { data, error } = await supabaseClient
-      .from("leads")
-      .select("name, company, status, last_contact_at")
-      .is("deleted_at", null)
-      .or(`last_contact_at.is.null,last_contact_at.lt.${cutoff}`)
-      .order("last_contact_at", { ascending: true, nullsFirst: true })
-      .limit(25);
+    const { data, error } = await scoped(
+      supabaseClient
+        .from("leads")
+        .select("name, company, status, last_contact_at")
+        .is("deleted_at", null)
+        .or(`last_contact_at.is.null,last_contact_at.lt.${cutoff}`)
+    ).order("last_contact_at", { ascending: true, nullsFirst: true }).limit(25);
     if (error) return { error: error.message };
     return { dias_considerados: dias, total: data?.length ?? 0, leads: data ?? [] };
   }
@@ -3165,7 +3141,7 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
     // Agregado sobre TODOS os leads — precisa da paginação de verdade (ver
     // fetchAllRowsPaginated), senão o PostgREST trunca em 1000 e a IA
     // responde uma contagem errada pra qualquer tenant acima disso.
-    const data = await fetchAllRowsPaginated(supabaseClient, "leads", "status", (q) => q.is("deleted_at", null));
+    const data = await fetchAllRowsPaginated(supabaseClient, "leads", "status", (q) => scoped(q).is("deleted_at", null));
     const contagem: Record<string, number> = {};
     for (const row of data ?? []) {
       const s = (row as any).status || "Sem status";
@@ -3177,13 +3153,13 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
   if (name === "proximas_reunioes") {
     const nowIso = new Date().toISOString();
     const futureIso = new Date(Date.now() + dias * 24 * 60 * 60 * 1000).toISOString();
-    const { data, error } = await supabaseClient
-      .from("reunioes")
-      .select('leadName, closerName, scheduledAt, status')
-      .gte("scheduledAt", nowIso)
-      .lte("scheduledAt", futureIso)
-      .order("scheduledAt", { ascending: true })
-      .limit(25);
+    const { data, error } = await scoped(
+      supabaseClient
+        .from("reunioes")
+        .select('leadName, closerName, scheduledAt, status')
+        .gte("scheduledAt", nowIso)
+        .lte("scheduledAt", futureIso)
+    ).order("scheduledAt", { ascending: true }).limit(25);
     if (error) return { error: error.message };
     return { dias_considerados: dias, total: data?.length ?? 0, reunioes: data ?? [] };
   }
@@ -3192,7 +3168,7 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
     const cutoff = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
     // Mesma razão do resumo_pipeline: soma agregada precisa de TODAS as
     // linhas do período, não só as primeiras 1000 que o PostgREST devolveria.
-    const data = await fetchAllRowsPaginated(supabaseClient, "finance_entries", "type,value,status", (q) => q.gte("created_at", cutoff));
+    const data = await fetchAllRowsPaginated(supabaseClient, "finance_entries", "type,value,status", (q) => scoped(q).gte("created_at", cutoff));
     const porTipo: Record<string, number> = {};
     for (const row of data ?? []) {
       const t = (row as any).type || "Outro";
@@ -3202,28 +3178,22 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
   }
 
   if (name === "tarefas_pendentes") {
-    const { data, error } = await supabaseClient
-      .from("tasks")
-      .select("title, status, priority, date, responsible")
-      .neq("status", "Concluída")
-      .limit(25);
+    const { data, error } = await scoped(
+      supabaseClient.from("tasks").select("title, status, priority, date, responsible").neq("status", "Concluída")
+    ).limit(25);
     if (error) return { error: error.message };
     return { total_pendentes: data?.length ?? 0, tarefas: data ?? [] };
   }
 
   if (name === "vendas_e_propostas") {
-    const { data: propostas, error: propErr } = await supabaseClient
-      .from("proposals")
-      .select("titulo, cliente, valor, status, created_at")
-      .order("created_at", { ascending: false })
-      .limit(15);
+    const { data: propostas, error: propErr } = await scoped(
+      supabaseClient.from("proposals").select("titulo, cliente, valor, status, created_at")
+    ).order("created_at", { ascending: false }).limit(15);
     if (propErr) return { error: propErr.message };
 
-    const { data: vendas, error: vendErr } = await supabaseClient
-      .from("vendas")
-      .select("id, valor_total, forma_pagamento, status, created_at")
-      .order("created_at", { ascending: false })
-      .limit(15);
+    const { data: vendas, error: vendErr } = await scoped(
+      supabaseClient.from("vendas").select("id, valor_total, forma_pagamento, status, created_at")
+    ).order("created_at", { ascending: false }).limit(15);
 
     return {
       propostas: propostas ?? [],
@@ -3232,10 +3202,9 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
   }
 
   if (name === "clientes_resumo") {
-    const { data, error } = await supabaseClient
-      .from("clientes")
-      .select("name, industry, status, city, state")
-      .limit(30);
+    const { data, error } = await scoped(
+      supabaseClient.from("clientes").select("name, industry, status, city, state")
+    ).limit(30);
     if (error) return { error: error.message };
     return { total_clientes: data?.length ?? 0, clientes: data ?? [] };
   }
@@ -3243,7 +3212,7 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
   if (name === "solar_funil_resumo") {
     // Mesma razão do resumo_pipeline: funil agregado precisa de TODAS as
     // linhas, não só as primeiras 1000 que o PostgREST devolveria sem paginar.
-    const rows = await fetchAllRowsPaginated(supabaseClient, "solar_analises", "status,potencia_estimada_kwp,valor_proposta", (q) => q);
+    const rows = await fetchAllRowsPaginated(supabaseClient, "solar_analises", "status,potencia_estimada_kwp,valor_proposta", (q) => scoped(q));
     const porEstagio: Record<string, number> = {};
     rows.forEach((r: any) => { porEstagio[r.status] = (porEstagio[r.status] ?? 0) + 1; });
     const fechados = rows.filter((r: any) => r.status === "Concluído");
@@ -3261,6 +3230,73 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any): Prom
   }
 
   return { error: `Ferramenta desconhecida: ${name}` };
+}
+
+/**
+ * Auto-reply da Aurora pra mensagem recebida via WhatsApp (chamado só pelo
+ * webhook do WAHA — ver POST /api/whatsapp/webhook/:instanceId). Só dispara
+ * se o tenant tiver pelo menos um agente ativo em aurora_agents (decisão do
+ * usuário: sem agente ativo, mensagem fica só registrada, sem resposta
+ * automática). Reaproveita exatamente o mesmo padrão de tool-calling do chat
+ * manual (/api/ai/aurora-tenant-chat), só trocando o tom do systemInstruction
+ * pra um atendimento via WhatsApp (mais curto) e usando supabaseService (sem
+ * sessão de usuário aqui) — por isso runAuroraTool recebe tenantId explícito.
+ */
+async function runAuroraAutoReply(tenantId: string, instanceId: string, contactId: string, phone: string, incomingText: string): Promise<void> {
+  if (!supabaseService || !process.env.GEMINI_API_KEY) return;
+
+  try {
+    const { data: activeAgent } = await supabaseService
+      .from("aurora_agents").select("id").eq("tenant_id", tenantId).eq("active", true).limit(1).maybeSingle();
+    if (!activeAgent) return; // sem agente ativo — sem resposta automática, por decisão explícita do usuário.
+
+    const { data: history } = await supabaseService
+      .from("chat_messages").select("text,sender").eq("contact_id", contactId)
+      .order("created_at", { ascending: false }).limit(15);
+    const contents = [...(history ?? [])].reverse().map((m: any) => ({
+      role: m.sender === "contact" ? "user" : "model",
+      parts: [{ text: m.text }],
+    }));
+    if (contents.length === 0 || contents[contents.length - 1].role !== "user") {
+      contents.push({ role: "user", parts: [{ text: incomingText }] });
+    }
+
+    const systemInstruction = "Você é a Aurora, atendente virtual do S.P.Y. CRM conversando por WhatsApp com um cliente/lead da empresa. Responda de forma curta, natural e cordial, como uma conversa real de WhatsApp — não como um relatório. Use as ferramentas disponíveis SOMENTE se precisar consultar dado real da empresa (pipeline, financeiro, tarefas) pra responder; nunca invente números, nomes ou datas. Responda em português do Brasil.";
+
+    const first = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents,
+      config: { systemInstruction, tools: [{ functionDeclarations: AURORA_TOOLS }] },
+    });
+
+    let replyText: string;
+    const call = (first as any).functionCalls?.[0];
+    if (!call) {
+      replyText = typeof first.text === "function" ? (first as any).text() : (first.text ?? "");
+    } else {
+      const toolResult = await runAuroraTool(call.name, call.args, supabaseService, tenantId);
+      const second = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: [
+          ...contents,
+          { role: "model", parts: [{ functionCall: call }] },
+          { role: "user", parts: [{ functionResponse: { name: call.name, response: toolResult } }] },
+        ],
+        config: { systemInstruction, tools: [{ functionDeclarations: AURORA_TOOLS }] },
+      });
+      replyText = typeof second.text === "function" ? (second as any).text() : (second.text ?? "");
+    }
+    if (!replyText?.trim()) return;
+
+    const provider = getWhatsAppProvider();
+    await provider.sendTextMessage(instanceId, phone, replyText);
+    await supabaseService.from("chat_messages").insert({
+      tenant_id: tenantId, contact_id: contactId, whatsapp_instance_id: instanceId, text: replyText, sender: "ai", status: "sent",
+    });
+    await supabaseService.from("chat_contacts").update({ last_message: replyText, last_message_at: new Date().toISOString() }).eq("id", contactId);
+  } catch (err: any) {
+    console.error("[whatsapp/auto-reply]", err?.message);
+  }
 }
 
 app.post("/api/ai/aurora-tenant-chat", requireUser, async (req: any, res: any) => {
@@ -3299,7 +3335,7 @@ app.post("/api/ai/aurora-tenant-chat", requireUser, async (req: any, res: any) =
 
   try {
     const first = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: [{ role: "user", parts: [{ text: message }] }],
       config: { systemInstruction, tools: [{ functionDeclarations: AURORA_TOOLS }] },
     });
@@ -3313,7 +3349,7 @@ app.post("/api/ai/aurora-tenant-chat", requireUser, async (req: any, res: any) =
     const toolResult = await runAuroraTool(call.name, call.args, req.supabase);
 
     const second = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: [
         { role: "user", parts: [{ text: message }] },
         { role: "model", parts: [{ functionCall: call }] },
@@ -3616,6 +3652,41 @@ app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) 
 
 function bodyWithFallback(req: any) { return req.body || {}; }
 
+// URL pública desta implantação — usada só pra montar a URL de webhook que o
+// servidor registra automaticamente no WAHA ao criar uma instância (ver
+// POST /api/whatsapp/instances abaixo). Precisa apontar pro domínio real em
+// produção (https://www.spycrm.com.br); sem configurar, cai no dev local.
+const PUBLIC_APP_URL = (process.env.PUBLIC_APP_URL || "http://localhost:3002").replace(/\/+$/, "");
+
+function mapChatContactRow(row: any) {
+  const initials = (row.name || "").split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase() || "WA";
+  return {
+    id: row.id,
+    name: row.name,
+    avatar: row.avatar || initials,
+    channel: row.channel || "WhatsApp",
+    lastMessage: row.last_message || "",
+    time: row.last_message_at ? new Date(row.last_message_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+    unread: row.unread_count || 0,
+    online: false, // WAHA não expõe presença em tempo real neste contrato — sempre false até existir.
+    phone: row.phone,
+    tags: row.tags || [],
+  };
+}
+
+// sender no banco distingue contact/human/ai (auditoria/futura UI) — a tela
+// hoje só entende "me"/"them", então human e ai colapsam em "me" (é "a gente"
+// respondendo, do ponto de vista do cliente no WhatsApp).
+function mapChatMessageRow(row: any) {
+  return {
+    id: row.id,
+    text: row.text,
+    sender: row.sender === "contact" ? "them" : "me",
+    time: new Date(row.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    status: row.status || undefined,
+  };
+}
+
 function mapInstanceRow(row: any) {
   return {
     id: row.id,
@@ -3644,24 +3715,30 @@ app.get("/api/whatsapp/instances", requireUser, async (req: any, res) => {
 });
 
 app.post("/api/whatsapp/instances", requireUser, async (req: any, res) => {
-  const { name, webhookUrl = "" } = req.body;
+  const { name } = req.body;
   if (!name) return res.status(400).json({ error: "Nome da instância é obrigatório" });
 
   const provider = getWhatsAppProvider();
   const { data: row, error: insertError } = await req.supabase
     .from("whatsapp_instances")
-    .insert({ name, webhook_url: webhookUrl, status: "DISCONNECTED", provider: provider.name })
+    .insert({ name, status: "DISCONNECTED", provider: provider.name })
     .select().maybeSingle();
   if (insertError || !row) {
     console.error("[whatsapp/instances POST]", insertError?.message);
     return res.status(500).json({ error: "Erro ao criar instância." });
   }
 
+  // A URL de webhook não é mais digitada pelo usuário — é montada aqui, com
+  // o token gerado pela própria migration (whatsapp_instances.webhook_secret),
+  // e registrada direto no WAHA. Sem isso, o usuário precisava colar uma URL
+  // manualmente nas Configurações sem nada real do outro lado pra receber.
+  const computedWebhookUrl = `${PUBLIC_APP_URL}/api/whatsapp/webhook/${row.id}?secret=${row.webhook_secret}`;
+
   try {
-    const created = await provider.createInstance(row.id, webhookUrl);
+    const created = await provider.createInstance(row.id, computedWebhookUrl);
     const { data: updated } = await req.supabase
       .from("whatsapp_instances")
-      .update({ api_key: created.apiKey })
+      .update({ api_key: created.apiKey, webhook_url: computedWebhookUrl })
       .eq("id", row.id).select().maybeSingle();
     return res.json(mapInstanceRow(updated || row));
   } catch (err: any) {
@@ -3719,9 +3796,12 @@ app.delete("/api/whatsapp/instances/:id", requireUser, async (req: any, res) => 
 
 app.put("/api/whatsapp/instances/:id", requireUser, async (req: any, res) => {
   const { id } = req.params;
-  const { webhookUrl, name, phone, status } = req.body;
+  // webhookUrl não é mais editável por aqui de propósito — é gerado e
+  // registrado no WAHA só na criação (POST acima), com o token da própria
+  // instância. Aceitar edição manual aqui reabriria a mesma brecha que
+  // motivou tirar o campo livre das Configurações.
+  const { name, phone, status } = req.body;
   const updates: Record<string, any> = {};
-  if (webhookUrl !== undefined) updates.webhook_url = webhookUrl;
   if (name !== undefined) updates.name = name;
   if (phone !== undefined) updates.phone = phone;
   if (status !== undefined) updates.status = status;
@@ -3731,31 +3811,123 @@ app.put("/api/whatsapp/instances/:id", requireUser, async (req: any, res) => {
   res.json(mapInstanceRow(updated));
 });
 
+/**
+ * Webhook receiver do WAHA — chamado pelo próprio gateway WAHA quando uma
+ * mensagem chega no número conectado, NÃO por um usuário logado (não tem
+ * sessão/JWT de app, então nunca usa req.supabase aqui, sempre supabaseService
+ * + tenant_id resolvido a partir da própria linha de whatsapp_instances,
+ * nunca de um campo do payload). Verifica o token (?secret=) antes de
+ * processar qualquer coisa — sem isso, seria um POST público que qualquer um
+ * poderia chamar pra injetar mensagem falsa em qualquer tenant.
+ *
+ * Formato do payload (evento "message" do WAHA): baseado no contrato REST
+ * público documentado em https://waha.devlike.pro — igual ao resto do
+ * WAHAProvider (ver server/whatsappProvider.ts), isso nunca foi exercitado
+ * contra um servidor WAHA real neste ambiente até este ponto; tratar como
+ * não-validado até confirmar contra a instância real já configurada.
+ */
+app.post("/api/whatsapp/webhook/:instanceId", async (req: any, res) => {
+  const { instanceId } = req.params;
+  const secret = typeof req.query.secret === "string" ? req.query.secret : "";
+
+  if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada." });
+
+  try {
+    const { data: inst } = await supabaseService
+      .from("whatsapp_instances")
+      .select("id, tenant_id, webhook_secret")
+      .eq("id", instanceId)
+      .maybeSingle();
+    if (!inst || !secret || secret !== inst.webhook_secret) {
+      return res.status(403).json({ error: "Token de webhook inválido." });
+    }
+
+    // Responde rápido pro WAHA não re-tentar por timeout — o processamento
+    // (persistência + auto-reply, que chama a IA) roda depois, sem bloquear
+    // a resposta HTTP.
+    res.status(200).json({ received: true });
+
+    const body = req.body ?? {};
+    if (body.event !== "message") return; // session.status e outros eventos: só ack, sem processar.
+
+    const payload = body.payload ?? {};
+    if (payload.fromMe) return; // eco da própria mensagem enviada por nós — já persistida no envio.
+
+    const waMessageId: string | undefined = payload.id;
+    const rawFrom: string = payload.from || "";
+    const phone = rawFrom.replace(/@c\.us$/, "").replace(/@s\.whatsapp\.net$/, "");
+    const text: string = payload.body || payload.text || "";
+    if (!phone || !text) return;
+
+    const { data: contact, error: contactErr } = await supabaseService
+      .from("chat_contacts")
+      .upsert(
+        { tenant_id: inst.tenant_id, whatsapp_instance_id: inst.id, phone, name: payload.notifyName || phone, last_message: text, last_message_at: new Date().toISOString() },
+        { onConflict: "whatsapp_instance_id,phone" }
+      )
+      .select().maybeSingle();
+    if (contactErr || !contact) {
+      console.error("[whatsapp/webhook] upsert contato falhou:", contactErr?.message);
+      return;
+    }
+    // unread_count separado do upsert acima (upsert sobrescreveria com 0 de novo).
+    await supabaseService.from("chat_contacts").update({ unread_count: (contact.unread_count || 0) + 1 }).eq("id", contact.id);
+
+    // insert() simples em vez de upsert(onConflict) — o PostgREST/supabase-js
+    // não resolve o arbiter do UNIQUE(wa_message_id) de forma confiável aqui
+    // (testado direto: erro "no unique or exclusion constraint matching",
+    // mesmo com a constraint existindo e o schema recarregado). Trata
+    // violação de unicidade (23505 — reentrega do mesmo evento pelo WAHA)
+    // como esperada, não como erro real.
+    const { error: msgErr } = await supabaseService
+      .from("chat_messages")
+      .insert({ tenant_id: inst.tenant_id, contact_id: contact.id, whatsapp_instance_id: inst.id, text, sender: "contact", status: "received", wa_message_id: waMessageId || null });
+    if (msgErr && msgErr.code !== "23505") console.error("[whatsapp/webhook] insert mensagem falhou:", msgErr.message);
+    if (msgErr) return; // duplicata (23505) ou falha real — não dispara auto-reply de novo pro mesmo evento.
+
+    await runAuroraAutoReply(inst.tenant_id, inst.id, contact.id, contact.phone, text);
+  } catch (err: any) {
+    console.error("[whatsapp/webhook]", err?.message);
+    // Resposta HTTP já foi enviada acima — só loga.
+  }
+});
+
 app.get("/api/whatsapp/contacts", requireUser, async (req: any, res) => {
-  const { data: tenantId } = await req.supabase.rpc("current_tenant_id");
-  res.json(tenantBucket(contactsByTenant, tenantId, []));
+  // Contatos crescem com o tempo igual as outras tabelas de alto volume —
+  // 500 mais recentes por conversa (order por last_message_at) é generoso
+  // pro uso real de uma caixa de entrada; sem isso, sofreria do mesmo
+  // truncamento silencioso em 1000 do PostgREST pra tenants grandes.
+  const { data, error } = await req.supabase.from("chat_contacts").select("*").order("last_message_at", { ascending: false, nullsFirst: false }).limit(500);
+  if (error) {
+    console.error("[whatsapp/contacts GET]", error.message);
+    return res.status(500).json({ error: "Erro ao buscar contatos." });
+  }
+  res.json((data || []).map(mapChatContactRow));
 });
 
 app.post("/api/whatsapp/contacts", requireUser, async (req: any, res) => {
-  const { name, phone, email, tags = ["lead"] } = req.body;
+  const { name, phone, tags = ["lead"] } = req.body;
   if (!name || !phone) return res.status(400).json({ error: "Nome e Telefone são obrigatórios" });
-  const { data: tenantId } = await req.supabase.rpc("current_tenant_id");
-  const contacts = tenantBucket(contactsByTenant, tenantId, []);
+  const tenantId = await resolveRequestedTenantId(req, res);
+  if (!tenantId) return;
   const cleanPhone = phone.startsWith("+") ? phone : `+55 ${phone}`;
-  const existing = contacts.find((c) => c.phone === cleanPhone);
-  if (existing) return res.json(existing);
-  const initials = name.split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase() || "WA";
-  const newContact: ChatContact = {
-    id: Math.random().toString(36).substring(2, 9),
-    name, avatar: initials, channel: "WhatsApp",
-    lastMessage: "Nova conversa iniciada",
-    time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    unread: 0, online: Math.random() > 0.5,
-    phone: cleanPhone, email, tags, slaStatus: "Dentro do Prazo"
-  };
-  contacts.unshift(newContact);
-  tenantMessages(tenantId)[newContact.id] = [];
-  res.json(newContact);
+
+  const { data: existing } = await req.supabase.from("chat_contacts").select("*").eq("phone", cleanPhone).maybeSingle();
+  if (existing) return res.json(mapChatContactRow(existing));
+
+  // Contato criado manualmente pelo CRM (não por mensagem recebida) — sem
+  // instância vinculada ainda; associa à primeira instância conectada do
+  // tenant, se houver (pra "Enviar" já funcionar na hora).
+  const { data: inst } = await req.supabase.from("whatsapp_instances").select("id").eq("status", "CONNECTED").limit(1).maybeSingle();
+
+  const { data: created, error } = await req.supabase.from("chat_contacts")
+    .insert({ tenant_id: tenantId, whatsapp_instance_id: inst?.id ?? null, name, phone: cleanPhone, tags, last_message: "Nova conversa iniciada", last_message_at: new Date().toISOString() })
+    .select().maybeSingle();
+  if (error || !created) {
+    console.error("[whatsapp/contacts POST]", error?.message);
+    return res.status(500).json({ error: "Erro ao criar contato." });
+  }
+  res.json(mapChatContactRow(created));
 });
 
 app.get("/api/whatsapp/messages/:contactId", requireUser, async (req: any, res) => {
@@ -3765,94 +3937,67 @@ app.get("/api/whatsapp/messages/:contactId", requireUser, async (req: any, res) 
   // — uma conversa de anos com um cliente recorrente facilmente passa de
   // milhares de mensagens. Traz as 200 mais recentes (desc) e inverte pra
   // manter a ordem cronológica que a UI espera (mais antiga primeiro).
-  const { data, error } = await req.supabase.from("chat_messages").select("*").eq("contact_id", contactId).order("timestamp", { ascending: false }).limit(200);
-  if (!error && data) return res.json([...data].reverse());
-  const { data: tenantId } = await req.supabase.rpc("current_tenant_id");
-  res.json(tenantMessages(tenantId)[contactId] || []);
+  const { data, error } = await req.supabase.from("chat_messages").select("*").eq("contact_id", contactId).order("created_at", { ascending: false }).limit(200);
+  if (error) {
+    console.error("[whatsapp/messages GET]", error.message);
+    return res.status(500).json({ error: "Erro ao buscar mensagens." });
+  }
+  res.json([...(data || [])].reverse().map(mapChatMessageRow));
 });
 
 app.post("/api/whatsapp/messages/send", requireUser, async (req: any, res) => {
   const { contactId, text } = req.body;
   if (!contactId || !text) return res.status(400).json({ error: "ID do contato e texto são obrigatórios" });
-  const { data: tenantId } = await req.supabase.rpc("current_tenant_id");
+  const tenantId = await resolveRequestedTenantId(req, res);
+  if (!tenantId) return;
+
+  const { data: contact } = await req.supabase.from("chat_contacts").select("*").eq("id", contactId).maybeSingle();
+  if (!contact) return res.status(404).json({ error: "Contato não encontrado" });
 
   const provider = getWhatsAppProvider();
+  let instanceIdForSend = contact.whatsapp_instance_id;
   if (provider.name === "waha") {
     // Só entra aqui se WAHA_API_URL estiver configurada — nesse modo o envio
     // precisa ser real (nada de eco local fingindo sucesso).
-    const contactForSend = tenantBucket(contactsByTenant, tenantId, []).find((c) => c.id === contactId);
-    if (!contactForSend) return res.status(404).json({ error: "Contato não encontrado" });
-    if (!contactForSend.phone) return res.status(400).json({ error: "Contato sem telefone cadastrado — não é possível enviar via WhatsApp." });
-    const { data: inst } = await req.supabase.from("whatsapp_instances").select("id").eq("status", "CONNECTED").limit(1).maybeSingle();
-    if (!inst) return res.status(409).json({ error: "Nenhuma instância WhatsApp conectada. Conecte uma instância antes de enviar mensagens." });
+    if (!contact.phone) return res.status(400).json({ error: "Contato sem telefone cadastrado — não é possível enviar via WhatsApp." });
+    if (!instanceIdForSend) {
+      const { data: inst } = await req.supabase.from("whatsapp_instances").select("id").eq("status", "CONNECTED").limit(1).maybeSingle();
+      if (!inst) return res.status(409).json({ error: "Nenhuma instância WhatsApp conectada. Conecte uma instância antes de enviar mensagens." });
+      instanceIdForSend = inst.id;
+    }
     try {
-      await provider.sendTextMessage(inst.id, contactForSend.phone, text);
+      await provider.sendTextMessage(instanceIdForSend, contact.phone, text);
     } catch (err: any) {
       console.error("[whatsapp/messages/send] waha", err?.message);
       return res.status(502).json({ error: `Falha ao enviar mensagem via WAHA: ${err?.message || "erro desconhecido"}` });
     }
   }
 
-  const timeString = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const userMsg: ChatMessage = {
-    id: "msg_" + Math.random().toString(36).substring(2, 9),
-    text, sender: "me", time: timeString, status: "sent", timestamp: Date.now()
-  };
-  const msgsByContact = tenantMessages(tenantId);
-  if (!msgsByContact[contactId]) msgsByContact[contactId] = [];
-  msgsByContact[contactId].push(userMsg);
-  // req.supabase (escopado pela sessão do chamador, respeita RLS) em vez do client
-  // anon module-level — essas tabelas não existem hoje (ver SECURITY_AUDIT.md item
-  // A9), então isso é um no-op silencioso, mas já fica correto pra quando existirem.
-  await req.supabase.from("chat_messages").insert([{ id: userMsg.id, text: userMsg.text, sender: userMsg.sender, time: userMsg.time, status: userMsg.status, timestamp: userMsg.timestamp, contact_id: contactId, tenant_id: tenantId }]);
-  await req.supabase.from("chat_contacts").update({ lastMessage: text, time: timeString }).eq("id", contactId);
-  const contact = tenantBucket(contactsByTenant, tenantId, []).find((c) => c.id === contactId);
-  if (contact) { contact.lastMessage = text; contact.time = timeString; }
-  res.json({ success: true, message: userMsg });
-});
-
-app.post("/api/whatsapp/simulate-incoming", requireUser, async (req: any, res) => {
-  // Só existe pra testar a UI de conversas sem depender de tráfego real —
-  // não deve funcionar (e muito menos ser oferecido) quando há uma conexão
-  // WAHA real ativa, pra nunca ser confundido com uma mensagem que de fato
-  // chegou de um cliente no WhatsApp.
-  if (getActiveProviderName() !== "simulator") {
-    return res.status(409).json({ error: "Simulação de mensagem indisponível: há uma conexão WhatsApp real ativa (WAHA)." });
+  const { data: inserted, error } = await req.supabase.from("chat_messages")
+    .insert({ tenant_id: tenantId, contact_id: contactId, whatsapp_instance_id: instanceIdForSend, text, sender: "human", status: "sent" })
+    .select().maybeSingle();
+  if (error || !inserted) {
+    console.error("[whatsapp/messages/send] insert", error?.message);
+    return res.status(500).json({ error: "Mensagem enviada mas falhou ao registrar no histórico." });
   }
-  const { contactId, text } = req.body;
-  if (!contactId || !text) return res.status(400).json({ error: "contactId e texto são obrigatórios" });
-  const { data: tenantId } = await req.supabase.rpc("current_tenant_id");
-  const contact = tenantBucket(contactsByTenant, tenantId, []).find((c) => c.id === contactId);
-  if (!contact) return res.status(404).json({ error: "Contato não encontrado" });
-  const timeString = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const inMsg: ChatMessage = {
-    id: "msg_sim_" + Math.random().toString(36).substring(2, 9),
-    text, sender: "them", time: timeString, timestamp: Date.now()
-  };
-  const msgsByContact = tenantMessages(tenantId);
-  if (!msgsByContact[contactId]) msgsByContact[contactId] = [];
-  msgsByContact[contactId].push(inMsg);
-  contact.lastMessage = text;
-  contact.time = timeString;
-  contact.unread += 1;
-  await req.supabase.from("chat_messages").insert([{ id: inMsg.id, text: inMsg.text, sender: inMsg.sender, time: inMsg.time, timestamp: inMsg.timestamp, contact_id: contactId, tenant_id: tenantId }]);
-  await req.supabase.from("chat_contacts").update({ lastMessage: text, time: timeString, unread: contact.unread }).eq("id", contactId);
-  res.json({ message: inMsg, contact });
+  await req.supabase.from("chat_contacts").update({ last_message: text, last_message_at: new Date().toISOString() }).eq("id", contactId);
+  res.json({ success: true, message: mapChatMessageRow(inserted) });
 });
 
 app.post("/api/whatsapp/copilot/analyze", requireUser, async (req: any, res) => {
   const { contactId } = req.body;
   if (!contactId) return res.status(400).json({ error: "contactId é obrigatório" });
-  const { data: tenantId } = await req.supabase.rpc("current_tenant_id");
-  const chatHistory = tenantMessages(tenantId)[contactId] || [];
-  const contact = tenantBucket(contactsByTenant, tenantId, []).find((c) => c.id === contactId);
-  if (chatHistory.length === 0) {
+  const [{ data: chatHistory }, { data: contact }] = await Promise.all([
+    req.supabase.from("chat_messages").select("text,sender").eq("contact_id", contactId).order("created_at", { ascending: true }).limit(200),
+    req.supabase.from("chat_contacts").select("name").eq("id", contactId).maybeSingle(),
+  ]);
+  if (!chatHistory || chatHistory.length === 0) {
     return res.json({
       suggestion: "Ainda não há mensagens registradas com este contato para analisar. Tente fazer uma saudação cortês, introduzindo o S.P.Y. CRM e perguntando como pode auxiliá-lo.",
       sentiment: "Neutro"
     });
   }
-  const conversationText = chatHistory.map((m) => `${m.sender === "me" ? "Vendedor/Atendente" : "Cliente"}: ${m.text}`).join("\n");
+  const conversationText = chatHistory.map((m: any) => `${m.sender === "contact" ? "Cliente" : "Vendedor/Atendente"}: ${m.text}`).join("\n");
   const promptContext = `Você é o S.P.Y. Copilot, um assistente especializado em CRM, Vendas e Atendimento via WhatsApp.
   O cliente se chama: ${contact ? contact.name : "Cliente"}.
   O histórico de mensagens é este:
@@ -3874,7 +4019,7 @@ app.post("/api/whatsapp/copilot/analyze", requireUser, async (req: any, res) => 
       return res.json({ analysis: "O cliente demonstrou interesse inicial. A IA sugere oferecer atendimento ágil para acelerar o fechamento.", suggestion: sugg, sentiment: "Positivo" });
     }
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents: promptContext,
       config: {
         responseMimeType: "application/json",

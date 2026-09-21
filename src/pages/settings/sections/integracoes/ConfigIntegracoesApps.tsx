@@ -195,13 +195,6 @@ export function ConfigIntegracoesApps() {
 
   // WhatsApp (Simulador ou WAHA real) State
   const [instances, setInstances] = useState<any[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState("");
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [selectedContactId, setSelectedContactId] = useState("");
-  const [simulationText, setSimulationText] = useState("Olá! Gostaria de mais informações sobre o produto.");
-  const [savingWebhook, setSavingWebhook] = useState(false);
-  const [simulating, setSimulating] = useState(false);
   const [newInstanceName, setNewInstanceName] = useState("");
   const [creatingInstance, setCreatingInstance] = useState(false);
   const [connectingInstanceId, setConnectingInstanceId] = useState<string | null>(null);
@@ -227,10 +220,9 @@ export function ConfigIntegracoesApps() {
 
   const [whatsappProviderStatus, setWhatsappProviderStatus] = useState<{ provider: "simulator" | "waha"; configured: boolean } | null>(null);
 
-  // Load instances & contacts for WhatsApp
+  // Load instances for WhatsApp
   useEffect(() => {
     fetchInstances();
-    fetchContacts();
     apiFetch("/api/whatsapp/provider-status").then((r) => r.json()).then(setWhatsappProviderStatus).catch(() => setWhatsappProviderStatus(null));
   }, []);
 
@@ -239,23 +231,9 @@ export function ConfigIntegracoesApps() {
       .then((res) => res.json())
       .then((data) => {
         setInstances(data);
-        if (data.length > 0) {
-          setSelectedInstanceId(data[0].id);
-          setWebhookUrl(data[0].webhookUrl || "");
-          setWhatsappWebhookUrl(data[0].webhookUrl || "");
-        }
+        if (data.length > 0) setWhatsappWebhookUrl(data[0].webhookUrl || "");
       })
       .catch((err) => console.error("Error fetching instances:", err));
-  };
-
-  const fetchContacts = () => {
-    apiFetch("/api/whatsapp/contacts")
-      .then((res) => res.json())
-      .then((data) => {
-        setContacts(data);
-        if (data.length > 0) setSelectedContactId(data[0].id);
-      })
-      .catch((err) => console.error("Error fetching contacts:", err));
   };
 
   // Meta Ads actions
@@ -357,10 +335,12 @@ export function ConfigIntegracoesApps() {
   const handleCreateInstance = () => {
     if (!newInstanceName.trim()) { toast.error("Dê um nome para a instância."); return; }
     setCreatingInstance(true);
+    // A URL de webhook não é mais enviada daqui — o servidor gera e registra
+    // automaticamente no WAHA ao criar a instância (ver POST /api/whatsapp/instances).
     apiFetch("/api/whatsapp/instances", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newInstanceName.trim(), webhookUrl }),
+      body: JSON.stringify({ name: newInstanceName.trim() }),
     })
       .then(async (res) => {
         const data = await res.json();
@@ -384,55 +364,6 @@ export function ConfigIntegracoesApps() {
       })
       .catch((err: any) => toast.error(err?.message || "Erro ao conectar instância."))
       .finally(() => setConnectingInstanceId(null));
-  };
-
-  // WhatsApp Webhook Save
-  const handleSaveWhatsAppWebhook = () => {
-    if (!selectedInstanceId) {
-      setWhatsappWebhookUrl(webhookUrl);
-      toast.success("URL de Webhook salva com sucesso!");
-      return;
-    }
-    setSavingWebhook(true);
-    apiFetch(`/api/whatsapp/instances/${selectedInstanceId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ webhookUrl }),
-    })
-      .then((res) => res.json())
-      .then(() => {
-        setWhatsappWebhookUrl(webhookUrl);
-        toast.success("URL de Webhook do WhatsApp sincronizada com sucesso!");
-        setSavingWebhook(false);
-        fetchInstances();
-      })
-      .catch(() => {
-        toast.error("Erro ao salvar configuração do Webhook.");
-        setSavingWebhook(false);
-      });
-  };
-
-  // WhatsApp Message Simulation
-  const handleSimulateWhatsAppMessage = () => {
-    if (!selectedContactId || !simulationText.trim()) {
-      toast.error("Selecione um contato e digite uma mensagem.");
-      return;
-    }
-    setSimulating(true);
-    apiFetch("/api/whatsapp/simulate-incoming", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contactId: selectedContactId, text: simulationText.trim() }),
-    })
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "Falha ao simular recebimento.");
-        toast.success("Mensagem simulada adicionada à conversa (modo simulador — nenhuma mensagem real foi recebida).");
-      })
-      .catch((err: any) => {
-        toast.error(err?.message || "Falha ao simular recebimento do WhatsApp.");
-      })
-      .finally(() => setSimulating(false));
   };
 
   // Built-in list of catalog integrations
@@ -1180,18 +1111,25 @@ export function ConfigIntegracoesApps() {
               </div>
 
               {instances.map((inst) => (
-                <div key={inst.id} className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono items-center">
-                  <div className="text-[var(--color-text-muted)]">
-                    {inst.name} — 📞 <span className="font-bold text-[var(--color-text-primary)]">{inst.phone || "sem número"}</span>
+                <div key={inst.id} className="grid grid-cols-1 gap-2 text-xs font-mono border-b border-[var(--color-border-subtle)] pb-2 last:border-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
+                    <div className="text-[var(--color-text-muted)]">
+                      {inst.name} — 📞 <span className="font-bold text-[var(--color-text-primary)]">{inst.phone || "sem número"}</span>
+                    </div>
+                    <div className="text-[var(--color-text-muted)] flex items-center justify-between">
+                      🌐 Status: <span className={inst.status === "CONNECTED" ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>{inst.status}</span>
+                      {inst.status !== "CONNECTED" && (
+                        <Button size="sm" onClick={() => handleConnectInstance(inst.id)} loading={connectingInstanceId === inst.id} className="h-7 text-[10px] px-2.5">
+                          Conectar
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-[var(--color-text-muted)] flex items-center justify-between">
-                    🌐 Status: <span className={inst.status === "CONNECTED" ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>{inst.status}</span>
-                    {inst.status !== "CONNECTED" && (
-                      <Button size="sm" onClick={() => handleConnectInstance(inst.id)} loading={connectingInstanceId === inst.id} className="h-7 text-[10px] px-2.5">
-                        Conectar
-                      </Button>
-                    )}
-                  </div>
+                  {inst.webhookUrl && (
+                    <div className="text-[10px] text-[var(--color-text-faint)] truncate" title={inst.webhookUrl}>
+                      🔗 Webhook (gerado automaticamente): {inst.webhookUrl}
+                    </div>
+                  )}
                 </div>
               ))}
 
@@ -1207,70 +1145,10 @@ export function ConfigIntegracoesApps() {
                   + Instância
                 </Button>
               </div>
+              <p className="text-[10px] text-[var(--color-text-faint)]">
+                A URL de webhook é gerada e registrada automaticamente no WAHA ao criar a instância — nada pra configurar manualmente.
+              </p>
             </div>
-
-            {/* Webhook Callback input */}
-            <FormField label="URL de Callback do Webhook" hint="URL para onde o provedor de WhatsApp enviará eventos de mensagens recebidas">
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  placeholder="https://sua-api.com/api/webhooks/whatsapp"
-                  className="font-mono text-xs"
-                />
-                <Button onClick={handleSaveWhatsAppWebhook} loading={savingWebhook} className="shrink-0">
-                  Salvar
-                </Button>
-              </div>
-            </FormField>
-
-            {/* Inbound Simulator — só disponível em modo Simulador; some quando
-                há uma conexão WAHA real ativa (mensagens reais não devem ser
-                confundidas com uma simulação local). */}
-            {whatsappProviderStatus?.provider !== "waha" && (
-              <div className="p-4 rounded-[var(--radius-panel)] border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)]/60 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-primary)] flex items-center gap-2">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Simulador de Mensagem Recebida
-                  </h4>
-                  <Badge variant="warning">Ambiente de Teste</Badge>
-                </div>
-
-                <div className="space-y-3">
-                  <FormField label="Cliente Simulador">
-                    <select
-                      value={selectedContactId}
-                      onChange={(e) => setSelectedContactId(e.target.value)}
-                      className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] font-bold"
-                    >
-                      {contacts.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.phone || "Sem telefone"})
-                        </option>
-                      ))}
-                    </select>
-                  </FormField>
-
-                  <FormField label="Mensagem do Cliente">
-                    <Input
-                      type="text"
-                      value={simulationText}
-                      onChange={(e) => setSimulationText(e.target.value)}
-                      placeholder="Digite a mensagem simulada..."
-                    />
-                  </FormField>
-
-                  <Button
-                    onClick={handleSimulateWhatsAppMessage}
-                    loading={simulating || contacts.length === 0}
-                    className="w-full font-bold text-xs gap-2"
-                  >
-                    <Send className="w-3.5 h-3.5" /> Disparar Entrada Simulada no CRM
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
         </Modal>
       )}
