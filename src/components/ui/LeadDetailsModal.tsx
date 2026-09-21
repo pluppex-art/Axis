@@ -70,19 +70,13 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
     customTags,
     newTagInput, setNewTagInput,
     alterationLogs, setAlterationLogs,
-    estimatedSum,
     handleAddTag,
     handleRemoveTag,
     handleConvertLead,
     handleRegisterActivity,
     handleSaveAll,
     handleConfirmDelete,
-    toggleProductLink,
     availableProducts,
-    linkedProductIds,
-    productQuantities,
-    updateProductQuantity,
-    handleCreateAndLinkProduct,
     handleUpdateScore,
     stagesDef,
     currentStageId, setCurrentStageId,
@@ -443,13 +437,7 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
                 {currentTab === "produtos" && (
                   <div className="px-5 py-4">
                     <ProductsSection
-                      estimatedSum={estimatedSum}
                       availableProducts={availableProducts}
-                      linkedProductIds={linkedProductIds}
-                      productQuantities={productQuantities}
-                      updateProductQuantity={updateProductQuantity}
-                      handleCreateAndLinkProduct={handleCreateAndLinkProduct}
-                      toggleProductLink={toggleProductLink}
                       seller={seller}
                       setAlterationLogs={setAlterationLogs}
                       leadName={leadName}
