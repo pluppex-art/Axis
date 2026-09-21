@@ -8,6 +8,7 @@ export interface TenantAiConfig {
   allowedReadModules: string[];
   allowedWriteModules: string[];
   allowedExecuteModules: string[];
+  customPrompt: string;
   updatedAt: string | null;
 }
 
@@ -35,7 +36,7 @@ export function useTenantAiConfig() {
     setLoading(true);
     const { data, error } = await supabase
       .from("tenant_ai_config")
-      .select("tenant_id, aurora_enabled, allowed_read_modules, allowed_write_modules, allowed_execute_modules, updated_at")
+      .select("tenant_id, aurora_enabled, allowed_read_modules, allowed_write_modules, allowed_execute_modules, custom_prompt, updated_at")
       .eq("tenant_id", activeTenantId)
       .maybeSingle();
 
@@ -54,6 +55,7 @@ export function useTenantAiConfig() {
             allowedReadModules: data.allowed_read_modules ?? [],
             allowedWriteModules: data.allowed_write_modules ?? [],
             allowedExecuteModules: data.allowed_execute_modules ?? [],
+            customPrompt: data.custom_prompt ?? "",
             updatedAt: data.updated_at,
           }
         : null
@@ -66,12 +68,13 @@ export function useTenantAiConfig() {
   }, [refresh]);
 
   const update = useCallback(
-    async (patch: Partial<Pick<TenantAiConfig, "auroraEnabled" | "allowedExecuteModules">>) => {
+    async (patch: Partial<Pick<TenantAiConfig, "auroraEnabled" | "allowedExecuteModules" | "customPrompt">>) => {
       if (!supabase || !activeTenantId) return { error: "Sem tenant ativo" };
       setSaving(true);
       const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (patch.auroraEnabled !== undefined) payload.aurora_enabled = patch.auroraEnabled;
       if (patch.allowedExecuteModules !== undefined) payload.allowed_execute_modules = patch.allowedExecuteModules;
+      if (patch.customPrompt !== undefined) payload.custom_prompt = patch.customPrompt;
 
       const { error } = await supabase.from("tenant_ai_config").update(payload).eq("tenant_id", activeTenantId);
       setSaving(false);
