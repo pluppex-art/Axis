@@ -35,7 +35,7 @@ interface LeadDetailsModalProps {
 }
 
 export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProps) {
-  const { updateLead, leadActivities, products } = useData();
+  const { updateLead, leadActivities } = useData();
   const { formatCurrency } = useLocalization();
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState("informacoes");
@@ -122,12 +122,6 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
     navigate("/app/reunioes/" + reuniaoId);
   };
 
-  const productTotal = useMemo(() => {
-    const ids: string[] = Array.isArray(lead?.productIds) ? lead.productIds : [];
-    if (ids.length === 0) return 0;
-    return (products as any[]).reduce((s, p) => ids.includes(p.id) ? s + (Number(p.price) || 0) : s, 0);
-  }, [lead?.productIds, products]);
-
   // Histórico de reservas (sincronizado via API de integrações, ex.: to na
   // pista) só existe pra leads originados desse fluxo — a aba fica escondida
   // pros demais, pra não poluir a tela de tenants de outros ramos.
@@ -149,9 +143,11 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
   const probNum = safeParseProbability(probability);
 
   const tc = LeadDetailsTempCfg[temperature as keyof typeof LeadDetailsTempCfg] || LeadDetailsTempCfg.Frio;
-  const formattedValue = productTotal > 0
-    ? formatCurrency(productTotal)
-    : formatLeadValueBRL(lead?.value ?? value, formatCurrency);
+  // BUG real (achado em produção 2026-09-21): preferia a soma do preço ATUAL de catálogo dos
+  // produtos vinculados em vez de lead.value — ignorava quantidade/desconto/valor realmente
+  // fechado (mesmo bug corrigido no "Total de Ganhos" do Pipeline, ver usePipeline.ts).
+  // lead.value já é a fonte de verdade, sincronizada com a proposta aceita.
+  const formattedValue = formatLeadValueBRL(lead?.value ?? value, formatCurrency);
   const initials = ((companyName || leadName || "LD").substring(0, 2)).toUpperCase();
 
   const moveToStage = (stg: any) => {

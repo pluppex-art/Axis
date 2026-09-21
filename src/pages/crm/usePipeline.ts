@@ -207,19 +207,19 @@ export function usePipeline() {
   // (aberto + ganho + perdido) sob o rótulo genérico "Valor Total", o que não
   // batia com o conceito de "ganhos" e inflava o número com negócios ainda
   // não fechados.
+  //
+  // BUG real (achado em produção 2026-09-21): quando o lead tinha productIds,
+  // a soma preferia o preço ATUAL do catálogo desses produtos em vez de
+  // item.value — ignorava quantidade, desconto negociado e qualquer diferença
+  // entre o preço de catálogo hoje e o valor realmente fechado na venda (ex.:
+  // 3 leads fechados por R$3.988/R$11.964/R$1.000 = R$16.952 reais, mas a
+  // soma por catálogo dava R$3.991, porque cada um linka o mesmo produto de
+  // R$997 sem multiplicar pela quantidade real vendida). item.value já é a
+  // fonte de verdade (sincronizada com a proposta aceita, ver
+  // syncAcceptedProposal em DataContext.tsx) — usa direto, sem esse fallback.
   const totalValueSum = filteredItemsList
     .filter((item: any) => item.status === 'Fechado')
-    .reduce((sum, item) => {
-      const ids: string[] = Array.isArray(item.productIds) ? item.productIds : [];
-      if (ids.length > 0) {
-        const productTotal = (products as any[]).reduce(
-          (s: number, p: any) => ids.includes(p.id) ? s + (Number(p.price) || 0) : s,
-          0
-        );
-        if (productTotal > 0) return sum + productTotal;
-      }
-      return sum + parseCurrencyBR(item.value ?? (item as any).valor);
-    }, 0);
+    .reduce((sum, item) => sum + parseCurrencyBR(item.value ?? (item as any).valor), 0);
 
   const formattedTotalValue = formatCurrency(totalValueSum);
 

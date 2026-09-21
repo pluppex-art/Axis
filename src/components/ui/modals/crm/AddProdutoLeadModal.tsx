@@ -72,7 +72,7 @@ export function AddProdutoLeadModal({
   const [hasImplementation, setHasImplementation] = useState<boolean | null>(null);
   const [implementationFee, setImplementationFee] = useState<number | null>(null);
   const [discountValue, setDiscountValue] = useState(0);
-  const [isFinancialBreakdownOpen, setIsFinancialBreakdownOpen] = useState(true);
+  const [isFinancialBreakdownOpen, setIsFinancialBreakdownOpen] = useState(false);
 
   const [formaPagamento, setFormaPagamento] = useState<string>("Pix");
   const [parcelas, setParcelas] = useState(1);
@@ -95,6 +95,7 @@ export function AddProdutoLeadModal({
     setDetalhesPagamento("");
     setDataPagamento(new Date().toISOString().slice(0, 10));
     setSaving(false);
+    setIsFinancialBreakdownOpen(false);
   }, [isOpen, initialProductId]);
 
   const product = availableProducts.find((p) => p.id === productId);
