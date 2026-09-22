@@ -16,7 +16,7 @@ import {
   Clock,
   Sliders,
 } from "lucide-react";
-import { supabase } from "../../../lib/supabase";
+import { useAuth } from "../../../contexts/AuthContext";
 import { toast } from "sonner";
 import { apiFetch } from "../../../lib/apiClient";
 import { Button } from "../button";
@@ -84,6 +84,7 @@ export function NotasSection({
   seller,
   setAlterationLogs,
 }: NotasSectionProps) {
+  const { user } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]);
   const [input, setInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -100,18 +101,15 @@ export function NotasSection({
     setNotes(parseNotes(lead?.notes));
   }, [lead?.id, lead?.notes]);
 
+  // Achado de UX 2026-09-21: usava o metadata da sessão do Supabase Auth
+  // (user_metadata.name/full_name), que este app nunca preenche — sempre caía
+  // no fallback seguinte, o prefixo do e-mail antes do "@" (ex.: "Autor:
+  // marketingnicollasrocha" em vez do nome real da pessoa). O nome de exibição
+  // de verdade vem de `public.users.name`, já exposto via useAuth().user.name
+  // (é a mesma fonte usada em "Vendedor Responsável" na aba Informações).
   useEffect(() => {
-    supabase?.auth.getSession().then(({ data }) => {
-      const user = data.session?.user;
-      setAuthorName(
-        user?.user_metadata?.name ||
-        user?.user_metadata?.full_name ||
-        user?.email?.split("@")[0] ||
-        seller ||
-        "Consultor"
-      );
-    });
-  }, [seller]);
+    setAuthorName(user?.name || seller || "Consultor");
+  }, [user?.name, seller]);
 
   useEffect(() => () => recognitionRef.current?.stop(), []);
 

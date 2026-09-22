@@ -7,6 +7,7 @@ import {
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
+import { EmptyState } from "../../components/ui/empty-state";
 import { PageContainer } from "../../components/PageContainer";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
@@ -32,6 +33,7 @@ const FIELD = "w-full bg-[var(--color-surface-sunken)] border border-[var(--colo
 const LABEL = "text-[10px] font-black text-[var(--color-text-faint)] uppercase tracking-widest mb-1.5 block";
 
 import { Modal } from "../../components/ui/modal";
+import { friendlyError } from "../../lib/friendlyError";
 
 function NovaEntradaModal({ onClose, onSave }: { onClose: () => void; onSave: (d: any) => void }) {
   const [form, setForm] = useState({
@@ -113,7 +115,7 @@ export default function ProntuariosDashboard() {
   const refetchPacientes = () => {
     if (!supabase || !activeTenantId) { setLoading(false); return; }
     supabase.from("pacientes").select("id, nome, convenio, alergias").eq("tenant_id", activeTenantId).order("nome").then(({ data, error }) => {
-      if (error) toast.error(`Erro ao carregar pacientes: ${error.message}`);
+      if (error) toast.error(`Erro ao carregar pacientes: ${friendlyError(error)}`);
       else if (data) setPacientes(data as Paciente[]);
       setLoading(false);
     });
@@ -123,7 +125,7 @@ export default function ProntuariosDashboard() {
     if (!supabase || !activeTenantId) return;
     supabase.from("prontuarios").select("*").eq("paciente_id", pacienteId).eq("tenant_id", activeTenantId).order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        if (error) toast.error(`Erro ao carregar prontuário: ${error.message}`);
+        if (error) toast.error(`Erro ao carregar prontuário: ${friendlyError(error)}`);
         else if (data) setProntuarios(data as Prontuario[]);
       });
   };
@@ -141,7 +143,7 @@ export default function ProntuariosDashboard() {
   const handleSaveEntrada = async (form: any) => {
     if (!supabase || !selectedPacienteId || !activeTenantId) return;
     const { data, error } = await supabase.from("prontuarios").insert({ ...form, paciente_id: selectedPacienteId, tenant_id: activeTenantId }).select().maybeSingle();
-    if (error) { toast.error(`Erro ao salvar entrada: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao salvar entrada: ${friendlyError(error)}`); return; }
     if (data) setProntuarios(prev => [data as Prontuario, ...prev]);
     toast.success("Entrada registrada no prontuário.");
   };
@@ -150,7 +152,7 @@ export default function ProntuariosDashboard() {
     if (!(await confirmDialog({ title: "Excluir entrada", description: "Excluir esta entrada do prontuário? Essa ação não pode ser desfeita." }))) return;
     if (!supabase) return;
     const { error } = await supabase.from("prontuarios").delete().eq("id", id);
-    if (error) { toast.error(`Erro ao excluir: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao excluir: ${friendlyError(error)}`); return; }
     setProntuarios(prev => prev.filter(p => p.id !== id));
     toast.success("Entrada removida.");
   };
@@ -262,9 +264,16 @@ export default function ProntuariosDashboard() {
                 </Card>
 
                 {prontuarios.length === 0 ? (
-                  <Card className="p-10 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-center">
-                    <p className="text-xs font-bold text-[var(--color-text-muted)]">Nenhuma entrada de prontuário ainda. Clique em "Nova Entrada" para registrar o primeiro atendimento.</p>
-                  </Card>
+                  <EmptyState
+                    icon={FileText}
+                    title="Nenhuma entrada de prontuário ainda"
+                    description={`Registre o primeiro atendimento de ${selectedPaciente.nome}.`}
+                    action={
+                      <Button onClick={() => setShowNovaEntrada(true)} className="h-9 px-4 text-xs font-bold gap-1.5">
+                        <Plus className="w-3.5 h-3.5" /> Nova Entrada
+                      </Button>
+                    }
+                  />
                 ) : (
                   <div className="space-y-3">
                     {prontuarios.map(entry => (

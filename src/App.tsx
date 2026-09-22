@@ -75,7 +75,6 @@ import AgendaConfiguracoes from "./pages/agenda/AgendaConfiguracoes";
 
 import SettingsLayout from "./pages/settings/SettingsLayout";
 import ConfigEmpresaDados from "./pages/settings/ConfigEmpresaDados";
-import ConfigModulosDemos from "./pages/settings/ConfigModulosDemos";
 import {
   ConfigEmpresaFiliais,
   ConfigEmpresaEquipe,
@@ -332,7 +331,7 @@ function AppContent() {
             <Route path="empreendimentos" element={<Empreendimentos />} />
             <Route path="corretores" element={<ImobiliariosCorretores />} />
             <Route path="visitas" element={<ImobiliariosVisitas />} />
-            <Route path="comissoes" element={<ImobiliarioComissoes />} />
+            <Route path="comissoes" element={<ProtectedRoute requireTenantAdmin><ImobiliarioComissoes /></ProtectedRoute>} />
             <Route path="veiculos" element={<Navigate to="/app/automotivo/veiculos" replace />} />
             <Route path="pipeline" element={<Navigate to="/app/crm/pipeline?nicho=imobiliario" replace />} />
             <Route path="leads" element={<Navigate to="/app/crm/pipeline?nicho=imobiliario" replace />} />
@@ -416,7 +415,7 @@ function AppContent() {
             <Route path="servicos" element={<ServicosClinica />} />
             <Route path="tratamentos" element={<PlanosTratamento />} />
             <Route path="pacientes" element={<Pacientes />} />
-            <Route path="prontuarios" element={<Prontuarios />} />
+            <Route path="prontuarios" element={<ProtectedRoute requireModule="clinica"><Prontuarios /></ProtectedRoute>} />
             <Route path="faturamento" element={<Faturamento />} />
             <Route path="estoque" element={<Estoque />} />
             <Route path="telemedicina" element={<Telemedicina />} />
@@ -433,7 +432,7 @@ function AppContent() {
             <Route path="servicos" element={<ServicosClinica />} />
             <Route path="tratamentos" element={<PlanosTratamento />} />
             <Route path="pacientes" element={<Pacientes />} />
-            <Route path="prontuarios" element={<Prontuarios />} />
+            <Route path="prontuarios" element={<ProtectedRoute requireModule="clinica"><Prontuarios /></ProtectedRoute>} />
             <Route path="faturamento" element={<Faturamento />} />
             <Route path="estoque" element={<Estoque />} />
             <Route path="telemedicina" element={<Telemedicina />} />
@@ -450,7 +449,7 @@ function AppContent() {
             <Route path="alunos" element={<AlunosEdu />} />
             <Route path="conteudo" element={<EducationConteudo />} />
             <Route path="certificados" element={<EducationCertificados />} />
-            <Route path="mensalidades" element={<EducationMensalidades />} />
+            <Route path="mensalidades" element={<ProtectedRoute requireModule="educacao"><EducationMensalidades /></ProtectedRoute>} />
           </Route>
 
           {/* Configurações Layout & Nested Routes */}
@@ -463,9 +462,9 @@ function AppContent() {
             <Route path="empresa/modulos" element={<Navigate to="/app/admin?tab=tenants" replace />} />
             <Route path="empresa/filiais" element={<ConfigEmpresaFiliais />} />
             <Route path="empresa/nichos" element={<ConfigNichos />} />
-            <Route path="empresa/equipe" element={<ConfigEmpresaEquipe />} />
-            <Route path="empresa/permissoes" element={<ConfigEmpresaPermissoes />} />
-            <Route path="empresa/cargos" element={<ConfigEmpresaCargos />} />
+            <Route path="empresa/equipe" element={<ProtectedRoute requireTenantAdmin><ConfigEmpresaEquipe /></ProtectedRoute>} />
+            <Route path="empresa/permissoes" element={<ProtectedRoute requireTenantAdmin><ConfigEmpresaPermissoes /></ProtectedRoute>} />
+            <Route path="empresa/cargos" element={<ProtectedRoute requireTenantAdmin><ConfigEmpresaCargos /></ProtectedRoute>} />
 
             <Route path="crm/funis" element={<ConfigCRMFunis />} />
             <Route path="crm/origens" element={<ConfigCRMOrigens />} />
@@ -479,9 +478,9 @@ function AppContent() {
             <Route path="kanbans" element={<ConfigKanbanBoards />} />
 
             <Route path="financeiro/categorias" element={<ConfigFinanceiroCategorias />} />
-            <Route path="financeiro/squads" element={<ConfigFinanceiroSquads />} />
-            <Route path="financeiro/bloqueio-periodo" element={<ConfigFinanceiroBloqueioPeriodo />} />
-            <Route path="financeiro/auditoria" element={<ConfigFinanceiroAuditoria />} />
+            <Route path="financeiro/squads" element={<ProtectedRoute requireTenantAdmin><ConfigFinanceiroSquads /></ProtectedRoute>} />
+            <Route path="financeiro/bloqueio-periodo" element={<ProtectedRoute requireTenantAdmin><ConfigFinanceiroBloqueioPeriodo /></ProtectedRoute>} />
+            <Route path="financeiro/auditoria" element={<ProtectedRoute requireTenantAdmin><ConfigFinanceiroAuditoria /></ProtectedRoute>} />
 
             <Route path="engajamento/modelos" element={<ConfigEngajamentoModelos />} />
             <Route path="engajamento/automacoes" element={<ConfigEngajamentoAutomacoes />} />

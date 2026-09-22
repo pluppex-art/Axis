@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
 import { supabase } from "../../lib/supabase";
+import { friendlyError } from "../../lib/friendlyError";
 
 type ExtratoItem = {
   id: string;
@@ -228,7 +229,7 @@ export default function FinanceiroConciliacao() {
           }))
         );
         if (error) {
-          toast.error(`Erro ao salvar extrato importado: ${error.message}`, { id: "ofx-import" });
+          toast.error(`Erro ao salvar extrato importado: ${friendlyError(error)}`, { id: "ofx-import" });
         } else {
           setExtrato(prev => [...newItems, ...prev]);
           toast.success(`Arquivo "${file.name}" importado! ${newItems.length} transação(ões) identificada(s).`, { id: "ofx-import" });

@@ -6,6 +6,7 @@ import { useLocalization } from "../../contexts/LocalizationContext";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { EmptyState } from "../ui/empty-state";
 import { CommandPalette } from "../CommandPalette";
 import { Logo } from "../ui/Logo";
 import {
@@ -56,7 +57,7 @@ export function Topbar({
   setIsMobileSidebarOpen,
 }: TopbarProps) {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, activeTenantName } = useAuth();
   const {
     notifications,
     markNotificationAsRead,
@@ -131,11 +132,14 @@ export function Topbar({
   // Nome/avatar do usuário e da empresa vêm do Supabase (public.users via
   // AuthContext, app_settings via DataContext) — reativos automaticamente,
   // sem localStorage nem eventos customizados.
-  const liveProfile = { name: user?.name || "Gustavo Portilho", avatar: user?.avatarUrl || null };
-  const liveEmpresaName = appSettings?.empresa_dados?.nomeFantasia || user?.tenantName || "S.P.Y. Corp";
+  // Achado de UX 2026-09-21: fallback usava um nome de pessoa real e "S.P.Y.
+  // Corp" — se os dados ainda não carregaram, qualquer cliente via o nome de
+  // outra pessoa (aparentemente do desenvolvedor) como se fosse o dele.
+  const liveProfile = { name: user?.name || "Usuário", avatar: user?.avatarUrl || null };
+  const liveEmpresaName = appSettings?.empresa_dados?.nomeFantasia || user?.tenantName || "Minha Empresa";
 
   const unreadNotifications = notifications.filter((n) => !n.is_read).length;
-  const userInitials = liveProfile.name ? liveProfile.name.substring(0, 2).toUpperCase() : "GT";
+  const userInitials = liveProfile.name ? liveProfile.name.substring(0, 2).toUpperCase() : "US";
 
   const handleLogout = () => {
     logout();
@@ -179,8 +183,11 @@ export function Topbar({
           <div className="w-6 h-6 rounded bg-transparent dark:bg-[var(--color-primary-blue)]/15 flex items-center justify-center">
             <Logo variant="icon" size={18} color={tenantPrimaryColor} />
           </div>
-          <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-primary)]">
-            S.P.Y.
+          {/* Achado de UX 2026-09-21: texto fixo "S.P.Y." aqui, enquanto o
+              Sidebar já usa o nome real do tenant como padrão estabelecido —
+              alinhado com o mesmo fallback usado lá (Sidebar.tsx). */}
+          <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-primary)] truncate max-w-[120px]">
+            {activeTenantName || user?.tenantName || "S.P.Y."}
           </span>
         </div>
 
@@ -322,12 +329,12 @@ export function Topbar({
                       );
                     })
                   ) : (
-                    <div className="p-10 flex flex-col items-center justify-center text-center opacity-50">
-                      <Bell className="w-8 h-8 mb-2 text-[var(--color-text-faint)]" />
-                      <p className="text-xs font-bold text-[var(--color-text-muted)]">
-                        {t("Nenhuma notificação")}
-                      </p>
-                    </div>
+                    <EmptyState
+                      icon={Bell}
+                      title="Nenhuma notificação"
+                      description="Você será avisado aqui quando algo precisar da sua atenção."
+                      className="border-0 bg-transparent py-10"
+                    />
                   )}
                 </div>
               </Card>

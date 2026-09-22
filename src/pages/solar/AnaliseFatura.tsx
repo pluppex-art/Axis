@@ -11,6 +11,7 @@ import { supabase } from "../../lib/supabase";
 import { analyzeFaturaSolar, FaturaAnalise } from "../../lib/solarOcr";
 import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { friendlyError } from "../../lib/friendlyError";
 
 interface SolarAnalise extends FaturaAnalise {
   id: string;
@@ -74,7 +75,7 @@ export default function AnaliseFatura() {
   const refetch = () => {
     if (!supabase || !activeTenantId) return;
     supabase.from("solar_analises").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
-      if (error) toast.error(`Erro ao carregar análises: ${error.message}`);
+      if (error) toast.error(`Erro ao carregar análises: ${friendlyError(error)}`);
       else if (data) setAnalises(data.map(rowToAnalise));
     });
   };
@@ -122,7 +123,7 @@ export default function AnaliseFatura() {
       economia_anual_estimada: resultado.economiaAnualEstimada,
       tenant_id: activeTenantId,
     });
-    if (error) { toast.error(`Erro ao salvar: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao salvar: ${friendlyError(error)}`); return; }
     toast.success("Análise salva! Cliente adicionado ao funil fotovoltaico.");
     setFile(null);
     setPreview(null);
@@ -175,7 +176,7 @@ export default function AnaliseFatura() {
     }
 
     const { error } = await supabase.from("solar_analises").update(payload).eq("id", a.id);
-    if (error) { toast.error(`Erro ao atualizar status: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao atualizar status: ${friendlyError(error)}`); return; }
     setAnalises(prev => prev.map(x => x.id === a.id ? { ...x, status: next, proposalId: proposalId ?? x.proposalId } : x));
 
     if (proposalId) toast.success("Proposta gerada em Propostas — pronta para envio/compartilhamento.");
@@ -194,7 +195,7 @@ export default function AnaliseFatura() {
   const handleUpdateValorProposta = async (a: SolarAnalise, valor: number | null) => {
     if (!supabase) return;
     const { error } = await supabase.from("solar_analises").update({ valor_proposta: valor }).eq("id", a.id);
-    if (error) { toast.error(`Erro ao salvar valor da proposta: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao salvar valor da proposta: ${friendlyError(error)}`); return; }
     setAnalises(prev => prev.map(x => x.id === a.id ? { ...x, valorProposta: valor } : x));
   };
 
@@ -202,7 +203,7 @@ export default function AnaliseFatura() {
     if (!supabase) return;
     if (!(await confirmDialog({ title: "Remover análise", description: `Remover a análise de ${cliente}?` }))) return;
     const { error } = await supabase.from("solar_analises").delete().eq("id", id);
-    if (error) { toast.error(`Erro ao remover: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover: ${friendlyError(error)}`); return; }
     setAnalises(prev => prev.filter(x => x.id !== id));
   };
 

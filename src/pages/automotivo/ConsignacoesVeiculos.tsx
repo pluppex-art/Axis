@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { friendlyError } from "../../lib/friendlyError";
 
 interface ConsignacaoItem {
   id: string;
@@ -74,7 +75,7 @@ export default function ConsignacoesVeiculos() {
       .eq("is_consignado", true)
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        if (error) toast.error(`Erro ao carregar consignações: ${error.message}`);
+        if (error) toast.error(`Erro ao carregar consignações: ${friendlyError(error)}`);
         else if (data) setConsignacoes(data.map(rowToConsignacao));
       });
   };
@@ -101,7 +102,7 @@ export default function ConsignacoesVeiculos() {
       return;
     }
     if (!supabase || !activeTenantId) {
-      toast.error("Supabase não configurado.");
+      toast.error("Não foi possível conectar ao servidor.");
       return;
     }
 
@@ -134,7 +135,7 @@ export default function ConsignacoesVeiculos() {
       .maybeSingle();
 
     if (error) {
-      toast.error(`Erro ao registrar consignação: ${error.message}`);
+      toast.error(`Erro ao registrar consignação: ${friendlyError(error)}`);
       return;
     }
 
@@ -162,7 +163,7 @@ export default function ConsignacoesVeiculos() {
       .from("imobiliario_veiculos")
       .update({ is_consignado: false, consignante_nome: null, consignante_telefone: null, comissao_percentual: null, repasse_realizado: false })
       .eq("id", id);
-    if (error) { toast.error(`Erro ao remover consignação: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover consignação: ${friendlyError(error)}`); return; }
     setConsignacoes(prev => prev.filter(c => c.id !== id));
     toast.info("Consignação removida (o veículo permanece no estoque).");
   };
@@ -174,7 +175,7 @@ export default function ConsignacoesVeiculos() {
       .from("imobiliario_veiculos")
       .update({ status: dbStatus, repasse_realizado })
       .eq("id", id);
-    if (error) { toast.error(`Erro ao atualizar status: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao atualizar status: ${friendlyError(error)}`); return; }
     setConsignacoes(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c));
     toast.success(`Status atualizado para: ${newStatus}`);
   };

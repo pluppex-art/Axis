@@ -11,6 +11,8 @@ import { Button } from "../../components/ui/button";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { PLUPPEX_TENANT_ID } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { Modal } from "../../components/ui/modal";
 import {
@@ -31,6 +33,7 @@ const PREVIEW_URL = "https://escolaempreendamais.pluppex.com.br";
 
 export default function MarketingLandingPages() {
   const navigate = useNavigate();
+  const { activeTenantId } = useAuth();
   const {
     marketingLandingPages: rawPages,
     addMarketingLandingPage,
@@ -348,7 +351,11 @@ export default function MarketingLandingPages() {
           </Card>
         </div>
 
-        {/* ── LP OFICIAL E-EMPREENDA+ ── */}
+        {/* ── LP OFICIAL E-EMPREENDA+ (achado M1, auditoria 2026-09-21: é um
+            funil específico da Pluppex, não uma feature nativa do S.P.Y. —
+            antes aparecia fixo pra todo tenant, mostrando 0 dados/quebrando
+            ao editar pra quem não é a própria Pluppex) ── */}
+        {activeTenantId === PLUPPEX_TENANT_ID && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="p-5 bg-gradient-to-r from-orange-500/5 to-transparent border border-orange-500/20 hover:border-orange-500/40 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div className="flex items-start gap-4 flex-1">
@@ -396,6 +403,7 @@ export default function MarketingLandingPages() {
             </div>
           </Card>
         </motion.div>
+        )}
 
         {/* ── LISTA DE LANDING PAGES ── */}
         <div className="flex justify-between items-center pt-4">

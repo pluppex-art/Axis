@@ -13,6 +13,7 @@ import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { Modal } from "../../components/ui/modal";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { friendlyError } from "../../lib/friendlyError";
 
 type Corretor = {
   id: string;
@@ -180,7 +181,8 @@ function CorretorDetailDrawer({ c, idx, onClose, onEdit, onDelete }: {
   onDelete: () => void;
 }) {
   const { formatCurrency } = useLocalization();
-  const metaPct = Math.min((c.vendasMes / c.meta) * 100, 100);
+  // Baixo (auditoria 2026-09-21): meta=0 é permitido no formulário e gerava NaN%.
+  const metaPct = c.meta > 0 ? Math.min((c.vendasMes / c.meta) * 100, 100) : 0;
   const espColor = especialidadeColor[c.especialidade] ?? "bg-slate-500/10 text-slate-400 border-slate-500/20";
   const phoneRaw = c.telefone.replace(/\D/g, "");
 
@@ -386,7 +388,7 @@ export default function Corretores() {
       const { error } = await supabase.from("imobiliario_corretores").insert({ nome: form.nome, creci: form.creci, telefone: form.telefone, email: form.email, especialidade: form.especialidade, bio: form.bio, slug, meta: form.meta, comissao_pct: form.comissaoPct, id: novo.id, tenant_id: activeTenantId });
       if (error) {
         console.error("[Supabase]", error.message);
-        toast.error(`Erro ao cadastrar corretor: ${error.message}`);
+        toast.error(`Erro ao cadastrar corretor: ${friendlyError(error)}`);
         setCorretores(prev => prev.filter(c => c.id !== novo.id));
         return;
       }
@@ -404,7 +406,7 @@ export default function Corretores() {
       const { error } = await supabase.from("imobiliario_corretores").update({ nome: form.nome, creci: form.creci, telefone: form.telefone, email: form.email, especialidade: form.especialidade, bio: form.bio, meta: form.meta, status: form.status, comissao_pct: form.comissaoPct }).eq("id", editCorretor.id);
       if (error) {
         console.error("[Supabase]", error.message);
-        toast.error(`Erro ao atualizar corretor: ${error.message}`);
+        toast.error(`Erro ao atualizar corretor: ${friendlyError(error)}`);
         setCorretores(prev => prev.map(c => c.id === previous.id ? previous : c));
         if (selectedCorretor?.c.id === previous.id) setSelectedCorretor({ c: previous, idx: selectedCorretor.idx });
         setEditCorretor(null);
@@ -426,7 +428,7 @@ export default function Corretores() {
       const { error } = await supabase.from("imobiliario_corretores").delete().eq("id", id);
       if (error) {
         console.error("[Supabase]", error.message);
-        toast.error(`Erro ao remover corretor: ${error.message}`);
+        toast.error(`Erro ao remover corretor: ${friendlyError(error)}`);
         if (alvo) setCorretores(prev => [alvo, ...prev]);
         return;
       }
@@ -496,7 +498,7 @@ export default function Corretores() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtered.map((c, idx) => {
-          const metaPct = Math.min((c.vendasMes / c.meta) * 100, 100);
+          const metaPct = c.meta > 0 ? Math.min((c.vendasMes / c.meta) * 100, 100) : 0;
           const espColor = especialidadeColor[c.especialidade] ?? "bg-slate-500/10 text-slate-400 border-slate-500/20";
 
           return (

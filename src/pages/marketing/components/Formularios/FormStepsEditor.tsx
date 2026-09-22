@@ -47,7 +47,7 @@ async function loadFormSteps(tenantId: string, siteKey: string): Promise<{ data:
 }
 
 async function saveFormSteps(tenantId: string, siteKey: string, steps: FormStepsConfig) {
-  if (!supabase) return { error: { message: "Supabase não configurado" } };
+  if (!supabase) return { error: { message: "Não foi possível conectar ao servidor" } };
   return supabase.from("landing_configs").upsert(
     { tenant_id: tenantId, site_key: siteKey, section: "form_steps", content: steps, updated_at: new Date().toISOString() },
     { onConflict: "tenant_id,site_key,section" }

@@ -14,6 +14,7 @@ import { useData } from "../../../contexts/DataContext";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useLocalization } from "../../../contexts/LocalizationContext";
 import { CriarPropostaModal } from "../../../components/ui/modals/crm/CriarPropostaModal";
+import { friendlyError } from "../../../lib/friendlyError";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 type Etapa = "Prospecção" | "Qualificação" | "Apresentação" | "Negociação" | "Fechamento";
@@ -1029,7 +1030,7 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
     const { error } = await supabase.from("imobiliario_leads").update(row).eq("id", id);
     if (error) {
       console.error("[Supabase] update imobiliario_leads error:", error.message);
-      toast.error(`Erro ao salvar lead: ${error.message}`);
+      toast.error(`Erro ao salvar lead: ${friendlyError(error)}`);
     }
   };
 
@@ -1066,7 +1067,7 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
       }).select("id").single();
       if (error) {
         console.error("[Supabase] insert imobiliario_leads error:", error.message);
-        toast.error(`Erro ao adicionar lead: ${error.message}`);
+        toast.error(`Erro ao adicionar lead: ${friendlyError(error)}`);
         setLeads(prev => prev.filter(l => l.id !== novo.id));
         return;
       }
@@ -1091,7 +1092,7 @@ export function LeadsPipelineBoard({ tipo }: { tipo: "imovel" | "veiculo" }) {
       const { error } = await supabase.from("imobiliario_leads").delete().eq("id", id);
       if (error) {
         console.error("[Supabase] delete imobiliario_leads error:", error.message);
-        toast.error(`Erro ao remover lead: ${error.message}`);
+        toast.error(`Erro ao remover lead: ${friendlyError(error)}`);
         return;
       }
     }

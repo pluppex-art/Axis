@@ -23,6 +23,7 @@ import { apiFetch } from "../lib/apiClient";
 import { isDateLocked } from "../pages/finance/lib/financeEngine";
 import { parseCurrencyBR } from "../lib/utils";
 import { useLocalization } from "./LocalizationContext";
+import { friendlyError } from "../lib/friendlyError";
 
 export { useData };
 export type { DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao };
@@ -462,7 +463,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         });
         if (error) {
           console.error("Supabase add squad failed:", error.message);
-          toast.error(`Erro ao criar squad: ${error.message}`);
+          toast.error(`Erro ao criar squad: ${friendlyError(error)}`);
           setSquads(prev => prev.filter(s => s.id !== newSquad.id));
         } else {
           toast.success('Squad criado com sucesso!');
@@ -689,7 +690,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setFunis(prev => [...prev, newFunil]);
     if (supabase) {
       const { error } = await supabase.from('crm_funis').insert(funilToRow(newFunil));
-      if (error) { console.error('[Supabase] insert crm_funis error:', error.message); toast.error(`Erro ao salvar funil: ${error.message}`); }
+      if (error) { console.error('[Supabase] insert crm_funis error:', error.message); toast.error(`Erro ao salvar funil: ${friendlyError(error)}`); }
     }
   };
 
@@ -755,7 +756,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.from('students').insert(newStudent);
       if (error) {
         console.error("Supabase add student failed:", error.message);
-        toast.error(`Erro ao matricular aluno: ${error.message}`);
+        toast.error(`Erro ao matricular aluno: ${friendlyError(error)}`);
       }
     }
     return newStudent;
@@ -767,7 +768,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.from('students').update(updates).eq('id', id);
       if (error) {
         console.error("Supabase update student failed:", error.message);
-        toast.error(`Erro ao atualizar aluno: ${error.message}`);
+        toast.error(`Erro ao atualizar aluno: ${friendlyError(error)}`);
       }
     }
   };
@@ -1684,7 +1685,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase.from('leads').update(safeUpdates).eq('id', id);
         if (error) {
           console.error("Supabase update lead failed:", error.message);
-          toast.error(`Erro ao salvar lead: ${error.message}`);
+          toast.error(`Erro ao salvar lead: ${friendlyError(error)}`);
         }
       } catch (err) {
         console.error("Supabase update lead failed:", err);
@@ -1775,7 +1776,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error("[Supabase] insert tasks error:", error.message, error.details);
         setTasks(prev => prev.filter(t => t.id !== newTask.id));
-        toast.error(`Erro ao salvar tarefa: ${error.message}`);
+        toast.error(`Erro ao salvar tarefa: ${friendlyError(error)}`);
         return;
       }
     }
@@ -1790,7 +1791,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error("[Supabase] update tasks error:", error.message, error.details);
         if (previousTask) setTasks(prev => prev.map(t => t.id === id ? previousTask : t));
-        toast.error(`Erro ao atualizar tarefa: ${error.message}`);
+        toast.error(`Erro ao atualizar tarefa: ${friendlyError(error)}`);
       }
     }
   };
@@ -1854,7 +1855,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) {
         console.error("Supabase add contract failed:", error.message);
-        toast.error(`Erro ao registrar contrato: ${error.message}`);
+        toast.error(`Erro ao registrar contrato: ${friendlyError(error)}`);
       }
     }
   };
@@ -1898,7 +1899,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }).eq('id', id);
       if (error) {
         console.error("Supabase update contract failed:", error.message);
-        toast.error(`Erro ao atualizar contrato: ${error.message}`);
+        toast.error(`Erro ao atualizar contrato: ${friendlyError(error)}`);
       }
     }
   };
@@ -1995,7 +1996,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) {
         console.error("Supabase add lead activity failed:", error.message);
-        toast.error(`Erro ao registrar atividade: ${error.message}`);
+        toast.error(`Erro ao registrar atividade: ${friendlyError(error)}`);
       }
     }
     triggerScoreRecalculation(leadId, leads, updatedActivities);
@@ -2072,7 +2073,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           const { error } = await supabase.from(tableName).insert(payloadToDb);
           if (error) {
             console.error(`[Supabase] insert ${tableName} error:`, error.message, error.details);
-            toast.error(`Erro ao salvar: ${error.message}`);
+            toast.error(`Erro ao salvar: ${friendlyError(error)}`);
           }
         }
         return stamped;
@@ -2113,7 +2114,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             if (error.message?.includes('updated_at')) {
               console.warn(`[Supabase] Trigger issue on ${tableName} — execute a migration 20260827_fix_colaboradores_updated_at.sql no Supabase SQL Editor`);
             }
-            toast.error(`Erro ao salvar alterações: ${error.message}`);
+            toast.error(`Erro ao salvar alterações: ${friendlyError(error)}`);
           }
         }
       },
@@ -2131,7 +2132,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase.from(tableName).delete().eq('id', id).select('id');
         if (error) {
           console.error(`[Supabase] delete ${tableName} error:`, error.message);
-          toast.error(`Erro ao remover: ${error.message}`);
+          toast.error(`Erro ao remover: ${friendlyError(error)}`);
           if (removed) stateSetter(prev => [removed, ...prev]);
           return false;
         }
@@ -2305,7 +2306,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.from('finance_entries').insert(newEntry);
       if (error) {
         console.error("Supabase add finance_entries failed:", error.message, error.details);
-        toast.error(`Erro ao salvar lançamento: ${error.message}`);
+        toast.error(`Erro ao salvar lançamento: ${friendlyError(error)}`);
         return;
       }
     }
@@ -2526,7 +2527,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.from('finance_entries').delete().eq('id', id);
       if (error) {
         console.error("Supabase delete finance_entries failed:", error.message);
-        toast.error(`Erro ao remover lançamento: ${error.message}`);
+        toast.error(`Erro ao remover lançamento: ${friendlyError(error)}`);
         return;
       }
     }
@@ -2545,7 +2546,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.from('finance_entries').update(updates).eq('id', id);
       if (error) {
         console.error("Supabase update finance_entries failed:", error.message);
-        toast.error(`Erro ao atualizar lançamento: ${error.message}`);
+        toast.error(`Erro ao atualizar lançamento: ${friendlyError(error)}`);
         return;
       }
     }

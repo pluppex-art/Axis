@@ -10,6 +10,7 @@ import {
 import { useAuth } from "../../../../contexts/AuthContext";
 import { supabase } from "../../../../lib/supabase";
 import { toast } from "sonner";
+import { friendlyError } from "../../../../lib/friendlyError";
 
 interface UserProfile {
   name: string;
@@ -58,7 +59,7 @@ export function ConfigPerfilUsuario() {
     }
     const { error } = await supabase.from("users").update(updates).eq("id", user.id);
     if (error) {
-      toast.error(`Erro ao salvar: ${error.message}`);
+      toast.error(`Erro ao salvar: ${friendlyError(error)}`);
       return false;
     }
     await refreshUser();
@@ -140,7 +141,7 @@ export function ConfigPerfilUsuario() {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setSavingPassword(false);
     if (error) {
-      toast.error(`Erro ao trocar senha: ${error.message}`);
+      toast.error(`Erro ao trocar senha: ${friendlyError(error)}`);
       return;
     }
     setCurrentPassword("");

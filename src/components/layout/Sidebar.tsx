@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Building2, MapPin, ChevronDown } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -29,7 +29,25 @@ export function Sidebar({
   } = useAuth();
   const { cargos, empresaFiliais, tenantPrimaryColor } = useData();
   const { t } = useLocalization();
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  // Achado de UX 2026-09-21: toda seção começava fechada em todo login/refresh
+  // — o cliente via só títulos de categoria, sem nenhum link clicável, até
+  // clicar manualmente em cada uma (a própria seção "Visão Geral", com o link
+  // do Dashboard, também começava fechada). Abre por padrão a seção da rota
+  // atual; navegações seguintes só adicionam a nova seção ativa, nunca fecham
+  // uma que o usuário abriu manualmente.
+  const sectionForPath = (pathname: string) =>
+    navSections.find((section) => section.items.some((item) => pathname.startsWith(item.path)))?.title;
+
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
+    const active = sectionForPath(location.pathname);
+    return active ? { [active]: true } : {};
+  });
+
+  useEffect(() => {
+    const active = sectionForPath(location.pathname);
+    if (active) setOpenSections((prev) => (prev[active] ? prev : { ...prev, [active]: true }));
+  }, [location.pathname]);
+
   const toggleSection = (title: string) => {
     setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }));
   };
@@ -225,16 +243,6 @@ export function Sidebar({
             })}
         </div>
 
-        {!isSidebarCollapsed && (
-          <div className="p-3 border-t border-[var(--color-border-default)] bg-[var(--color-surface-sunken)]/40 shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span className="text-[10px] font-black text-[var(--color-text-muted)] uppercase tracking-wider">
-                {t("Sistema Operacional 100%")}
-              </span>
-            </div>
-          </div>
-        )}
       </aside>
     </>
   );

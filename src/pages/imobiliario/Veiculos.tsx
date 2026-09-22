@@ -14,6 +14,7 @@ import { Modal } from "../../components/ui/modal";
 import { VeiculoFinanciamentoModal } from "./components/VeiculoFinanciamentoModal";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { friendlyError } from "../../lib/friendlyError";
 
 type Veiculo = {
   id: string;
@@ -281,7 +282,7 @@ function VeiculoDetailDrawer({ v, onClose, onEdit, onDelete, onRepasseRegistrado
     if (!supabase || !activeTenantId) return;
     supabase.from("veiculo_financiamentos").select("*").eq("veiculo_id", v.id).eq("tenant_id", activeTenantId).order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        if (error) toast.error(`Erro ao carregar financiamentos: ${error.message}`);
+        if (error) toast.error(`Erro ao carregar financiamentos: ${friendlyError(error)}`);
         else if (data) setFinanciamentos(data as Financiamento[]);
       });
   };
@@ -289,9 +290,9 @@ function VeiculoDetailDrawer({ v, onClose, onEdit, onDelete, onRepasseRegistrado
   useEffect(() => { refetchFinanciamentos(); }, [v.id, activeTenantId]);
 
   const handleSaveFinanciamento = async (data: any) => {
-    if (!supabase || !activeTenantId) { toast.error("Supabase não configurado."); return; }
+    if (!supabase || !activeTenantId) { toast.error("Não foi possível conectar ao servidor."); return; }
     const { error } = await supabase.from("veiculo_financiamentos").insert({ ...data, veiculo_id: v.id, tenant_id: activeTenantId });
-    if (error) { toast.error(`Erro ao registrar financiamento: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao registrar financiamento: ${friendlyError(error)}`); return; }
     toast.success("Solicitação de financiamento registrada!");
     refetchFinanciamentos();
   };
@@ -301,7 +302,7 @@ function VeiculoDetailDrawer({ v, onClose, onEdit, onDelete, onRepasseRegistrado
     setRepassando(true);
     const { error } = await supabase.rpc("registrar_repasse_consignacao", { p_veiculo_id: v.id });
     setRepassando(false);
-    if (error) { toast.error(`Erro ao registrar repasse: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao registrar repasse: ${friendlyError(error)}`); return; }
     toast.success("Repasse registrado no financeiro (Contas a Pagar).");
     onRepasseRegistrado(v.id);
   };
@@ -309,7 +310,7 @@ function VeiculoDetailDrawer({ v, onClose, onEdit, onDelete, onRepasseRegistrado
   const handleUpdateFinanciamentoStatus = async (id: string, status: string) => {
     if (!supabase) return;
     const { error } = await supabase.from("veiculo_financiamentos").update({ status }).eq("id", id);
-    if (error) { toast.error(`Erro ao atualizar status: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao atualizar status: ${friendlyError(error)}`); return; }
     setFinanciamentos(prev => prev.map(f => f.id === id ? { ...f, status: status as Financiamento["status"] } : f));
   };
 
@@ -544,7 +545,7 @@ export default function Veiculos() {
   const refetch = () => {
     if (!supabase || !activeTenantId) { setLoading(false); return; }
     supabase.from("imobiliario_veiculos").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
-      if (error) toast.error(`Erro ao carregar veículos: ${error.message}`);
+      if (error) toast.error(`Erro ao carregar veículos: ${friendlyError(error)}`);
       else if (data) setVeiculos(data.map(rowToVeiculo));
       setLoading(false);
     });
@@ -562,18 +563,18 @@ export default function Veiculos() {
   });
 
   const handleSave = async (form: any) => {
-    if (!supabase || !activeTenantId) { toast.error("Supabase não configurado."); return; }
+    if (!supabase || !activeTenantId) { toast.error("Não foi possível conectar ao servidor."); return; }
     const { data, error } = await supabase.from("imobiliario_veiculos").insert({ ...form, visitas: 0, tenant_id: activeTenantId }).select().maybeSingle();
-    if (error) { toast.error(`Erro ao cadastrar veículo: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao cadastrar veículo: ${friendlyError(error)}`); return; }
     if (data) setVeiculos(prev => [rowToVeiculo(data), ...prev]);
     toast.success("Veículo cadastrado com sucesso!");
   };
 
   const handleEdit = async (form: any) => {
     if (!editVeiculo) return;
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
+    if (!supabase) { toast.error("Não foi possível conectar ao servidor."); return; }
     const { error } = await supabase.from("imobiliario_veiculos").update(form).eq("id", editVeiculo.id);
-    if (error) { toast.error(`Erro ao atualizar veículo: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao atualizar veículo: ${friendlyError(error)}`); return; }
     const updated = rowToVeiculo({ ...form, id: editVeiculo.id, visitas: editVeiculo.visitas, created_at: editVeiculo.created_at });
     setVeiculos(prev => prev.map(v => v.id === editVeiculo.id ? updated : v));
     if (selectedVeiculo?.id === editVeiculo.id) setSelectedVeiculo(updated);
@@ -587,9 +588,9 @@ export default function Veiculos() {
       title: "Excluir veículo",
       description: `Excluir ${alvo ? `${alvo.marca} ${alvo.modelo}` : "este veículo"}? Essa ação não pode ser desfeita.`,
     }))) return;
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
+    if (!supabase) { toast.error("Não foi possível conectar ao servidor."); return; }
     const { error } = await supabase.from("imobiliario_veiculos").delete().eq("id", id);
-    if (error) { toast.error(`Erro ao remover veículo: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover veículo: ${friendlyError(error)}`); return; }
     setVeiculos(prev => prev.filter(v => v.id !== id));
     toast.success("Veículo removido.");
   };

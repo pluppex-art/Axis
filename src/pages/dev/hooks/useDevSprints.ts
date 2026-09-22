@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 import { toast } from 'sonner';
 import type { TarefaSprintPayload } from '../modals/NovaTarefaSprintModal';
+import { friendlyError } from "../../../lib/friendlyError";
 
 export type Priority = 'crítica' | 'alta' | 'média' | 'baixa';
 export type Column = 'backlog' | 'todo' | 'inprogress' | 'review' | 'done';
@@ -38,6 +40,7 @@ function rowToTask(row: any): SprintTask {
 }
 
 export function useDevSprints(projectId?: string | null) {
+  const { activeTenantId } = useAuth();
   const [tasks, setTasks] = useState<SprintTask[]>([]);
 
 
@@ -45,7 +48,7 @@ export function useDevSprints(projectId?: string | null) {
 
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     if (!projectId) {
       setTasks([]);
       return;
@@ -56,6 +59,7 @@ export function useDevSprints(projectId?: string | null) {
       const { data, error } = await supabase!
       .from('dev_sprint_tasks')
         .select('*')
+        .eq('tenant_id', activeTenantId)
         // Suporta o schema novo (project_id) e legado (project)
         .or(`project_id.eq.${projectId},project.eq.${projectId}`)
         .order('created_at', { ascending: true });
@@ -67,7 +71,7 @@ export function useDevSprints(projectId?: string | null) {
     }
 
     load();
-  }, [projectId]);
+  }, [projectId, activeTenantId]);
 
 
   async function addTask(payload: TarefaSprintPayload) {
@@ -87,6 +91,7 @@ export function useDevSprints(projectId?: string | null) {
     const { data, error } = await supabase
       .from('dev_sprint_tasks')
       .insert({
+        tenant_id: activeTenantId,
         title: payload.title,
         type: payload.type,
         priority: payload.priority,
@@ -116,11 +121,12 @@ export function useDevSprints(projectId?: string | null) {
     const { error: moveError } = await supabase
       .from('dev_sprint_tasks')
       .update({ column_id: column })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('tenant_id', activeTenantId);
 
     if (moveError) {
       console.error('[Supabase] move dev_sprint_tasks error:', moveError.message);
-      toast.error(`Erro ao mover tarefa: ${moveError.message}`);
+      toast.error(`Erro ao mover tarefa: ${friendlyError(moveError)}`);
     }
 
     // Recalcula progresso do projeto (100% automático)
@@ -130,7 +136,8 @@ export function useDevSprints(projectId?: string | null) {
     const { data: tasksAfter } = await supabase
       .from('dev_sprint_tasks')
       .select('column_id, points')
-      .eq('project', projectId);
+      .eq('project', projectId)
+      .eq('tenant_id', activeTenantId);
 
     if (!tasksAfter) return;
 
@@ -147,7 +154,8 @@ export function useDevSprints(projectId?: string | null) {
     const { error: progressError } = await supabase
       .from('dev_projects')
       .update({ progress: nextProgress })
-      .eq('id', projectId);
+      .eq('id', projectId)
+      .eq('tenant_id', activeTenantId);
 
     if (progressError) {
       console.error('[Supabase] update dev_projects progress error:', progressError.message);

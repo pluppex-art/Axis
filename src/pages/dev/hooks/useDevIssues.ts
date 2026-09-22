@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 import { toast } from 'sonner';
 import type { NovaIssuePayload } from '../modals/NovaIssueDevModal';
 
@@ -39,16 +40,18 @@ function rowToIssue(row: any): DevIssue {
 }
 
 export function useDevIssues() {
+  const { activeTenantId } = useAuth();
   const [issues, setIssues] = useState<DevIssue[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     async function load() {
       setLoading(true);
       const { data, error } = await supabase!
         .from('dev_issues')
         .select('*')
+        .eq('tenant_id', activeTenantId)
         .order('created_at', { ascending: false });
       if (!error && data !== null) {
         setIssues(data.map(rowToIssue));
@@ -56,7 +59,7 @@ export function useDevIssues() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [activeTenantId]);
 
   async function addIssue(payload: NovaIssuePayload) {
     if (!supabase) {
@@ -74,6 +77,7 @@ export function useDevIssues() {
     const { data, error } = await supabase
       .from('dev_issues')
       .insert({
+        tenant_id: activeTenantId,
         title: payload.title, description: payload.description,
         severity: payload.severity, project: payload.project,
         assignee: payload.assignee || '-', labels: payload.labels,

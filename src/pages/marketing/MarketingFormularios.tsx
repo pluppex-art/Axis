@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { FormDetail, type FormDefinition } from "./components/Formularios/FormDetail";
 import { NovoFormularioModal } from "./components/Formularios/NovoFormularioModal";
+import { PLUPPEX_TENANT_ID } from "../../lib/supabase";
 
 const EMPREENDA_PREVIEW_URL = "https://escolaempreendamais.pluppex.com.br/inscricao";
 
@@ -44,11 +45,15 @@ export default function MarketingFormularios() {
         f.name.toLowerCase().includes("empreenda")
     );
 
-    if (!hasEmpreenda) {
+    // M1 (auditoria 2026-09-21): E-EMPREENDA+ é um produto/funil específico
+    // da Pluppex, não uma feature nativa do S.P.Y. — antes era injetado pra
+    // TODO tenant com o módulo Marketing habilitado, mesmo mostrando 0 leads
+    // (RLS bloqueia os dados reais de outro tenant_id) e falhando ao salvar.
+    if (!hasEmpreenda && activeTenantId === PLUPPEX_TENANT_ID) {
       return [DEFAULT_EMPREENDA_FORM, ...list];
     }
     return list;
-  }, [marketingForms]);
+  }, [marketingForms, activeTenantId]);
 
   const handleCreate = async (data: { name: string; description: string; previewUrl: string; source: string }) => {
     await addMarketingForm({

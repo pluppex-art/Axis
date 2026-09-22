@@ -24,7 +24,7 @@ import {
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
-import { fetchPublicProposal, PublicProposal } from "../../lib/publicProposal";
+import { fetchPublicProposal, acceptPublicProposal, PublicProposal } from "../../lib/publicProposal";
 import { handleDownloadPdf } from "../crm/utils/proposalPdf";
 import { toast } from "sonner";
 
@@ -119,16 +119,27 @@ export default function PropostaPublica() {
     "Empresa Proponente";
   const isVencida = proposta.validade ? new Date(proposta.validade) < new Date() : false;
 
-  const handleAcceptProposal = () => {
+  const handleAcceptProposal = async () => {
+    if (!token) return;
     setIsAccepting(true);
-    setTimeout(() => {
-      setIsAccepted(true);
-      setIsAccepting(false);
-      toast.success("🎉 Proposta Aceita com Sucesso!", {
-        description: `O aceite comercial foi registrado junto à ${tenantName}.`,
-        duration: 8000,
+    try {
+      const ok = await acceptPublicProposal(token, {
+        clientName: proposta.cliente || undefined,
       });
-    }, 600);
+      if (ok) {
+        setIsAccepted(true);
+        toast.success("🎉 Proposta Aceita com Sucesso!", {
+          description: `O aceite comercial foi registrado junto à ${tenantName}.`,
+          duration: 8000,
+        });
+      } else {
+        toast.error("Não foi possível registrar o aceite agora.", {
+          description: "Tente novamente em instantes ou entre em contato com a equipe comercial.",
+        });
+      }
+    } finally {
+      setIsAccepting(false);
+    }
   };
 
   const handleDownloadDocPdf = () => {

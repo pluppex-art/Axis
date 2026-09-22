@@ -52,7 +52,7 @@ export default function SettingsLayout() {
         { title: "Origens de leads", path: "/app/configuracoes/crm/origens" },
         { title: "Produtos", path: "/app/configuracoes/crm/produtos" },
         { title: "Campos personalizados", path: "/app/configuracoes/crm/campos" },
-        { title: "Configuração de SLA", path: "/app/configuracoes/crm/sla" },
+        { title: "Prazos de atendimento (SLA)", path: "/app/configuracoes/crm/sla" },
         { title: "Gatilhos IA", path: "/app/configuracoes/crm/gatilhos-ia" },
         { title: "Configuração de Dashboards", path: "/app/configuracoes/crm/dashboards" },
         { title: "Rodízio de Leads", path: "/app/configuracoes/crm/rodizio" },
@@ -91,10 +91,10 @@ export default function SettingsLayout() {
       items: [
         { title: "Central de Aplicativos & Ads", path: "/app/configuracoes/integracoes/apps" },
         { title: "Servidores SMTP (E-mail)", path: "/app/configuracoes/integracoes/smtp" },
-        { title: "Webhooks Globais & Logs", path: "/app/configuracoes/integracoes/webhooks" },
-        { title: "Webhooks de SDR & Pré-Vendas", path: "/app/configuracoes/integracoes/sdr-webhooks" },
-        { title: "Conectores Externos (ERP/CRM)", path: "/app/configuracoes/integracoes/conectores-externos" },
-        { title: "Links Dinâmicos (Aurora/Júlia)", path: "/app/configuracoes/integracoes/links-dinamicos" },
+        { title: "Integrações automáticas & Logs (Webhooks)", path: "/app/configuracoes/integracoes/webhooks" },
+        { title: "Automações de Pré-Vendas (Webhooks de SDR)", path: "/app/configuracoes/integracoes/sdr-webhooks" },
+        { title: "Conectar outros sistemas (ERP/CRM)", path: "/app/configuracoes/integracoes/conectores-externos" },
+        { title: "Links para os assistentes de IA (Aurora/Júlia)", path: "/app/configuracoes/integracoes/links-dinamicos" },
       ],
     },
     {

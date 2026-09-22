@@ -10,6 +10,7 @@ import { CompanyBlock } from "../../new-lead/CompanyBlock";
 import { QualificationBlock } from "../../new-lead/QualificationBlock";
 import { apiFetch } from "../../../../lib/apiClient";
 import { UserPlus } from "lucide-react";
+import { friendlyError } from "../../../../lib/friendlyError";
 
 interface NewLeadModalProps {
   isOpen: boolean;
@@ -167,7 +168,7 @@ export function NewLeadModal({ isOpen, onClose, firstStageId = "1", firstComerci
         }
       }
     }
-    if (cnpjStatus.status === "invalid") { import("sonner").then(({ toast }) => toast.error(`CNPJ Inválido! (${cnpjStatus.message})`)); return; }
+    if (cnpjStatus.status === "invalid") { import("sonner").then(({ toast }) => toast.error(`CNPJ Inválido! (${friendlyError(cnpjStatus)})`)); return; }
     if (!validatePhone(phoneValue)) { import("sonner").then(({ toast }) => toast.error("Telefone inválido!")); return; }
     if (cnpjStatus.status === "inactive") import("sonner").then(({ toast }) => toast.warning(`CNPJ INATIVO: ${cnpjStatus.message}`));
 

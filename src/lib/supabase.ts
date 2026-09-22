@@ -101,7 +101,7 @@ export async function isSupabaseReachable(): Promise<boolean> {
  * Usado tanto no login quanto na restauração de sessão (onAuthStateChange).
  */
 export async function fetchUserProfile(userId: string): Promise<{ success: boolean; error?: string; user?: any }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado.' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor.' };
 
   const { data, error } = await supabase
     .from("users")
@@ -177,7 +177,7 @@ export async function signIn(
   password: string
 ): Promise<{ success: boolean; error?: string; user?: any }> {
   if (!supabase) {
-    return { success: false, error: 'Supabase não configurado.' };
+    return { success: false, error: 'Não foi possível conectar ao servidor.' };
   }
 
   try {
@@ -208,7 +208,7 @@ export async function signIn(
  * leva o usuário de volta pra /redefinir-senha, onde updatePassword() é chamado.
  */
 export async function requestPasswordReset(email: string): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado.' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor.' };
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${window.location.origin}/redefinir-senha`,
   });
@@ -224,7 +224,7 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
  * do e-mail já autentica temporariamente o usuário via Supabase Auth).
  */
 export async function updatePassword(newPassword: string): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado.' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor.' };
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) return { success: false, error: error.message };
   return { success: true };
@@ -248,7 +248,7 @@ export async function createUserWithProfile(params: {
   isTenantAdmin?: boolean;
 }): Promise<{ success: boolean; error?: string; userId?: string; needsEmailConfirmation?: boolean }> {
   if (!supabase || !supabaseUrl || !supabaseAnonKey) {
-    return { success: false, error: 'Supabase não configurado.' };
+    return { success: false, error: 'Não foi possível conectar ao servidor.' };
   }
 
   const isolatedClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -300,7 +300,7 @@ export async function setUserPartnerTenantAccess(
   tenantName: string,
   enabled: boolean
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado.' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor.' };
 
   if (!enabled) {
     const { error } = await supabase.from('users').update({ partner_id: null }).eq('id', userId);
@@ -406,8 +406,12 @@ export async function fetchTenantIdMap(): Promise<Record<string, string>> {
 }
 
 /** Tenant Pluppex (dona comercial do S.P.Y.) — mesmo id fixo já usado em
- * src/pages/marketing/EEmpreendaEditor.tsx para acesso cross-tenant. */
-const PLUPPEX_TENANT_ID = "27ef95ee-84dd-499e-9f25-cd9baecb5fe4";
+ * src/pages/marketing/EEmpreendaEditor.tsx para acesso cross-tenant, e
+ * exportado (achado M1, auditoria 2026-09-21) pra gatear a exibição do
+ * conteúdo "E-EMPREENDA+" nas telas genéricas de Marketing (Formulários,
+ * Landing Pages) — antes aparecia pra qualquer tenant, mesmo mostrando dados
+ * vazios/quebrando ao salvar pra quem não é a própria Pluppex. */
+export const PLUPPEX_TENANT_ID = "27ef95ee-84dd-499e-9f25-cd9baecb5fe4";
 
 export interface SpyLicenseProduct {
   id: string;
@@ -470,7 +474,7 @@ export async function createTenantAdmin(
   adminPassword: string,
   options?: { plan?: string; primaryColor?: string; timezone?: string; modules?: Record<string, boolean> }
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor' };
   try {
     const session = await getSessionWithTimeout();
     if (!session?.access_token) return { success: false, error: 'Sessão inválida.' };
@@ -515,7 +519,7 @@ export async function updateTenantInfo(
   tenantId: string,
   updates: { name?: string; niche?: string }
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor' };
   try {
     const { error } = await supabase.from('tenants').update(updates).eq('id', tenantId);
     if (error) throw error;
@@ -534,7 +538,7 @@ export async function updateTenantPlan(
   tenantId: string,
   plan: 'start' | 'autopilot' | 'autonomous'
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor' };
   try {
     const { error } = await supabase.from('tenants').update({ plan }).eq('id', tenantId);
     if (error) throw error;
@@ -571,7 +575,7 @@ export async function updateTenantTheme(
   tenantId: string,
   hex: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor' };
   try {
     const { error } = await supabase.from('tenants').update({ primary_color: hex }).eq('id', tenantId);
     if (error) throw error;
@@ -602,7 +606,7 @@ async function getSessionWithTimeout(timeoutMs = 8000) {
 export async function fetchTenantAdminUser(
   tenantId: string
 ): Promise<{ success: boolean; user?: { id: string; email: string; name: string }; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor' };
   try {
     const session = await getSessionWithTimeout();
     if (!session?.access_token) return { success: false, error: 'Sessão inválida.' };
@@ -628,7 +632,7 @@ export async function updateTenantUserCredentials(
   userId: string,
   updates: { email?: string; password?: string }
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor' };
   try {
     const session = await getSessionWithTimeout();
     if (!session?.access_token) return { success: false, error: 'Sessão inválida.' };
@@ -653,7 +657,7 @@ export async function updateTenantUserCredentials(
  * o tenant desaparece da tela imediatamente sem destruir o histórico dele.
  */
 export async function deactivateTenant(tenantId: string): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'Supabase não configurado' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor' };
   try {
     const { error } = await supabase.from('tenants').update({ status: 'Inactive' }).eq('id', tenantId);
     if (error) throw error;
@@ -667,7 +671,7 @@ export async function deactivateTenant(tenantId: string): Promise<{ success: boo
  * Atualiza os módulos ativos de um tenant no banco de dados
  */
 export async function updateTenantModulesInDB(tenantName: string, modules: any) {
-  if (!supabase) return { success: false, error: 'Supabase não configurado' };
+  if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor' };
 
   try {
     const { error } = await supabase

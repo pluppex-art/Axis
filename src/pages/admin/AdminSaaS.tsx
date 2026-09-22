@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { PageContainer } from "../../components/PageContainer";
-import { useData } from "../../contexts/DataContext";
+import { supabase } from "../../lib/supabase";
 
 import { AdminOverviewTab } from "./components/AdminOverviewTab";
 import { AdminTenantsTab } from "./components/AdminTenantsTab";
@@ -74,23 +74,38 @@ export default function AdminSaaS() {
     setSearchParams({ tab: tabId });
   };
 
-  const { financeEntries } = useData();
+  // A3 (auditoria 2026-09-21): `useData().financeEntries` só traz o tenant
+  // ATIVO da sessão do master (o próprio "G-Tech Master", que não deveria ter
+  // receita de cliente real) — "MRR Global"/"MRR Ativo" mostravam esse número
+  // sozinho, não a soma da plataforma. Esta tela é master-only (rota
+  // requireMaster), então busca direto todos os tenants — mesmo padrão já
+  // usado em AdminBillingTab.tsx pra tabela de assinaturas por tenant.
+  const [allFinanceEntries, setAllFinanceEntries] = useState<{ value: number; date: string | null }[]>([]);
+  useEffect(() => {
+    if (!supabase) return;
+    supabase
+      .from("finance_entries")
+      .select("value, date")
+      .eq("type", "Receber")
+      .eq("status", "Pago")
+      .then(({ data, error }) => {
+        if (!error && data) setAllFinanceEntries(data as any[]);
+      });
+  }, [reloadTrigger]);
 
   const revenueData = useMemo(() => {
     const months: Record<string, { name: string; mrr: number }> = {};
-    financeEntries
-      .filter((f) => f.type === "Receber" && f.status === "Pago")
-      .forEach((f) => {
-        try {
-          const d = new Date(f.date || "");
-          if (isNaN(d.getTime())) return;
-          const month = d.toLocaleDateString("pt-BR", { month: "short" });
-          if (!months[month]) months[month] = { name: month, mrr: 0 };
-          months[month].mrr += f.value;
-        } catch {}
-      });
+    allFinanceEntries.forEach((f) => {
+      try {
+        const d = new Date(f.date || "");
+        if (isNaN(d.getTime())) return;
+        const month = d.toLocaleDateString("pt-BR", { month: "short" });
+        if (!months[month]) months[month] = { name: month, mrr: 0 };
+        months[month].mrr += Number(f.value) || 0;
+      } catch {}
+    });
     return Object.values(months);
-  }, [financeEntries]);
+  }, [allFinanceEntries]);
 
   const globalMrr = revenueData.reduce((acc, curr) => acc + curr.mrr, 0);
 

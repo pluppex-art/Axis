@@ -14,12 +14,9 @@ export default function GenericPlaceholder() {
           Esta área está sendo reestruturada para receber novas funcionalidades e relatórios avançados. Novidades em breve!
         </p>
       </div>
-      <button
-        onClick={() => alert("Ação registrada! Você será notificado quando este módulo for lançado.")}
-        className="px-6 py-2.5 bg-[var(--color-primary-blue)] hover:bg-blue-700 text-white text-sm rounded-xl transition-colors"
-      >
-        Notifique-me do Lançamento
-      </button>
+      {/* Achado de UX 2026-09-21: o botão "Notifique-me" usava alert() nativo
+          e não gravava a "inscrição" em lugar nenhum — removido em vez de
+          fingir uma ação que não existe de verdade. */}
     </div>
   );
 }

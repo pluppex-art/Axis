@@ -28,9 +28,17 @@ export function QuickStatsGrid({ stats }: QuickStatsGridProps) {
           <Card className="p-5 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] hover:border-[var(--color-primary-blue)]/40 transition-all shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <stat.icon className={`w-5 h-5 ${ICON_COLORS[i % ICON_COLORS.length]}`} />
-              <span className={`text-xs font-bold flex items-center gap-0.5 ${stat.trend.startsWith('+') ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                {stat.trend} {stat.trend.startsWith('+') ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-              </span>
+              {/* Achado de UX 2026-09-21: `trend` sem valor real (nichos que ainda
+                  não calculam variação) chegava aqui como "--", que não começa
+                  com "+" e caía sempre no ramo "queda" — todo cliente via uma
+                  seta vermelha ao lado do próprio KPI, mesmo sem dado nenhum. */}
+              {stat.trend && stat.trend !== '--' ? (
+                <span className={`text-xs font-bold flex items-center gap-0.5 ${stat.trend.startsWith('+') ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  {stat.trend} {stat.trend.startsWith('+') ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+                </span>
+              ) : (
+                <span className="text-xs font-bold text-[var(--color-text-faint)]">—</span>
+              )}
             </div>
             <div className="text-2xl font-display font-black text-[var(--color-text-primary)] mb-1 italic">
               {stat.value}

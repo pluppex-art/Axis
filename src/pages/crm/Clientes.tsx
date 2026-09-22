@@ -11,6 +11,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { apiFetch } from "../../lib/apiClient";
 import { ClientesKPIs } from "./components/Clientes/ClientesKPIs";
 import { ClientesList } from "./components/Clientes/ClientesList";
+import { friendlyError } from "../../lib/friendlyError";
 
 export default function Clientes() {
   const { activeTenantId } = useAuth();
@@ -46,7 +47,7 @@ export default function Clientes() {
     supabase.from("clientes").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
       if (cancelled) return;
       authoritativeLoadedRef.current = true;
-      if (error) toast.error(`Erro ao carregar clientes: ${error.message}`);
+      if (error) toast.error(`Erro ao carregar clientes: ${friendlyError(error)}`);
       else if (data) setClientes(data);
     });
 
@@ -62,7 +63,7 @@ export default function Clientes() {
 
   const handleCreateCliente = async (data: any) => {
     if (!data.nome) { toast.error("Nome da empresa é obrigatório."); return; }
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
+    if (!supabase) { toast.error("Não foi possível conectar ao servidor."); return; }
     if (!activeTenantId) { toast.error("Tenant não identificado."); return; }
     const newClient = {
       name: data.nome,
@@ -77,21 +78,21 @@ export default function Clientes() {
     };
 
     const { data: inserted, error } = await supabase.from("clientes").insert(newClient).select().maybeSingle();
-    if (error) { toast.error(`Erro ao cadastrar cliente: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao cadastrar cliente: ${friendlyError(error)}`); return; }
     if (inserted) setClientes(prev => [inserted, ...prev]);
     toast.success("Cliente cadastrado com sucesso!");
     setIsModalOpen(false);
   };
 
   const handleDeleteCliente = async (id: string) => {
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
+    if (!supabase) { toast.error("Não foi possível conectar ao servidor."); return; }
     const alvo = clientes.find(c => c.id === id);
     if (!(await confirmDialog({
       title: "Excluir cliente",
       description: `Excluir ${alvo?.name || "este cliente"} da base de clientes? Essa ação não pode ser desfeita.`,
     }))) return;
     const { error } = await supabase.from("clientes").delete().eq("id", id);
-    if (error) { toast.error(`Erro ao remover cliente: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover cliente: ${friendlyError(error)}`); return; }
     setClientes(prev => prev.filter(c => c.id !== id));
     toast.success("Cliente removido com sucesso!");
   };

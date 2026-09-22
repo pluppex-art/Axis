@@ -7,6 +7,7 @@ import {
   ChevronRight, User, ExternalLink, SquarePen, Columns3,
 } from "lucide-react";
 import { Card } from "../../components/ui/card";
+import { EmptyState } from "../../components/ui/empty-state";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
@@ -14,6 +15,7 @@ import { Modal } from "../../components/ui/modal";
 import { Link } from "react-router-dom";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { friendlyError } from "../../lib/friendlyError";
 
 type Imovel = {
   id: string;
@@ -72,10 +74,11 @@ const fmtValor = (im: Imovel) =>
     : `R$ ${(im.valor / 1000).toFixed(0)}k`;
 
 // ─── FORM MODAL ───────────────────────────────────────────────────────────────
-function ImovelFormModal({ onClose, onSave, initial }: {
+function ImovelFormModal({ onClose, onSave, initial, corretoresNomes = [] }: {
   onClose: () => void;
   onSave: (d: any) => void;
   initial?: Partial<Imovel>;
+  corretoresNomes?: string[];
 }) {
   const { formatCurrency } = useLocalization();
   const [form, setForm] = useState({
@@ -207,7 +210,16 @@ function ImovelFormModal({ onClose, onSave, initial }: {
           </div>
           <div className="col-span-2">
             <label className={LABEL}>Corretor Responsável</label>
-            <input value={form.corretor} onChange={e => set("corretor", e.target.value)} placeholder="Nome do corretor" className={FIELD} />
+            <input
+              value={form.corretor}
+              onChange={e => set("corretor", e.target.value)}
+              placeholder="Nome do corretor"
+              list="corretores-imovel-sugeridos"
+              className={FIELD}
+            />
+            <datalist id="corretores-imovel-sugeridos">
+              {corretoresNomes.map(nome => <option key={nome} value={nome} />)}
+            </datalist>
           </div>
           <div className="col-span-2">
             <label className={LABEL}>Descrição</label>
@@ -398,13 +410,21 @@ export default function Imoveis() {
   const [showForm, setShowForm] = useState(false);
   const [editImovel, setEditImovel] = useState<Imovel | null>(null);
   const [selectedImovel, setSelectedImovel] = useState<Imovel | null>(null);
+  // Baixo (auditoria 2026-09-21): o campo "corretor" era texto livre, sem
+  // vínculo com imobiliario_corretores — nome digitado diferente do
+  // cadastrado fazia a página pública do imóvel nunca achar o contato do
+  // corretor. Lista real pra sugerir (datalist) o nome exato cadastrado.
+  const [corretoresNomes, setCorretoresNomes] = useState<string[]>([]);
 
   const refetch = () => {
     if (!supabase || !activeTenantId) { setLoading(false); return; }
     supabase.from("imobiliario_imoveis").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
-      if (error) toast.error(`Erro ao carregar imóveis: ${error.message}`);
+      if (error) toast.error(`Erro ao carregar imóveis: ${friendlyError(error)}`);
       else if (data) setImoveis(data.map(rowToImovel));
       setLoading(false);
+    });
+    supabase.from("imobiliario_corretores").select("nome").eq("tenant_id", activeTenantId).eq("status", "Ativo").then(({ data }) => {
+      if (data) setCorretoresNomes(data.map((c: any) => c.nome));
     });
   };
 
@@ -421,18 +441,18 @@ export default function Imoveis() {
   });
 
   const handleSave = async (form: any) => {
-    if (!supabase || !activeTenantId) { toast.error("Supabase não configurado."); return; }
+    if (!supabase || !activeTenantId) { toast.error("Não foi possível conectar ao servidor."); return; }
     const { data, error } = await supabase.from("imobiliario_imoveis").insert({ ...form, visitas: 0, tenant_id: activeTenantId }).select().maybeSingle();
-    if (error) { toast.error(`Erro ao cadastrar imóvel: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao cadastrar imóvel: ${friendlyError(error)}`); return; }
     if (data) setImoveis(prev => [rowToImovel(data), ...prev]);
     toast.success("Imóvel cadastrado com sucesso!");
   };
 
   const handleEdit = async (form: any) => {
     if (!editImovel) return;
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
+    if (!supabase) { toast.error("Não foi possível conectar ao servidor."); return; }
     const { error } = await supabase.from("imobiliario_imoveis").update(form).eq("id", editImovel.id);
-    if (error) { toast.error(`Erro ao atualizar imóvel: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao atualizar imóvel: ${friendlyError(error)}`); return; }
     const updated = { ...editImovel, ...form };
     setImoveis(prev => prev.map(i => i.id === editImovel.id ? updated : i));
     if (selectedImovel?.id === editImovel.id) setSelectedImovel(updated);
@@ -446,9 +466,9 @@ export default function Imoveis() {
       title: "Excluir imóvel",
       description: `Excluir ${alvo?.titulo || "este imóvel"}? Essa ação não pode ser desfeita.`,
     }))) return;
-    if (!supabase) { toast.error("Supabase não configurado."); return; }
+    if (!supabase) { toast.error("Não foi possível conectar ao servidor."); return; }
     const { error } = await supabase.from("imobiliario_imoveis").delete().eq("id", id);
-    if (error) { toast.error(`Erro ao remover imóvel: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover imóvel: ${friendlyError(error)}`); return; }
     setImoveis(prev => prev.filter(i => i.id !== id));
     toast.success("Imóvel removido.");
   };
@@ -476,8 +496,8 @@ export default function Imoveis() {
         </div>
       }
     >
-      {showForm && <ImovelFormModal onClose={() => setShowForm(false)} onSave={handleSave} />}
-      {editImovel && <ImovelFormModal onClose={() => setEditImovel(null)} onSave={handleEdit} initial={editImovel} />}
+      {showForm && <ImovelFormModal onClose={() => setShowForm(false)} onSave={handleSave} corretoresNomes={corretoresNomes} />}
+      {editImovel && <ImovelFormModal onClose={() => setEditImovel(null)} onSave={handleEdit} initial={editImovel} corretoresNomes={corretoresNomes} />}
       {selectedImovel && (
         <ImovelDetailDrawer
           im={selectedImovel}
@@ -626,11 +646,16 @@ export default function Imoveis() {
           <p className="font-bold">Carregando imóveis...</p>
         </div>
       ) : filtered.length === 0 && (
-        <div className="text-center py-20 text-slate-500">
-          <Building2 className="w-12 h-12 mx-auto mb-3 opacity-20" />
-          <p className="font-bold">Nenhum imóvel encontrado</p>
-          <p className="text-sm mt-1">Ajuste os filtros ou cadastre um novo imóvel.</p>
-        </div>
+        <EmptyState
+          icon={Building2}
+          title={imoveis.length === 0 ? "Nenhum imóvel cadastrado" : "Nenhum imóvel encontrado"}
+          description={imoveis.length === 0 ? "Cadastre o primeiro imóvel do portfólio." : "Ajuste os filtros para ver outros imóveis."}
+          action={imoveis.length === 0 ? (
+            <Button onClick={() => setShowForm(true)} className="h-9 px-4 text-xs font-bold gap-1.5 bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-3.5 h-3.5" /> Novo Imóvel
+            </Button>
+          ) : undefined}
+        />
       )}
     </PageContainer>
   );

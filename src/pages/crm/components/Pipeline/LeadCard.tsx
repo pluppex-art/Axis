@@ -5,6 +5,7 @@ import {
   Flame, MoreVertical, Calendar, FileText,
   History, ArrowRight, FileDown, Activity,
   Zap, Package, Globe, MapPin, Users, CalendarClock,
+  TrendingUp, Clock, UserCheck, Layers,
 } from 'lucide-react';
 import { cn, parseCurrencyBR } from '../../../../lib/utils';
 
@@ -204,10 +205,10 @@ export function LeadCard({
             {/* Priority badge */}
             {item.priority && (
               <span className={cn(
-                "text-[8px] font-bold px-1.5 py-0.5 rounded-full border uppercase tracking-wider",
+                "text-[8px] font-bold px-1.5 py-0.5 rounded-full border uppercase tracking-wider inline-flex items-center gap-0.5",
                 PRIORITY_BADGE[item.priority] ?? 'bg-[var(--color-surface-sunken)] border-[var(--color-border-default)] text-[var(--color-text-muted)]'
               )}>
-                ▲ {item.priority === 'Alta' ? 'ALTO' : item.priority === 'Média' ? 'MÉDIO' : 'BAIXO'}
+                <TrendingUp className="w-2.5 h-2.5" /> {item.priority === 'Alta' ? 'ALTO' : item.priority === 'Média' ? 'MÉDIO' : 'BAIXO'}
               </span>
             )}
           </div>
@@ -311,19 +312,19 @@ export function LeadCard({
           <div className="flex flex-wrap gap-1">
             {clientName && (
               <span className="inline-flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-600 dark:text-cyan-400 uppercase tracking-wide">
-                ◈ {clientName}
+                <UserCheck className="w-2.5 h-2.5" /> {clientName}
               </span>
             )}
             {leadSquad && (
               <span
-                className="text-[8px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide"
+                className="inline-flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide"
                 style={{
                   backgroundColor: `${leadSquad.cor ?? '#6366f1'}18`,
                   borderColor: `${leadSquad.cor ?? '#6366f1'}40`,
                   color: leadSquad.cor ?? '#818cf8',
                 }}
               >
-                ◆ {leadSquad.nome}
+                <Layers className="w-2.5 h-2.5" /> {leadSquad.nome}
               </span>
             )}
             {tags.slice(0, 2).map((tag: string) => (
@@ -371,7 +372,7 @@ export function LeadCard({
               ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
               : 'bg-[var(--color-surface-sunken)] text-[var(--color-text-faint)] border-[var(--color-border-default)]'
           )}>
-            ⏳ {timeIdleNum}d
+            <Clock className="w-2.5 h-2.5" /> {timeIdleNum}d
           </span>
         </div>
 

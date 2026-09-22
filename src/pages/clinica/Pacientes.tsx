@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Users, Search, UserPlus, Download, Mail, Phone, Clock, Inbox,
+  Users, Search, UserPlus, Download, Mail, Phone, Clock,
   ShieldCheck, X, FileText, Trash2, Edit2, Cake, IdCard, Stethoscope
 } from 'lucide-react';
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
+import { EmptyState } from "../../components/ui/empty-state";
 import { PageContainer } from "../../components/PageContainer";
 import { motion, AnimatePresence } from "motion/react";
 import { useData } from "../../contexts/DataContext";
@@ -35,6 +36,7 @@ const FIELD = "w-full bg-[var(--color-surface-sunken)] border border-[var(--colo
 const LABEL = "text-[10px] font-black text-[var(--color-text-faint)] uppercase tracking-widest mb-1.5 block";
 
 import { Modal } from "../../components/ui/modal";
+import { friendlyError } from "../../lib/friendlyError";
 
 function PacienteFormModal({ onClose, onSave, initial }: {
   onClose: () => void;
@@ -151,7 +153,7 @@ export default function Pacientes() {
   const refetch = () => {
     if (!supabase || !activeTenantId) { setLoading(false); return; }
     supabase.from("pacientes").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).then(({ data, error }) => {
-      if (error) toast.error(`Erro ao carregar pacientes: ${error.message}`);
+      if (error) toast.error(`Erro ao carregar pacientes: ${friendlyError(error)}`);
       else if (data) setPacientes(data.map(rowToPaciente));
       setLoading(false);
     });
@@ -186,9 +188,9 @@ export default function Pacientes() {
     : 0;
 
   const handleSave = async (form: any) => {
-    if (!supabase || !activeTenantId) { toast.error("Supabase não configurado."); return; }
+    if (!supabase || !activeTenantId) { toast.error("Não foi possível conectar ao servidor."); return; }
     const { data, error } = await supabase.from("pacientes").insert({ ...form, tenant_id: activeTenantId }).select().maybeSingle();
-    if (error) { toast.error(`Erro ao cadastrar paciente: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao cadastrar paciente: ${friendlyError(error)}`); return; }
     if (data) setPacientes(prev => [rowToPaciente(data), ...prev]);
     toast.success("Paciente cadastrado com sucesso!");
   };
@@ -196,7 +198,7 @@ export default function Pacientes() {
   const handleEdit = async (form: any) => {
     if (!editPaciente || !supabase) return;
     const { error } = await supabase.from("pacientes").update(form).eq("id", editPaciente.id);
-    if (error) { toast.error(`Erro ao atualizar paciente: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao atualizar paciente: ${friendlyError(error)}`); return; }
     setPacientes(prev => prev.map(p => p.id === editPaciente.id ? { ...p, ...form } : p));
     toast.success("Paciente atualizado.");
     setEditPaciente(null);
@@ -209,7 +211,7 @@ export default function Pacientes() {
     }))) return;
     if (!supabase) return;
     const { error } = await supabase.from("pacientes").delete().eq("id", p.id);
-    if (error) { toast.error(`Erro ao remover paciente: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover paciente: ${friendlyError(error)}`); return; }
     setPacientes(prev => prev.filter(x => x.id !== p.id));
     toast.success("Paciente removido.");
   };
@@ -282,16 +284,22 @@ export default function Pacientes() {
         {loading ? (
           <div className="text-center py-16 text-[var(--color-text-muted)] text-xs font-bold">Carregando pacientes...</div>
         ) : pacientes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-50">
-            <Inbox className="w-10 h-10 text-[var(--color-text-faint)]" />
-            <p className="text-xs font-bold text-[var(--color-text-muted)] text-center">
-              Nenhum paciente cadastrado.<br/>Clique em "Novo Paciente" para começar o cadastro.
-            </p>
-          </div>
+          <EmptyState
+            icon={UserPlus}
+            title="Nenhum paciente cadastrado"
+            description="Cadastre o primeiro paciente para começar a usar a Clínica."
+            action={
+              <Button onClick={() => setShowForm(true)} className="h-9 px-4 text-xs font-bold gap-1.5">
+                <UserPlus className="w-3.5 h-3.5" /> Novo Paciente
+              </Button>
+            }
+          />
         ) : filteredPatients.length === 0 ? (
-          <div className="text-center py-10 text-[var(--color-text-muted)] text-xs font-bold">
-            Nenhum paciente encontrado para a busca.
-          </div>
+          <EmptyState
+            icon={Search}
+            title="Nenhum paciente encontrado"
+            description="Tente buscar por outro nome, telefone ou e-mail."
+          />
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             <AnimatePresence>

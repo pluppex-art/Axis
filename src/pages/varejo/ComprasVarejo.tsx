@@ -312,7 +312,13 @@ export default function ComprasVarejo() {
                 <option value="Emitida / Aguardando Fornecedor">Emitida</option>
                 <option value="Faturada">Faturada</option>
                 <option value="Em Transporte">Em Transporte</option>
-                <option value="Recebido no Estoque">Recebido no Estoque</option>
+                {/* M8 (auditoria 2026-09-21): "Recebido no Estoque" só pode ser
+                    alcançado pelo fluxo real de "Dar Entrada" (RPC
+                    registrar_movimentacao_estoque) — escolher direto aqui
+                    marcava a compra como recebida sem incrementar o estoque
+                    de verdade. Mantido como `disabled` só pra exibir
+                    corretamente o status já atingido pelo fluxo correto. */}
+                <option value="Recebido no Estoque" disabled>Recebido no Estoque</option>
                 <option value="Cancelada">Cancelada</option>
               </select>
 

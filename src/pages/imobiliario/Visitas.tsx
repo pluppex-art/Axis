@@ -12,6 +12,7 @@ import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { Modal } from "../../components/ui/modal";
 import { useAuth } from "../../contexts/AuthContext";
+import { friendlyError } from "../../lib/friendlyError";
 
 type Visita = {
   id: string;
@@ -378,7 +379,7 @@ export default function Visitas() {
       });
       if (error) {
         console.error("[Supabase]", error.message);
-        toast.error(`Erro ao agendar visita: ${error.message}`);
+        toast.error(`Erro ao agendar visita: ${friendlyError(error)}`);
         setVisitas(prev => prev.filter(v => v.id !== nova.id));
         return;
       }
@@ -399,7 +400,7 @@ export default function Visitas() {
         .eq("id", editVisita.id);
       if (error) {
         console.error("[Supabase]", error.message);
-        toast.error(`Erro ao atualizar visita: ${error.message}`);
+        toast.error(`Erro ao atualizar visita: ${friendlyError(error)}`);
         setVisitas(prev => prev.map(v => v.id === previous.id ? previous : v));
         if (selectedVisita?.id === previous.id) setSelectedVisita(previous);
         setEditVisita(null);
@@ -418,7 +419,7 @@ export default function Visitas() {
       const { error } = await supabase.from("imobiliario_visitas").update({ status }).eq("id", id);
       if (error) {
         console.error("[Supabase]", error.message);
-        toast.error(`Erro ao atualizar status: ${error.message}`);
+        toast.error(`Erro ao atualizar status: ${friendlyError(error)}`);
         if (previous) {
           setVisitas(prev => prev.map(v => v.id === id ? { ...v, status: previous } : v));
           if (selectedVisita?.id === id) setSelectedVisita(s => s ? { ...s, status: previous } : null);
@@ -441,7 +442,7 @@ export default function Visitas() {
       const { error } = await supabase.from("imobiliario_visitas").delete().eq("id", id);
       if (error) {
         console.error("[Supabase]", error.message);
-        toast.error(`Erro ao remover visita: ${error.message}`);
+        toast.error(`Erro ao remover visita: ${friendlyError(error)}`);
         if (alvo) setVisitas(prev => [alvo, ...prev]);
         return;
       }

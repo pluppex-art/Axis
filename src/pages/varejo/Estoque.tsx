@@ -62,15 +62,20 @@ export default function VarejoEstoque() {
   const [formStockMin, setFormStockMin] = useState("5");
   const [formProvider, setFormProvider] = useState("");
 
-  // Histórico de Movimentações — vem só da tabela real `estoque_movimentacoes`
-  // (RLS já escopa por tenant); sem seed local nem cache em localStorage.
+  // Histórico de Movimentações — vem só da tabela real `estoque_movimentacoes`,
+  // filtrado explicitamente pelo tenant ativo (achado A7, auditoria
+  // 2026-09-21): sem o filtro, uma conta master/parceira com acesso a
+  // múltiplos tenants via `has_tenant_access` recebia as 50 últimas
+  // movimentações misturadas de todos os tenants acessíveis, não só do tenant
+  // ativo na tela.
   const [historico, setHistorico] = useState<Movimentacao[]>([]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     supabase
       .from("estoque_movimentacoes")
       .select("id, product_id, tipo, quantidade, motivo, created_at")
+      .eq("tenant_id", activeTenantId)
       .order("created_at", { ascending: false })
       .limit(50)
       .then(({ data, error }) => {
@@ -78,7 +83,7 @@ export default function VarejoEstoque() {
           setHistorico(data);
         }
       });
-  }, []);
+  }, [activeTenantId]);
 
   const produtoNome = (productId: string) => {
     return products.find((p: any) => p.id === productId)?.name || "Produto";

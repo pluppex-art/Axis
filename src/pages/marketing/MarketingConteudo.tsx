@@ -11,6 +11,7 @@ import { useMarketingConteudo } from "./useMarketingConteudo";
 import { KanbanColumn } from "./components/KanbanColumn";
 import { NewTaskModal } from "./components/NewTaskModal";
 import { TaskDetailsDrawer } from "./components/TaskDetailsDrawer";
+import { friendlyError } from "../../lib/friendlyError";
 
 export default function MarketingConteudo() {
   const {
@@ -59,7 +60,7 @@ export default function MarketingConteudo() {
   const handleArquivar = async () => {
     if (!selectedTask || !supabase) return;
     const { error } = await supabase.from("marketing_content").update({ deleted_at: new Date().toISOString() }).eq("id", selectedTask.id);
-    if (error) { toast.error(`Erro ao arquivar: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao arquivar: ${friendlyError(error)}`); return; }
     setTasks(prev => prev.filter(t => t.id !== selectedTask.id));
     toast.success('Pauta arquivada.');
     closeModal();

@@ -14,6 +14,7 @@ import { AlunosKPIs } from "./components/Alunos/AlunosKPIs";
 import { AlunosFilters } from "./components/Alunos/AlunosFilters";
 import { AlunosTable } from "./components/Alunos/AlunosTable";
 import { AlunosInsight } from "./components/Alunos/AlunosInsight";
+import { friendlyError } from "../../lib/friendlyError";
 
 interface Grade { subject: string; value: number; weight: number; }
 interface Student {
@@ -160,7 +161,7 @@ export default function Alunos() {
               p_dia_vencimento: Number(diaVencimento) || 10,
               p_quantidade_parcelas: Number(quantidadeParcelas) || 1,
             });
-            if (error) toast.error(`Matrícula criada, mas falhou ao gerar mensalidades: ${error.message}`);
+            if (error) toast.error(`Matrícula criada, mas falhou ao gerar mensalidades: ${friendlyError(error)}`);
           }
 
           toast.success(`Matrícula de ${data.nome} confirmada com sucesso!`);

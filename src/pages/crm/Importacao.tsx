@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
+import { friendlyError } from "../../lib/friendlyError";
 
 // FASE 5.5 do mandato "Aurora + S.P.Y. + Integração com Sistemas Externos" (2026-09-19).
 // Substitui o importador anterior, que tinha 3 bugs reais confirmados por leitura de código:
@@ -102,7 +103,7 @@ export default function CRMImportacao() {
         setStep("mapping");
       },
       error: (err) => {
-        toast.error(`Falha ao ler o arquivo: ${err.message}`);
+        toast.error(`Falha ao ler o arquivo: ${friendlyError(err)}`);
       },
     });
   };

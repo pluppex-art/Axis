@@ -1,4 +1,5 @@
 import { Card } from "../../components/ui/card";
+import { EmptyState } from "../../components/ui/empty-state";
 import {
   Download, Calendar, CheckCircle2,
   Clock, AlertTriangle, Plus, Trash2, DollarSign, Pencil, Lock, Repeat, Layers, User, Search, X, HelpCircle
@@ -124,6 +125,10 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
   const [newTags, setNewTags] = useState("");
   const [newCounterparty, setNewCounterparty] = useState("");
   const [newPaymentMethod, setNewPaymentMethod] = useState("");
+  // Lançamento de Notas Fiscais: número do documento fiscal do lançamento
+  // (coluna `numero_documento` já existia no banco, usada só na importação
+  // de extrato bancário — agora também editável no lançamento manual).
+  const [newNumeroDocumento, setNewNumeroDocumento] = useState("");
   const [newValue, setNewValue] = useState("");
   const [newDate, setNewDate] = useState("");
   const [newRepeatMode, setNewRepeatMode] = useState<RepeatMode>("none");
@@ -141,6 +146,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
   const [editTags, setEditTags] = useState("");
   const [editCounterparty, setEditCounterparty] = useState("");
   const [editPaymentMethod, setEditPaymentMethod] = useState("");
+  const [editNumeroDocumento, setEditNumeroDocumento] = useState("");
   const [editValue, setEditValue] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editStatus, setEditStatus] = useState<"Pago" | "A Vencer" | "Atrasado" | "Pendente">("A Vencer");
@@ -188,6 +194,12 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
   const [filtroCentroCustoId, setFiltroCentroCustoId] = useState("");
   const [filtroDataInicio, setFiltroDataInicio] = useState("");
   const [filtroDataFim, setFiltroDataFim] = useState("");
+  // Achado de UX 2026-09-21: os 7 filtros ficavam sempre visíveis antes de
+  // qualquer dado — quem só quer ver "o que tenho a receber esse mês" caía
+  // direto num formulário de 7 campos. Conta Bancária/Centro de Custo/período
+  // agora ficam atrás de "Mais filtros".
+  const [showMoreFiltros, setShowMoreFiltros] = useState(false);
+  const temFiltrosAvancadosAtivos = !!(filtroContaBancariaId || filtroCentroCustoId || filtroDataInicio || filtroDataFim);
 
   const temFiltrosAtivos = !!(filtroBusca || filtroCategoriaId || filtroStatus || filtroContaBancariaId || filtroCentroCustoId || filtroDataInicio || filtroDataFim);
   const limparFiltros = () => {
@@ -227,6 +239,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     setNewTags("");
     setNewCounterparty("");
     setNewPaymentMethod("");
+    setNewNumeroDocumento("");
     setNewValue("");
     setNewDate("");
     setNewRepeatMode("none");
@@ -269,6 +282,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
       counterparty: newCounterparty || null,
       contato_id: newCounterparty ? resolverContatoId(newCounterparty) : null,
       payment_method: newPaymentMethod || null,
+      numero_documento: newNumeroDocumento || null,
       status: "A Vencer" as const,
       type: type,
     };
@@ -357,6 +371,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     setEditTags(Array.isArray((item as any).tags) ? (item as any).tags.join(", ") : "");
     setEditCounterparty(item.counterparty || "");
     setEditPaymentMethod(item.payment_method || "");
+    setEditNumeroDocumento((item as any).numero_documento || "");
     setEditValue(String(item.value));
     setEditDate(item.date);
     setEditStatus((item.status as "Pago" | "A Vencer" | "Atrasado" | "Pendente") || "A Vencer");
@@ -392,6 +407,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
       counterparty: editCounterparty || null,
       contato_id: editCounterparty ? resolverContatoId(editCounterparty) : null,
       payment_method: editPaymentMethod || null,
+      numero_documento: editNumeroDocumento || null,
       value: parseFloat(editValue),
       date: editDate,
       status: editStatus,
@@ -507,32 +523,46 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
               </select>
             </div>
           )}
-          <div>
-            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Conta Bancária</label>
-            <select value={filtroContaBancariaId} onChange={(e) => setFiltroContaBancariaId(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer">
-              <option value="">Todas</option>
-              {contasAtivas.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Centro de Custo</label>
-            <select value={filtroCentroCustoId} onChange={(e) => setFiltroCentroCustoId(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer">
-              <option value="">Todos</option>
-              {(financeCentrosCusto as any[]).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">De</label>
-            <input type="date" value={filtroDataInicio} onChange={(e) => setFiltroDataInicio(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Até</label>
-            <input type="date" value={filtroDataFim} onChange={(e) => setFiltroDataFim(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
-          </div>
+          <Button
+            variant="outline"
+            onClick={() => setShowMoreFiltros((v) => !v)}
+            className="h-9 px-3 text-xs font-bold gap-1.5 border-[var(--color-border-default)]"
+          >
+            {showMoreFiltros ? "Menos filtros" : "Mais filtros"}
+            {!showMoreFiltros && temFiltrosAvancadosAtivos && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary-blue)]" />
+            )}
+          </Button>
           {temFiltrosAtivos && (
             <Button variant="outline" onClick={limparFiltros} className="h-9 px-3 text-xs font-bold gap-1.5 border-[var(--color-border-default)]">
               <X className="w-3.5 h-3.5" /> Limpar
             </Button>
+          )}
+          {showMoreFiltros && (
+            <>
+              <div>
+                <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Conta Bancária</label>
+                <select value={filtroContaBancariaId} onChange={(e) => setFiltroContaBancariaId(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer">
+                  <option value="">Todas</option>
+                  {contasAtivas.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Centro de Custo</label>
+                <select value={filtroCentroCustoId} onChange={(e) => setFiltroCentroCustoId(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer">
+                  <option value="">Todos</option>
+                  {(financeCentrosCusto as any[]).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">De</label>
+                <input type="date" value={filtroDataInicio} onChange={(e) => setFiltroDataInicio(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-[var(--color-text-muted)] mb-1 block">Até</label>
+                <input type="date" value={filtroDataFim} onChange={(e) => setFiltroDataFim(e.target.value)} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
+              </div>
+            </>
           )}
         </div>
       </Card>
@@ -566,8 +596,18 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
             <tbody className="divide-y divide-[var(--color-border-subtle)]">
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-[var(--color-text-muted)]">
-                    {temFiltrosAtivos ? "Nenhum lançamento encontrado para os filtros selecionados." : "Nenhum lançamento encontrado para este período."}
+                  <td colSpan={8} className="p-0">
+                    <EmptyState
+                      icon={DollarSign}
+                      title={temFiltrosAtivos ? "Nenhum lançamento para esses filtros" : "Nenhum lançamento ainda"}
+                      description={temFiltrosAtivos ? "Ajuste ou limpe os filtros para ver outros lançamentos." : "Cadastre o primeiro lançamento deste período."}
+                      className="border-0 rounded-none bg-transparent"
+                      action={!temFiltrosAtivos ? (
+                        <Button onClick={() => { setNewContaBancariaId(contaPrincipalId); setIsModalOpen(true); }} className="h-9 px-4 text-xs font-bold gap-1.5">
+                          <Plus className="w-3.5 h-3.5" /> Novo Lançamento
+                        </Button>
+                      ) : undefined}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -580,6 +620,9 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
                       </span>
                       {item.notes && (
                         <p className="text-[10px] font-normal text-[var(--color-text-faint)] mt-0.5 max-w-[220px] truncate" title={item.notes}>{item.notes}</p>
+                      )}
+                      {item.numero_documento && (
+                        <p className="text-[10px] font-normal text-[var(--color-text-faint)] mt-0.5">NF {item.numero_documento}</p>
                       )}
                     </td>
                     <td className="px-6 py-4 text-[var(--color-text-muted)]">{item.category}</td>
@@ -637,7 +680,17 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
           {/* Mobile Cards */}
           <div className="md:hidden p-4 space-y-3">
             {filteredData.length === 0 && (
-              <p className="text-center text-xs text-[var(--color-text-muted)] py-8">{temFiltrosAtivos ? "Nenhum lançamento encontrado para os filtros selecionados." : "Nenhum lançamento encontrado para este período."}</p>
+              <EmptyState
+                icon={DollarSign}
+                title={temFiltrosAtivos ? "Nenhum lançamento para esses filtros" : "Nenhum lançamento ainda"}
+                description={temFiltrosAtivos ? "Ajuste ou limpe os filtros para ver outros lançamentos." : "Cadastre o primeiro lançamento deste período."}
+                className="border-0 bg-transparent py-8"
+                action={!temFiltrosAtivos ? (
+                  <Button onClick={() => { setNewContaBancariaId(contaPrincipalId); setIsModalOpen(true); }} className="h-9 px-4 text-xs font-bold gap-1.5">
+                    <Plus className="w-3.5 h-3.5" /> Novo Lançamento
+                  </Button>
+                ) : undefined}
+              />
             )}
             {filteredData.map((item) => (
               <div key={item.id} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] p-4 rounded-xl flex flex-col gap-3 relative">
@@ -669,6 +722,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
                     <span className="text-[10px] text-[var(--color-text-muted)] font-semibold uppercase">{item.category}</span>
                     <span className="text-[10px] text-[var(--color-text-faint)] font-mono">{item.date}</span>
                     {item.payment_method && <span className="text-[10px] text-[var(--color-text-faint)]">· {item.payment_method}</span>}
+                    {item.numero_documento && <span className="text-[10px] text-[var(--color-text-faint)]">· NF {item.numero_documento}</span>}
                   </div>
                   {item.counterparty && (
                     <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 flex items-center gap-1"><User className="w-2.5 h-2.5" /> {item.counterparty}</p>
@@ -797,16 +851,29 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Forma de {type === 'Pagar' ? 'Pagamento' : 'Recebimento'}</label>
-            <select
-              value={newPaymentMethod}
-              onChange={(e) => setNewPaymentMethod(e.target.value)}
-              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
-            >
-              <option value="">Não informado</option>
-              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Forma de {type === 'Pagar' ? 'Pagamento' : 'Recebimento'}</label>
+              <select
+                value={newPaymentMethod}
+                onChange={(e) => setNewPaymentMethod(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+              >
+                <option value="">Não informado</option>
+                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Nº da Nota Fiscal</label>
+              <input
+                type="text"
+                placeholder="Ex: NF-e 12345"
+                value={newNumeroDocumento}
+                onChange={(e) => setNewNumeroDocumento(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+              <p className="text-[10px] text-[var(--color-text-faint)] mt-1">O arquivo da nota (PDF/XML) pode ser anexado depois de salvar, em "Editar → Nota Fiscal / Anexos".</p>
+            </div>
           </div>
 
           <div>
@@ -1002,7 +1069,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
         maxWidth="max-w-lg"
       >
         <div className="flex items-center gap-1 bg-[var(--color-surface-sunken)] p-1 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)] w-fit mb-4">
-          {([{ id: "detalhes", label: "Detalhes" }, { id: "arquivos", label: "Arquivos" }] as const).map(t => (
+          {([{ id: "detalhes", label: "Detalhes" }, { id: "arquivos", label: "Nota Fiscal / Anexos" }] as const).map(t => (
             <button
               key={t.id}
               type="button"
@@ -1077,16 +1144,28 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Forma de {type === 'Pagar' ? 'Pagamento' : 'Recebimento'}</label>
-            <select
-              value={editPaymentMethod}
-              onChange={(e) => setEditPaymentMethod(e.target.value)}
-              className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
-            >
-              <option value="">Não informado</option>
-              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Forma de {type === 'Pagar' ? 'Pagamento' : 'Recebimento'}</label>
+              <select
+                value={editPaymentMethod}
+                onChange={(e) => setEditPaymentMethod(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] cursor-pointer"
+              >
+                <option value="">Não informado</option>
+                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-[var(--color-text-muted)] mb-1 block">Nº da Nota Fiscal</label>
+              <input
+                type="text"
+                placeholder="Ex: NF-e 12345"
+                value={editNumeroDocumento}
+                onChange={(e) => setEditNumeroDocumento(e.target.value)}
+                className="w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+            </div>
           </div>
 
           <div>

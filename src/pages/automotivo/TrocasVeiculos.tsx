@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { friendlyError } from "../../lib/friendlyError";
 
 // Status alinhado ao CHECK constraint real de veiculo_financiamentos —
 // não existe um "Contrato Assinado" separado no banco; usamos os mesmos
@@ -65,7 +66,7 @@ export default function TrocasVeiculos() {
       .not("veiculo_troca_descricao", "is", null)
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        if (error) toast.error(`Erro ao carregar trocas: ${error.message}`);
+        if (error) toast.error(`Erro ao carregar trocas: ${friendlyError(error)}`);
         else if (data) setTrocas(data.map(rowToTroca));
       });
   };
@@ -101,7 +102,7 @@ export default function TrocasVeiculos() {
       return;
     }
     if (!supabase || !activeTenantId) {
-      toast.error("Supabase não configurado.");
+      toast.error("Não foi possível conectar ao servidor.");
       return;
     }
 
@@ -137,7 +138,7 @@ export default function TrocasVeiculos() {
       .maybeSingle();
 
     if (error) {
-      toast.error(`Erro ao cadastrar troca: ${error.message}`);
+      toast.error(`Erro ao cadastrar troca: ${friendlyError(error)}`);
       return;
     }
 
@@ -160,7 +161,7 @@ export default function TrocasVeiculos() {
       description: `Excluir a negociação de troca de "${troca?.cliente || "este cliente"}"? Essa ação não pode ser desfeita.`,
     }))) return;
     const { error } = await supabase.from("veiculo_financiamentos").delete().eq("id", id);
-    if (error) { toast.error(`Erro ao remover troca: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover troca: ${friendlyError(error)}`); return; }
     setTrocas(prev => prev.filter(t => t.id !== id));
     toast.info("Troca removida.");
   };
@@ -168,7 +169,7 @@ export default function TrocasVeiculos() {
   const handleUpdateStatus = async (id: string, newStatus: TrocaItem["status"]) => {
     if (!supabase) return;
     const { error } = await supabase.from("veiculo_financiamentos").update({ status: newStatus }).eq("id", id);
-    if (error) { toast.error(`Erro ao atualizar status: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao atualizar status: ${friendlyError(error)}`); return; }
     setTrocas(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
     toast.success(`Status da troca: ${newStatus}`);
   };

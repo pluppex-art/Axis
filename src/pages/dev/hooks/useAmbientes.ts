@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 
 export type EnvStatus = 'operacional' | 'degradado' | 'offline' | 'em deploy';
 
@@ -34,15 +35,17 @@ function rowToEnv(row: any): DevEnvironment {
 }
 
 export function useAmbientes() {
+  const { activeTenantId } = useAuth();
   const [environments, setEnvironments] = useState<DevEnvironment[]>([]);
   const [loading, setLoading] = useState(false);
 
   const refetch = async () => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from('dev_environments')
       .select('*')
+      .eq('tenant_id', activeTenantId)
       .order('created_at', { ascending: true });
     if (!error && data !== null) {
       setEnvironments(data.map(rowToEnv));
@@ -50,7 +53,7 @@ export function useAmbientes() {
     setLoading(false);
   };
 
-  useEffect(() => { refetch(); }, []);
+  useEffect(() => { refetch(); }, [activeTenantId]);
 
   return { environments, loading, refetch };
 }

@@ -12,6 +12,7 @@ import { Modal } from "../../components/ui/modal";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { friendlyError } from "../../lib/friendlyError";
 
 interface TestDriveItem {
   id: string;
@@ -58,7 +59,7 @@ export default function TestDrives() {
       .not("veiculo_id", "is", null)
       .order("data", { ascending: false })
       .then(({ data, error }) => {
-        if (error) toast.error(`Erro ao carregar test-drives: ${error.message}`);
+        if (error) toast.error(`Erro ao carregar test-drives: ${friendlyError(error)}`);
         else if (data) setTestDrives(data.map(rowToTestDrive));
       });
   };
@@ -95,7 +96,7 @@ export default function TestDrives() {
       return;
     }
     if (!supabase || !activeTenantId) {
-      toast.error("Supabase não configurado.");
+      toast.error("Não foi possível conectar ao servidor.");
       return;
     }
 
@@ -117,7 +118,7 @@ export default function TestDrives() {
       .maybeSingle();
 
     if (error) {
-      toast.error(`Erro ao agendar test-drive: ${error.message}`);
+      toast.error(`Erro ao agendar test-drive: ${friendlyError(error)}`);
       return;
     }
 
@@ -141,7 +142,7 @@ export default function TestDrives() {
       description: `Excluir o test-drive de "${testDrive?.cliente || "este cliente"}"? Essa ação não pode ser desfeita.`,
     }))) return;
     const { error } = await supabase.from("imobiliario_visitas").delete().eq("id", id);
-    if (error) { toast.error(`Erro ao remover test-drive: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover test-drive: ${friendlyError(error)}`); return; }
     setTestDrives(prev => prev.filter(t => t.id !== id));
     toast.info("Test-drive removido.");
   };
@@ -149,7 +150,7 @@ export default function TestDrives() {
   const handleUpdateStatus = async (id: string, newStatus: TestDriveItem["status"]) => {
     if (!supabase) return;
     const { error } = await supabase.from("imobiliario_visitas").update({ status: newStatus }).eq("id", id);
-    if (error) { toast.error(`Erro ao atualizar status: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao atualizar status: ${friendlyError(error)}`); return; }
     setTestDrives(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
     toast.success(`Status do test-drive: ${newStatus}`);
   };

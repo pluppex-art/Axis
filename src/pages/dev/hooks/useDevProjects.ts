@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 import { toast } from 'sonner';
 import type { NovoProjetoPayload } from '../modals/NovoProjetoDevModal';
 import { generateProjectBacklogAI } from '../lib/generateProjectBacklogAI';
@@ -36,17 +37,19 @@ function rowToProject(row: any): DevProject {
 }
 
 export function useDevProjects() {
+  const { activeTenantId } = useAuth();
   const [projects, setProjects] = useState<DevProject[]>([]);
   const [loading, setLoading] = useState(false);
 
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     async function load() {
       setLoading(true);
       const { data, error } = await supabase!
         .from('dev_projects')
         .select('*')
+        .eq('tenant_id', activeTenantId)
         .order('created_at', { ascending: false });
       if (!error && data !== null) {
         setProjects(data.map(rowToProject));
@@ -54,7 +57,7 @@ export function useDevProjects() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [activeTenantId]);
 
   async function addProject(payload: NovoProjetoPayload) {
   if (!supabase) {
@@ -80,6 +83,7 @@ export function useDevProjects() {
     const { data: projectRow, error: projectError } = await supabase
       .from('dev_projects')
       .insert({
+        tenant_id: activeTenantId,
         name: payload.name,
         description: payload.description,
         status: payload.status,
@@ -172,7 +176,7 @@ export function useDevProjects() {
           column_id: 'backlog',
           project: projectId,
           sprint_id: sprintId,
-          tenant_id: null,
+          tenant_id: activeTenantId,
         }))
       );
 
@@ -185,7 +189,8 @@ export function useDevProjects() {
     const { error: updError } = await supabase
       .from('dev_projects')
       .update({ progress: 0, sprints: 1 })
-      .eq('id', String(projectId));
+      .eq('id', String(projectId))
+      .eq('tenant_id', activeTenantId);
 
 
     if (updError) {
@@ -233,7 +238,8 @@ export function useDevProjects() {
         stack: payload.stack,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', String(payload.id));
+      .eq('id', String(payload.id))
+      .eq('tenant_id', activeTenantId);
 
 
     if (error) {
@@ -262,7 +268,7 @@ export function useDevProjects() {
 
     // As tasks devem ser removidas em cascata (ON DELETE CASCADE).
     // Se por algum motivo não estiver ativo, remover manualmente dev_sprint_tasks antes.
-    const { error } = await supabase.from('dev_projects').delete().eq('id', String(projectId));
+    const { error } = await supabase.from('dev_projects').delete().eq('id', String(projectId)).eq('tenant_id', activeTenantId);
 
 
     if (error) {

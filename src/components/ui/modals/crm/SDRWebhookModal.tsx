@@ -4,6 +4,7 @@ import { Button } from "../../button";
 import { Webhook, Activity, ShieldCheck, Zap } from "lucide-react";
 import { toast } from "sonner";
 import axios from "axios";
+import { friendlyError } from "../../../../lib/friendlyError";
 
 interface SDRWebhookModalProps {
   isOpen: boolean;
@@ -47,7 +48,7 @@ export function SDRWebhookModal({ isOpen, onClose }: SDRWebhookModalProps) {
       toast.success("Ping enviado! O endpoint respondeu com sucesso.");
       setStatus("success");
     } catch (e: any) {
-      toast.error(`Falha no Ping: ${e.response?.status ? `HTTP ${e.response.status}` : e.message}`);
+      toast.error(`Falha no Ping: ${e.response?.status ? `HTTP ${e.response.status}` : friendlyError(e)}`);
       setStatus("error");
     } finally {
       setTesting(false);

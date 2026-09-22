@@ -14,6 +14,7 @@ import { useLocalization } from "../../contexts/LocalizationContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { apiFetch } from "../../lib/apiClient";
 import { useMensalidadesList, type Mensalidade } from "./useMensalidadesList";
+import { friendlyError } from "../../lib/friendlyError";
 
 const statusColor = (s: string) => {
   if (s === "Pago") return "success" as const;
@@ -56,7 +57,7 @@ export default function Mensalidades() {
     setRefreshing(true);
     const { data, error } = await supabase.rpc("atualizar_inadimplencia_mensalidades");
     setRefreshing(false);
-    if (error) { toast.error(`Erro ao atualizar: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao atualizar: ${friendlyError(error)}`); return; }
     toast.success(data > 0 ? `${data} mensalidade(s) marcada(s) como atrasada(s).` : "Nenhuma mensalidade nova em atraso.");
     refetch();
     fetchSummary();
@@ -66,7 +67,7 @@ export default function Mensalidades() {
     if (!supabase) return;
     const today = new Date().toISOString().split("T")[0];
     const { error } = await supabase.from("mensalidades").update({ status: "Pago", data_pagamento: today }).eq("id", m.id);
-    if (error) { toast.error(`Erro ao registrar pagamento: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao registrar pagamento: ${friendlyError(error)}`); return; }
     refetch();
     fetchSummary();
     toast.success("Mensalidade marcada como paga.");

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { useAuth } from "../../contexts/AuthContext";
+import { friendlyError } from "../../lib/friendlyError";
 
 type Contato = {
   id: string;
@@ -150,7 +151,7 @@ export default function Contatos() {
     }).select().maybeSingle();
 
     if (error) {
-      toast.error(`Erro ao cadastrar contato: ${error.message}`);
+      toast.error(`Erro ao cadastrar contato: ${friendlyError(error)}`);
       return;
     }
 
@@ -169,7 +170,7 @@ export default function Contatos() {
     if (!supabase) return;
     const { error } = await supabase.from("cliente_contatos").delete().eq("id", id);
     if (error) {
-      toast.error(`Erro ao excluir: ${error.message}`);
+      toast.error(`Erro ao excluir: ${friendlyError(error)}`);
       return;
     }
     toast.success("Contato removido!");

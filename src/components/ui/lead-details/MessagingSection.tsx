@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { Card } from "../card";
 import { Button } from "../button";
 import { Input } from "../input";
-import { Send, MessageSquare } from "lucide-react";
+import { EmptyState } from "../empty-state";
+import { Send, MessageSquareOff } from "lucide-react";
 import { toast } from "sonner";
 
 interface MessagingSectionProps {
@@ -11,36 +12,28 @@ interface MessagingSectionProps {
   seller: string;
 }
 
+// Achado de UX 2026-09-21: esta aba simulava uma conversa real (mensagens
+// fixas de exemplo, "envio" que só empilhava texto no estado local sem
+// mandar nada a lugar nenhum, e até uma resposta falsa de IA aparecendo
+// sozinha 1s depois) — um vendedor podia genuinamente achar que contatou o
+// lead e recebeu resposta, quando nada foi enviado. Não existe hoje nenhuma
+// integração real de WhatsApp/e-mail/Instagram conectada a esta tela (as
+// tabelas `chat_messages`/`whatsapp_instances` existem no banco mas não são
+// usadas por nenhuma página ainda). Até essa integração existir, a ação real
+// e honesta que dá pra oferecer aqui é copiar a mensagem pronta pro
+// vendedor colar no aplicativo de verdade.
 export function MessagingSection({ leadName, companyName, seller }: MessagingSectionProps) {
   const [chatChannel, setChatChannel] = useState<'whatsapp' | 'email' | 'instagram'>('whatsapp');
   const [quickMessageText, setQuickMessageText] = useState("");
-  const [chatLog, setChatLog] = useState<Array<{ id: string; sender: 'me' | 'client' | 'ai'; text: string; time: string; channel: string }>>([
-    { id: '1', sender: 'client', text: "Olá! Gostaria de entender melhor como funciona a implementação do S.P.Y..", time: "Hoje, 10:25", channel: "whatsapp" },
-    { id: '2', sender: 'ai', text: "Olá! Seja bem-vindo à S.P.Y.. Nossa equipe comercial já está pronta para atendê-lo.", time: "Hoje, 10:26", channel: "whatsapp" }
-  ]);
 
-  const handleSendQuickMessage = () => {
+  const handleCopyQuickMessage = async () => {
     if (!quickMessageText.trim()) return;
-    const newMsgObj = {
-      id: Date.now().toString(),
-      sender: 'me' as const,
-      text: quickMessageText,
-      time: "Agora",
-      channel: chatChannel
-    };
-    setChatLog(prev => [...prev, newMsgObj]);
-    setQuickMessageText("");
-    toast.success(`Mensagem disparada via ${chatChannel.toUpperCase()}`);
-
-    setTimeout(() => {
-      setChatLog(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        sender: 'ai',
-        text: "💡 [Sugestão IA] Podemos agendar uma demonstração executiva para amanhã às 14h?",
-        time: "Agora mesmo",
-        channel: chatChannel
-      }]);
-    }, 1000);
+    try {
+      await navigator.clipboard.writeText(quickMessageText);
+      toast.success(`Mensagem copiada — cole no ${chatChannel === 'whatsapp' ? 'WhatsApp' : chatChannel === 'email' ? 'e-mail' : 'Instagram'} do lead.`);
+    } catch {
+      toast.error("Não foi possível copiar a mensagem.");
+    }
   };
 
   const applyMessageTemplate = (tpl: string) => {
@@ -80,35 +73,23 @@ export function MessagingSection({ leadName, companyName, seller }: MessagingSec
             ))}
           </div>
         </div>
-        <div className="h-60 overflow-y-auto bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-[var(--radius-control)] p-3.5 space-y-2.5">
-          {chatLog.filter(m => m.channel === chatChannel).map(msg => {
-            const isMe = msg.sender === 'me';
-            const isAi = msg.sender === 'ai';
-            return (
-              <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                <div className={`p-3 rounded-2xl text-xs max-w-[82%] leading-relaxed ${
-                  isMe ? 'bg-[var(--color-primary-blue)] text-white rounded-tr-none' :
-                  isAi ? 'bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-300 rounded-tl-none font-medium' :
-                  'bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] rounded-tl-none shadow-sm'
-                }`}>
-                  <p>{msg.text}</p>
-                  <span className="text-[9px] opacity-60 block mt-1 text-right">{msg.time}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <EmptyState
+          icon={MessageSquareOff}
+          title="Envio direto ainda não conectado"
+          description={`A integração de ${chatChannel === 'whatsapp' ? 'WhatsApp' : chatChannel === 'email' ? 'e-mail' : 'Instagram'} desta tela ainda não está disponível. Escreva a mensagem abaixo e use "Copiar" para colar no aplicativo de verdade.`}
+          className="h-60"
+        />
         <div className="flex gap-2">
           <Input
             type="text"
             placeholder={`Escreva uma mensagem para ${chatChannel.toUpperCase()}...`}
             value={quickMessageText}
             onChange={(e) => setQuickMessageText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSendQuickMessage()}
+            onKeyDown={(e) => e.key === 'Enter' && handleCopyQuickMessage()}
             className="flex-1 text-xs"
           />
-          <Button onClick={handleSendQuickMessage} className="px-3.5 font-bold shrink-0">
-            <Send className="w-4 h-4" />
+          <Button onClick={handleCopyQuickMessage} className="px-3.5 font-bold shrink-0 gap-1.5">
+            <Send className="w-4 h-4" /> Copiar
           </Button>
         </div>
       </Card>

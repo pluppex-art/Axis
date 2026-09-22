@@ -6,6 +6,7 @@ import { Badge } from "../../badge";
 import { supabase } from "../../../../lib/supabase";
 import { toast } from "sonner";
 import { confirmDialog } from "../../confirm-dialog";
+import { friendlyError } from "../../../../lib/friendlyError";
 
 interface ClienteContato {
   id: string;
@@ -66,7 +67,7 @@ export function ClienteContatosModal({ isOpen, onClose, clienteId, clienteNome }
       .order("created_at", { ascending: true })
       .then(({ data, error }) => {
         setLoading(false);
-        if (error) toast.error(`Erro ao carregar contatos: ${error.message}`);
+        if (error) toast.error(`Erro ao carregar contatos: ${friendlyError(error)}`);
         else setContatos(data || []);
       });
     setForm(EMPTY_FORM);
@@ -96,7 +97,7 @@ export function ClienteContatosModal({ isOpen, onClose, clienteId, clienteNome }
       .maybeSingle();
 
     if (error) { 
-      toast.error(`Erro ao adicionar contato: ${error.message}`); 
+      toast.error(`Erro ao adicionar contato: ${friendlyError(error)}`); 
       return; 
     }
     if (data) setContatos(prev => [...prev, data]);
@@ -119,7 +120,7 @@ export function ClienteContatosModal({ isOpen, onClose, clienteId, clienteNome }
       description: `Remover "${nome}" dos contatos deste cliente?`,
     }))) return;
     const { error } = await supabase.from("cliente_contatos").delete().eq("id", id);
-    if (error) { toast.error(`Erro ao remover contato: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover contato: ${friendlyError(error)}`); return; }
     setContatos(prev => prev.filter(c => c.id !== id));
   };
 

@@ -18,6 +18,7 @@ import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { friendlyError } from "../../lib/friendlyError";
 
 // ─── AUDIO FEEDBACK (WEB AUDIO API) ──────────────────────────────────────────
 function playPosSound(type: "beep" | "success" | "alert" | "error" = "beep") {
@@ -167,6 +168,10 @@ export default function VarejoVendas() {
   const [pixConfirmado, setPixConfirmado] = useState(false);
   const [prazoDias, setPrazoDias] = useState<string>("30");
   const [finalizando, setFinalizando] = useState(false);
+  // M4 (auditoria 2026-09-21): trava contra duplo-clique/duas abas no estorno
+  // — sem isso, dois disparos concorrentes de handleEstornarVenda devolviam o
+  // mesmo item ao estoque duas vezes.
+  const [estornandoIds, setEstornandoIds] = useState<Set<string>>(new Set());
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   // Pagamento Misto
@@ -514,7 +519,7 @@ export default function VarejoVendas() {
       snapshot,
     });
     if (error) {
-      toast.error(`Falha ao suspender venda: ${error.message}`);
+      toast.error(`Falha ao suspender venda: ${friendlyError(error)}`);
       return;
     }
 
@@ -540,7 +545,7 @@ export default function VarejoVendas() {
     if (supabase) {
       const { error } = await supabase.from("vendas_em_espera").delete().eq("id", espera.id);
       if (error) {
-        toast.error(`Falha ao retomar venda: ${error.message}`);
+        toast.error(`Falha ao retomar venda: ${friendlyError(error)}`);
         return;
       }
     }
@@ -747,7 +752,9 @@ export default function VarejoVendas() {
       try {
         const itensDesc = cart.map((i) => `${i.quantidade}x ${i.name}`).join(", ");
         await supabase!.from("varejo_pedidos").insert({
-          id: `PED-${Math.floor(9820 + Math.random() * 500)}`,
+          // M3 (auditoria 2026-09-21): id aleatório numérico colidia com o
+          // esquema usado em PedidosVarejo.tsx. UUID como o resto do sistema.
+          id: `PED-${crypto.randomUUID()}`,
           tenant_id: activeTenantId,
           cliente: vendaSnap.cliente_nome || "Consumidor Final",
           telefone: "",
@@ -778,7 +785,7 @@ export default function VarejoVendas() {
       toast.success(`Venda ${vendaId} concluída com sucesso!`);
     } catch (err: any) {
       if (soundEnabled) playPosSound("error");
-      toast.error(`Falha ao finalizar venda: ${err.message}`);
+      toast.error(`Falha ao finalizar venda: ${friendlyError(err)}`);
     } finally {
       setFinalizando(false);
     }
@@ -800,9 +807,25 @@ export default function VarejoVendas() {
       return;
     }
 
+    if (estornandoIds.has(venda.id)) return;
+    setEstornandoIds((prev) => new Set(prev).add(venda.id));
+
     try {
-      const { error: updError } = await supabase.from("vendas").update({ status: "cancelada" }).eq("id", venda.id);
+      // M4: `.eq("status", "paga")` garante que só a PRIMEIRA execução
+      // concorrente encontra a linha nesse status e de fato a atualiza — a
+      // segunda (duplo clique, outra aba) recebe 0 linhas afetadas e aborta
+      // antes de devolver o estoque de novo.
+      const { data: updData, error: updError } = await supabase
+        .from("vendas")
+        .update({ status: "cancelada" })
+        .eq("id", venda.id)
+        .eq("status", "paga")
+        .select("id");
       if (updError) throw new Error(updError.message);
+      if (!updData || updData.length === 0) {
+        toast.error("Esta venda já foi estornada.");
+        return;
+      }
 
       // Devolve ao estoque real (banco) cada item que veio do catálogo (ignora avulsos)
       const realItems = (venda.itens || []).filter((it) => it.productId && !it.isAvulso);
@@ -832,7 +855,13 @@ export default function VarejoVendas() {
       toast.success("Venda estornada e estoque devolvido com sucesso!");
     } catch (err: any) {
       if (soundEnabled) playPosSound("error");
-      toast.error(`Falha ao estornar venda: ${err.message}`);
+      toast.error(`Falha ao estornar venda: ${friendlyError(err)}`);
+    } finally {
+      setEstornandoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(venda.id);
+        return next;
+      });
     }
   };
 
@@ -1845,10 +1874,11 @@ export default function VarejoVendas() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleEstornarVenda(venda)}
-                              className="h-8 px-2.5 text-xs font-bold text-red-500 hover:bg-red-500/10 border-red-500/20"
+                              disabled={estornandoIds.has(venda.id)}
+                              className="h-8 px-2.5 text-xs font-bold text-red-500 hover:bg-red-500/10 border-red-500/20 disabled:opacity-50"
                               title="Estornar Venda e Devolver ao Estoque"
                             >
-                              <RotateCcw className="w-3.5 h-3.5" /> Estornar
+                              <RotateCcw className="w-3.5 h-3.5" /> {estornandoIds.has(venda.id) ? "Estornando..." : "Estornar"}
                             </Button>
                           )}
 

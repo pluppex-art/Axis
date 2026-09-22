@@ -1,18 +1,31 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useData } from "../contexts/DataContext";
 
 export function ProtectedRoute({
   children,
   requireMaster = false,
   requirePartner = false,
+  requireTenantAdmin = false,
+  requireModule,
 }: {
   children: React.ReactElement;
   requireMaster?: boolean;
   /** G-Tech (master) ou organização parceira (ex.: Pluppex) — ver public.users.partner_id. */
   requirePartner?: boolean;
+  /** Admin do próprio tenant (isTenantAdmin) ou master — telas que configuram
+   * cargos/permissões/governança financeira do próprio tenant, não só "tem sessão". */
+  requireTenantAdmin?: boolean;
+  /** Chave de módulo (ex.: "clinica", "educacao") — bloqueia a rota pra quem
+   * tem cargo com módulos restritos e esse módulo não incluso. Mesma lógica
+   * já usada pra esconder item de menu no Sidebar.tsx, aplicada agora também
+   * na rota (achado CR3: dado sensível de paciente/aluno era só "escondido
+   * do menu", mas acessível digitando a URL). */
+  requireModule?: string;
 }) {
   const { user, authLoading } = useAuth();
+  const { cargos } = useData();
   const location = useLocation();
 
   // Aguarda a sessão do Supabase Auth ser resolvida (getSession) antes de
@@ -41,6 +54,28 @@ export function ProtectedRoute({
   // de rota qualquer usuário logado via qualquer tenant chegava a montar a página.
   if (requirePartner && !user.isMaster && !user.partnerId) {
     return <Navigate to="/app" replace />;
+  }
+
+  // CR1/A2 (auditoria 2026-09-21): telas que configuram cargos, permissões
+  // por módulo, bloqueio de período financeiro, auditoria financeira e squads
+  // não tinham nenhum gate — qualquer colaborador do tenant podia abri-las e,
+  // no caso de Cargos/Permissões, se autoconceder qualquer módulo. A RLS
+  // também passou a exigir is_tenant_admin/is_master pra escrita nessas
+  // tabelas (ver migrations 20260921_cr1_*), isso aqui é a defesa em
+  // profundidade equivalente no frontend.
+  if (requireTenantAdmin && !user.isMaster && !user.isTenantAdmin) {
+    return <Navigate to="/app" replace />;
+  }
+
+  if (requireModule && !user.isMaster) {
+    const userCargo = cargos.find((c) => c.nome === user.role);
+    const cargoModulos: string[] | null =
+      userCargo && Array.isArray(userCargo.modulos) && userCargo.modulos.length > 0
+        ? userCargo.modulos
+        : null;
+    if (cargoModulos && !cargoModulos.includes(requireModule)) {
+      return <Navigate to="/app" replace />;
+    }
   }
 
   return children;

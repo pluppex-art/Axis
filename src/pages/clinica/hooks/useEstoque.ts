@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 import { toast } from 'sonner';
 
 export interface EstoqueItem {
@@ -31,16 +32,18 @@ function rowToItem(row: any): EstoqueItem {
 }
 
 export function useEstoque() {
+  const { activeTenantId } = useAuth();
   const [items, setItems] = useState<EstoqueItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     async function load() {
       setLoading(true);
       const { data, error } = await supabase!
         .from('estoque_items')
         .select('*')
+        .eq('tenant_id', activeTenantId)
         .order('name', { ascending: true });
       if (!error && data !== null) {
         setItems(data.map(rowToItem));
@@ -48,18 +51,18 @@ export function useEstoque() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [activeTenantId]);
 
   async function addItem(payload: { name: string; category: string; qty: number; minQty: number; price: string }) {
     const status = computeStatus(payload.qty, payload.minQty);
-    if (!supabase) {
+    if (!supabase || !activeTenantId) {
       setItems(prev => [...prev, { id: Date.now(), ...payload, status }]);
       toast.success('Item adicionado!');
       return;
     }
     const { data, error } = await supabase
       .from('estoque_items')
-      .insert({ name: payload.name, category: payload.category, qty: payload.qty, min_qty: payload.minQty, price: payload.price, status })
+      .insert({ tenant_id: activeTenantId, name: payload.name, category: payload.category, qty: payload.qty, min_qty: payload.minQty, price: payload.price, status })
       .select()
       .maybeSingle();
     if (error) { toast.error('Erro ao adicionar item'); return; }

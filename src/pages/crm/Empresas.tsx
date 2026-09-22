@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { useAuth } from "../../contexts/AuthContext";
+import { friendlyError } from "../../lib/friendlyError";
 
 export default function Empresas() {
   const { activeTenantId } = useAuth();
@@ -42,7 +43,7 @@ export default function Empresas() {
       .order("name", { ascending: true });
 
     if (error) {
-      toast.error(`Erro ao carregar empresas: ${error.message}`);
+      toast.error(`Erro ao carregar empresas: ${friendlyError(error)}`);
     } else if (data) {
       setEmpresas(data);
     }
@@ -84,7 +85,7 @@ export default function Empresas() {
     }).select().maybeSingle();
 
     if (error) {
-      toast.error(`Erro ao salvar empresa: ${error.message}`);
+      toast.error(`Erro ao salvar empresa: ${friendlyError(error)}`);
       return;
     }
 
@@ -103,7 +104,7 @@ export default function Empresas() {
     if (!supabase) return;
     const { error } = await supabase.from("clientes").delete().eq("id", id);
     if (error) {
-      toast.error(`Erro ao excluir: ${error.message}`);
+      toast.error(`Erro ao excluir: ${friendlyError(error)}`);
       return;
     }
     toast.success("Empresa removida com sucesso!");

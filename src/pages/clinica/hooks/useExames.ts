@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
 import { toast } from 'sonner';
 
 export interface ExamePedido {
@@ -25,16 +26,18 @@ function rowToExame(row: any): ExamePedido {
 }
 
 export function useExames() {
+  const { activeTenantId } = useAuth();
   const [exames, setExames] = useState<ExamePedido[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !activeTenantId) return;
     async function load() {
       setLoading(true);
       const { data, error } = await supabase!
         .from('exames_pedidos')
         .select('*')
+        .eq('tenant_id', activeTenantId)
         .order('created_at', { ascending: false });
       if (!error && data !== null) {
         setExames(data.map(rowToExame));
@@ -42,17 +45,17 @@ export function useExames() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [activeTenantId]);
 
   async function addExame(payload: { patient: string; exam: string; date: string; lab: string }) {
-    if (!supabase) {
+    if (!supabase || !activeTenantId) {
       setExames(prev => [{ id: Date.now(), ...payload, status: 'Aguardando Coleta', result: '-' }, ...prev]);
       toast.success('Pedido criado!');
       return;
     }
     const { data, error } = await supabase
       .from('exames_pedidos')
-      .insert({ patient: payload.patient, exam: payload.exam, date: payload.date, lab: payload.lab, status: 'Aguardando Coleta', result: '-' })
+      .insert({ tenant_id: activeTenantId, patient: payload.patient, exam: payload.exam, date: payload.date, lab: payload.lab, status: 'Aguardando Coleta', result: '-' })
       .select()
       .maybeSingle();
     if (error) { toast.error('Erro ao criar pedido'); return; }

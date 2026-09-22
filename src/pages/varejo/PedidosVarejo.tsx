@@ -93,12 +93,16 @@ export default function PedidosVarejo() {
     }
 
     const numVal = parseFloat(total.replace(/[^\d.]/g, "").replace(",", ".")) || 0;
-    const count = pedidos.length + 9822;
 
     const { data, error } = await supabase
       .from("varejo_pedidos")
       .insert({
-        id: `PED-${count}`,
+        // M3 (auditoria 2026-09-21): o id era gerado a partir de
+        // `pedidos.length + 9822`, colidindo com o esquema usado em
+        // Vendas.tsx (`9820 + random(500)`) e quebrando com dois pedidos
+        // simultâneos ou um pedido excluído antes. Usa UUID como o resto do
+        // sistema.
+        id: `PED-${crypto.randomUUID()}`,
         tenant_id: activeTenantId,
         cliente: cliente.trim(),
         telefone: telefone.trim(),
