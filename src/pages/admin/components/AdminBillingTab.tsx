@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import { useLocalization } from "../../../contexts/LocalizationContext";
 import { useAuth } from "../../../contexts/AuthContext";
-import { supabase } from "../../../lib/supabase";
+import { supabase, PLUPPEX_TENANT_ID } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/button";
 import { toast } from "sonner";
 
@@ -62,8 +62,8 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
   // Real subscriptions derived from active tenants in the database
   const subscriptions = useMemo(() => {
     return tenantNames.map((name, index) => {
-      const isMaster = name === "G-Tech Master";
       const tenantId = tenantIdMap[name];
+      const isMaster = tenantId === PLUPPEX_TENANT_ID;
       const agg = tenantId ? entriesByTenant[tenantId] : undefined;
       const tenantValue = agg && agg.count > 0
         ? Math.round(agg.value / agg.count)

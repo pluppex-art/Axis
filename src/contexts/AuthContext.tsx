@@ -69,9 +69,12 @@ function readSavedSession(): UserSession | null {
   }
 }
 
-// Módulos padrão dos tenants demo — carregados localmente como fallback quando Supabase não está acessível
+// Módulos padrão dos tenants demo — carregados localmente como fallback quando Supabase não está acessível.
+// "G-Tech Master" era o tenant master original (pré-multi-tenant real); excluído
+// em 2026-09-22 — Pluppex é hoje a dona comercial/operadora da plataforma (ver
+// PLUPPEX_TENANT_ID em lib/supabase.ts), então assume o papel de fallback aqui.
 const DEFAULT_TENANT_MODULES: Record<string, TenantModules> = {
-  "G-Tech Master": {
+  "PLUPPEX DIGITAL MACHINES LTDA": {
     crm: true, sdr: true, advDashboard: true, financeiro: true, marketing: true,
     educacao: true, clinica: true, produtividade: true, rh: true, bi: true,
     engajamento: true, catalogo: true, dev: true, aurora: true
@@ -94,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // enquanto a sessão real (cookie/localStorage do próprio supabase-js) carrega.
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Start with only G-Tech Master, always load from Supabase
+  // Estado inicial = só o fallback local, sempre substituído pelos tenants reais do Supabase
   const [allTenantModules, setAllTenantModules] = useState<Record<string, TenantModules>>(DEFAULT_TENANT_MODULES);
   // tenantIdMap: name → UUID (ex: "PLUPPEX DIGITAL MACHINES LTDA" → "27ef95ee-...")
   const [tenantIdMap, setTenantIdMap] = useState<Record<string, string>>({});
@@ -183,13 +186,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (Object.keys(dbTenants).length > 0) {
         console.log('[AuthContext] ✅ Tenants do banco carregados:', Object.keys(dbTenants));
-        const merged = {
-          "G-Tech Master": DEFAULT_TENANT_MODULES["G-Tech Master"],
-          ...dbTenants
-        };
-        setAllTenantModules(merged);
+        // Antes injetava incondicionalmente um "G-Tech Master" fixo aqui, mesmo
+        // depois do tenant real ter sido excluído — fazia um tenant fantasma
+        // reaparecer em todo dropdown/seletor de tenant (QualificationBlock,
+        // NewLeadModal) pra sempre, em toda sessão. Os tenants reais do banco já
+        // vêm completos em `dbTenants` — nenhum merge extra é necessário.
+        setAllTenantModules(dbTenants);
       } else {
-        console.warn('[AuthContext] ⚠️ Nenhum tenant encontrado no banco, usando apenas G-Tech Master');
+        console.warn('[AuthContext] ⚠️ Nenhum tenant encontrado no banco — usando módulos padrão (fallback) até o Supabase responder');
       }
 
       if (Object.keys(idMap).length > 0) {

@@ -91,8 +91,7 @@ export function QualificationBlock({
               onChange={(e) => setSelectedTenant(e.target.value)}
               className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs font-bold text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)] h-9"
             >
-              <option value="G-Tech Master">Minha Base (G-Tech)</option>
-              {Object.keys(allTenantModules).filter(t => !t.includes("G-Tech")).map(t => (
+              {Object.keys(allTenantModules).map(t => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>

@@ -58,14 +58,13 @@ export function AdminModulesTab({ initialTenant, onTenantChange }: AdminModulesT
   const { user, login, allTenantModules, updateTenantModules, getTenantModules } = useAuth();
   const { setSidebarModules } = useData();
 
-  const tenantOptions = useMemo(() => {
-    const list = Object.keys(allTenantModules);
-    if (!list.includes("G-Tech Master")) list.unshift("G-Tech Master");
-    return list;
-  }, [allTenantModules]);
+  // `allTenantModules` já vem completo dos tenants reais do Supabase — antes
+  // forçava um "G-Tech Master" fixo aqui (tenant excluído em 2026-09-22),
+  // reintroduzindo um fantasma nesse seletor toda vez.
+  const tenantOptions = useMemo(() => Object.keys(allTenantModules), [allTenantModules]);
 
   const [selectedTenant, setSelectedTenant] = useState<string>(
-    initialTenant || user?.tenantName || "G-Tech Master"
+    initialTenant || user?.tenantName || ""
   );
   const [activeModules, setActiveModules] = useState<Record<string, boolean>>(DEFAULT_MODULES);
   const [simulationRole, setSimulationRole] = useState("Administrador / Sócio");

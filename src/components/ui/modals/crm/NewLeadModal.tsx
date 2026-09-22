@@ -28,9 +28,9 @@ export function NewLeadModal({ isOpen, onClose, firstStageId = "1", firstComerci
   const [aiLoading, setAiLoading] = useState(false);
   const { leads, addLead, customLeadFields, clienteBase, colaboradores, products } = useData();
   const { user, allTenantModules, tenantIdMap } = useAuth();
-  const isMaster = user?.isMaster || user?.tenantName?.includes("G-Tech");
+  const isMaster = user?.isMaster;
 
-  const [selectedTenant, setSelectedTenant] = useState(user?.tenantName || "G-Tech Master");
+  const [selectedTenant, setSelectedTenant] = useState(user?.tenantName || "");
   const [clientSearch, setClientSearch] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [selectedClientName, setSelectedClientName] = useState("");

@@ -10,6 +10,7 @@ import {
   deactivateTenant,
   fetchTenantAdminUser,
   updateTenantUserCredentials,
+  PLUPPEX_TENANT_ID,
 } from "../../../lib/supabase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { confirmDialog } from "../../../components/ui/confirm-dialog";
@@ -79,7 +80,7 @@ export function AdminTenantsTab({
           setTenants(names.map(name => ({
             id: tenantIdMap[name] || name.toLowerCase().replace(/\s+/g, "-"),
             name,
-            niche: name === "G-Tech Master" ? "Tecnologia" : "Parceira",
+            niche: (tenantIdMap[name] || "") === PLUPPEX_TENANT_ID ? "Tecnologia" : "Parceira",
             status: "Active"
           })));
         } else {
@@ -91,7 +92,7 @@ export function AdminTenantsTab({
       setTenants(names.map(name => ({
         id: tenantIdMap[name] || name.toLowerCase().replace(/\s+/g, "-"),
         name,
-        niche: name === "G-Tech Master" ? "Tecnologia" : "Parceira",
+        niche: (tenantIdMap[name] || "") === PLUPPEX_TENANT_ID ? "Tecnologia" : "Parceira",
         status: "Active"
       })));
     } finally {
@@ -171,8 +172,8 @@ export function AdminTenantsTab({
   };
 
   const handleDeactivate = async (tenant: TenantItem) => {
-    if (tenant.name === "G-Tech Master") {
-      toast.error("A instância G-Tech Master é a raiz do sistema e não pode ser desativada.");
+    if (tenant.id === PLUPPEX_TENANT_ID) {
+      toast.error("Esta é a instância master (Pluppex, raiz do sistema) e não pode ser desativada.");
       return;
     }
 
@@ -373,7 +374,7 @@ export function AdminTenantsTab({
         /* Grid Mode */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredTenants.map(tenant => {
-            const isMaster = tenant.name === "G-Tech Master";
+            const isMaster = tenant.id === PLUPPEX_TENANT_ID;
             const mods = getTenantModules(tenant.name);
             const activeModsCount = Object.values(mods).filter(Boolean).length;
             const nicheBadge = getNicheBadgeStyle(tenant.niche);
@@ -495,7 +496,7 @@ export function AdminTenantsTab({
               </thead>
               <tbody className="divide-y divide-[var(--color-border-subtle)]">
                 {filteredTenants.map(tenant => {
-                  const isMaster = tenant.name === "G-Tech Master";
+                  const isMaster = tenant.id === PLUPPEX_TENANT_ID;
                   const mods = getTenantModules(tenant.name);
                   const activeModsCount = Object.values(mods).filter(Boolean).length;
                   const nicheBadge = getNicheBadgeStyle(tenant.niche);
