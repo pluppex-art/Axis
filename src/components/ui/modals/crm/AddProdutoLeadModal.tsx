@@ -126,10 +126,20 @@ export function AddProdutoLeadModal({
   const netProfit = finalTotal - totalCost - totalCommission;
   const marginPercent = finalTotal > 0 ? Math.round((netProfit / finalTotal) * 100) : 0;
 
-  const totalMonthlyMRR = isRecurring ? monthlyPrice : 0;
-  const totalOnetime = !isRecurring ? monthlyPrice : 0;
+  // O desconto entrava só no "Total Contrato" (finalTotal) — "Mensalidade"
+  // continuava mostrando o preço cheio do produto, então o card de
+  // Composição Comercial parecia inconsistente (mensalidade não descontada
+  // ao lado de um total que já é). Distribui o desconto igualmente pelos
+  // meses do contrato (recorrente) ou tira direto do valor avulso (venda
+  // pontual), pra Mensalidade × meses + Implantação bater exatamente com o
+  // Total Contrato.
+  const monthlyDiscount = isRecurring && months > 0 ? (discountValue || 0) / months : 0;
+  const totalMonthlyMRR = isRecurring ? Math.max(0, monthlyPrice - monthlyDiscount) : 0;
+  const totalOnetime = !isRecurring ? Math.max(0, monthlyPrice - (discountValue || 0)) : 0;
   const totalImplementation = showImplToggle ? implFee : 0;
-  const firstPaymentTotal = Math.max(0, totalImplementation + totalMonthlyMRR + totalOnetime - (discountValue || 0));
+  // Sem subtrair o desconto de novo aqui — Mensalidade/Avulso acima já
+  // saem líquidos de desconto, então somar os dois já dá o valor certo.
+  const firstPaymentTotal = totalImplementation + totalMonthlyMRR + totalOnetime;
 
   const valorParcela = useMemo(() => (parcelas > 1 ? finalTotal / parcelas : finalTotal), [finalTotal, parcelas]);
 
