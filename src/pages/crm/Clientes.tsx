@@ -3,6 +3,7 @@ import { Button } from "../../components/ui/button";
 import { Plus } from "lucide-react";
 import { NovoClienteModal } from "../../components/ui/modals/crm/NovoClienteModal";
 import { ClienteContatosModal } from "../../components/ui/modals/crm/ClienteContatosModal";
+import { ClienteDetalhesModal } from "../../components/ui/modals/crm/ClienteDetalhesModal";
 import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { PageContainer } from "../../components/PageContainer";
@@ -17,6 +18,7 @@ export default function Clientes() {
   const { activeTenantId } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [contatosClienteId, setContatosClienteId] = useState<string | null>(null);
+  const [detalhesClienteId, setDetalhesClienteId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("Todos as situações");
   const [sectorFilter, setSectorFilter] = useState("Todos os setores");
   const [searchQuery, setSearchQuery] = useState("");
@@ -122,6 +124,7 @@ export default function Clientes() {
         onStatusChange={setStatusFilter}
         onDelete={handleDeleteCliente}
         onManageContatos={setContatosClienteId}
+        onOpenDetalhes={setDetalhesClienteId}
       />
 
       <NovoClienteModal
@@ -135,6 +138,13 @@ export default function Clientes() {
         onClose={() => setContatosClienteId(null)}
         clienteId={contatosClienteId}
         clienteNome={clientes.find(c => c.id === contatosClienteId)?.name}
+      />
+
+      <ClienteDetalhesModal
+        isOpen={!!detalhesClienteId}
+        onClose={() => setDetalhesClienteId(null)}
+        cliente={clientes.find(c => c.id === detalhesClienteId) || null}
+        onManageContatos={(id) => { setDetalhesClienteId(null); setContatosClienteId(id); }}
       />
     </PageContainer>
   );

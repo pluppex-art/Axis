@@ -971,6 +971,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     nicheModulesRef.current = { tenantId: null, started: false };
     reconciledProposalIdsRef.current.clear();
     leadValueAppliedProposalIdsRef.current.clear();
+    reconciledWonLeadIdsRef.current.clear();
     setFinanceCategories([]);
     setFinanceBankAccounts([]);
     setFinanceCentrosCusto([]);
@@ -1564,6 +1565,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => { triggerScoreRecalculation(newLead.id, [newLead]); }, 400);
   };
 
+  // Trava contra a mesma corrida documentada em leadValueAppliedProposalIdsRef
+  // abaixo: `!lead.clientId` (usado tanto aqui quanto na reconciliação logo
+  // após updateLead) depende do estado local `leads`, que fica defasado
+  // enquanto o `updateLead(lead.id, { clientId })` de createClientFromWonLead
+  // ainda está em voo (é assíncrono) — sem essa trava por id, a reconciliação
+  // podia rodar de novo nesse meio-tempo e criar um cliente duplicado pro
+  // mesmo lead.
+  const reconciledWonLeadIdsRef = React.useRef<Set<string>>(new Set());
+
   // Ao ganhar um lead (status -> "Fechado"), cria (ou vincula, se já existir por
   // e-mail/CNPJ) o registro correspondente na Base de Clientes, evitando duplicar
   // clientes quando mais de um lead da mesma empresa fecha negócio.
@@ -1699,6 +1709,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       createClientFromWonLead(mergedLead);
     }
   };
+
+  // Reconciliação: leads "Fechado" sem cliente vinculado ainda (relatado pela
+  // equipe: "Base de Clientes" mostrando menos clientes do que leads
+  // realmente ganhos). createClientFromWonLead só disparava de dentro do
+  // updateLead() do próprio front, na transição AO VIVO de status — um lead
+  // que vira Fechado por qualquer outro caminho (SQL direto, migração,
+  // reconciliação de proposta) nunca ganhava retroativamente um registro em
+  // `clientes`. Roda globalmente assim que os leads do tenant carregam
+  // (mesmo padrão de reconciliação de proposals/contracts acima), sequencial
+  // (não Promise.all) pra evitar duas leads da mesma empresa disparando
+  // consultas de "cliente já existe" concorrentes e criando dois clientes
+  // pro mesmo documento/e-mail.
+  useEffect(() => {
+    if (!leadsAuthoritativeLoadedRef.current) return;
+    const pending = (leads || []).filter(
+      (l: any) => l.status === 'Fechado' && !l.clientId && !reconciledWonLeadIdsRef.current.has(l.id)
+    );
+    if (pending.length === 0) return;
+    (async () => {
+      for (const l of pending) {
+        if (reconciledWonLeadIdsRef.current.has(l.id)) continue;
+        reconciledWonLeadIdsRef.current.add(l.id);
+        await createClientFromWonLead(l);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads]);
 
   const deleteLead = async (id: string) => {
     setLeads(prev => prev.filter(l => l.id !== id));

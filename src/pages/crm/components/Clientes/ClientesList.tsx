@@ -38,6 +38,7 @@ interface ClientesListProps {
   onStatusChange: (v: string) => void;
   onDelete: (id: string) => void;
   onManageContatos: (clienteId: string) => void;
+  onOpenDetalhes: (clienteId: string) => void;
 }
 
 function statusBadgeVariant(status?: string): "success" | "warning" | "secondary" {
@@ -48,7 +49,7 @@ function statusBadgeVariant(status?: string): "success" | "warning" | "secondary
 
 export function ClientesList({
   clientes, searchQuery, onSearchChange,
-  sectorFilter, onSectorChange, statusFilter, onStatusChange, onDelete, onManageContatos,
+  sectorFilter, onSectorChange, statusFilter, onStatusChange, onDelete, onManageContatos, onOpenDetalhes,
 }: ClientesListProps) {
   const filtered = useMemo(() => clientes.filter(c => {
     if (statusFilter !== "Todos as situações" && c.status !== statusFilter) return false;
@@ -133,7 +134,7 @@ export function ClientesList({
             </TableHeader>
             <TableBody>
               {pageItems.map((c) => (
-                <TableRow key={c.id} className="cursor-pointer group">
+                <TableRow key={c.id} className="cursor-pointer group" onClick={() => onOpenDetalhes(c.id)}>
                   <TableCell>
                     <div className="font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
                       <div className="w-7 h-7 rounded-lg bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 flex items-center justify-center shrink-0">
@@ -192,7 +193,7 @@ export function ClientesList({
       {/* Mobile cards */}
       <div className="sm:hidden divide-y divide-[var(--color-border-subtle)]">
         {pageItems.map((c) => (
-          <div key={c.id} className="p-4 flex flex-col gap-3 hover:bg-[var(--color-surface-sunken)]/60 transition-all">
+          <div key={c.id} className="p-4 flex flex-col gap-3 hover:bg-[var(--color-surface-sunken)]/60 transition-all cursor-pointer" onClick={() => onOpenDetalhes(c.id)}>
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-8 h-8 rounded-lg bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 flex items-center justify-center shrink-0">
