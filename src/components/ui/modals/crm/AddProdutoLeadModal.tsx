@@ -71,8 +71,17 @@ export function AddProdutoLeadModal({
   const [contractMonths, setContractMonths] = useState<number | null>(null);
   const [customMonthsDraft, setCustomMonthsDraft] = useState("");
   const [hasImplementation, setHasImplementation] = useState<boolean | null>(null);
-  const [implementationFee, setImplementationFee] = useState<number | null>(null);
-  const [discountValue, setDiscountValue] = useState(0);
+  // Guardam o texto BRUTO digitado (não um número já re-parseado a cada
+  // tecla) — campo type="number" controlado por um valor numérico que o
+  // onChange reformata a cada tecla tem um bug clássico do React/browser:
+  // se o número resultante de um passo intermediário (ex.: "0", depois
+  // "06") não muda o bastante entre renders, alguns browsers não
+  // re-normalizam o texto exibido, e o campo fica preso mostrando "0600"
+  // mesmo o valor numérico real já sendo 600 por baixo. Guardando a string
+  // crua, o texto exibido é sempre exatamente o que foi digitado — nunca
+  // diverge do estado.
+  const [implementationFeeInput, setImplementationFeeInput] = useState<string | null>(null);
+  const [discountInput, setDiscountInput] = useState("0");
   const [isFinancialBreakdownOpen, setIsFinancialBreakdownOpen] = useState(false);
 
   const [formaPagamento, setFormaPagamento] = useState<string>("Pix");
@@ -89,8 +98,8 @@ export function AddProdutoLeadModal({
     setContractMonths(null);
     setCustomMonthsDraft("");
     setHasImplementation(null);
-    setImplementationFee(null);
-    setDiscountValue(0);
+    setImplementationFeeInput(null);
+    setDiscountInput("0");
     setFormaPagamento("Pix");
     setParcelas(1);
     setDetalhesPagamento("");
@@ -103,8 +112,10 @@ export function AddProdutoLeadModal({
 
   const isRecurring = itemIsRecurring ?? !!(product?.recurrence || product?.typeAttributes?.isRecurring || product?.type === "Assinatura" || product?.category === "Software");
   const months = contractMonths ?? (product?.contractMonths || product?.typeAttributes?.contractMonths || (isRecurring ? 12 : 1));
-  const implFee = implementationFee ?? (hasImplementation === false ? 0 : (product?.implementationFee || product?.typeAttributes?.implementationFee || (product?.category === "Implantação" ? Number(product?.price) || 0 : 0)));
+  const implementationFeeOverride = implementationFeeInput !== null ? Math.max(0, parseFloat(implementationFeeInput) || 0) : null;
+  const implFee = implementationFeeOverride ?? (hasImplementation === false ? 0 : (product?.implementationFee || product?.typeAttributes?.implementationFee || (product?.category === "Implantação" ? Number(product?.price) || 0 : 0)));
   const showImplToggle = hasImplementation ?? implFee > 0;
+  const discountValue = Math.max(0, parseFloat(discountInput) || 0);
 
   const unitPrice = Number(product?.price) || 0;
   const monthlyPrice = unitPrice * quantity;
@@ -287,8 +298,8 @@ export function AddProdutoLeadModal({
               </label>
               {showImplToggle && (
                 <input
-                  type="number" min={0} step={50} value={implFee}
-                  onChange={(e) => setImplementationFee(Math.max(0, parseFloat(e.target.value) || 0))}
+                  type="number" min={0} step={50} value={implementationFeeInput ?? String(implFee)}
+                  onChange={(e) => setImplementationFeeInput(e.target.value)}
                   className="w-28 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-2 py-1 text-xs font-mono font-bold text-amber-600"
                 />
               )}
@@ -299,8 +310,8 @@ export function AddProdutoLeadModal({
                 {formaPagamento === "Desconto" ? "Valor do Desconto (R$)" : "Desconto (R$)"}
               </label>
               <input
-                type="number" min={0} value={discountValue}
-                onChange={(e) => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                type="number" min={0} value={discountInput}
+                onChange={(e) => setDiscountInput(e.target.value)}
                 className={inputClass}
               />
               {formaPagamento === "Desconto" && (
