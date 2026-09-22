@@ -13,6 +13,7 @@ import {
   TableCell,
 } from "../../../../components/ui/table";
 import { FileText, Search, Edit2, Trash2, Download } from "lucide-react";
+import { useLocalization } from "../../../../contexts/LocalizationContext";
 
 interface Contract {
   id: string;
@@ -20,6 +21,10 @@ interface Contract {
   plan: string;
   description?: string | null;
   mrr: string | number;
+  /** Valor total do contrato (recorrente + avulso/implantação) — igual ao
+   * MRR só em contratos pontuais de 1 mês; num contrato anual, por exemplo,
+   * é bem maior que a mensalidade sozinha. */
+  totalValue?: number;
   status: string;
   date: string;
   endDate?: string | null;
@@ -45,6 +50,7 @@ function statusBadgeVariant(status: string): "success" | "warning" | "destructiv
 const PAGE_SIZE = 50;
 
 export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelete, onEdit, onDownloadPdf }: ContractsTableProps) {
+  const { formatCurrency } = useLocalization();
   const filtered = contracts.filter(c =>
     c.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.plan.toLowerCase().includes(searchQuery.toLowerCase())
@@ -88,7 +94,8 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
               <TableHead>Cliente</TableHead>
               <TableHead>Plano</TableHead>
               <TableHead>Descrição</TableHead>
-              <TableHead>MRR</TableHead>
+              <TableHead>Mensalidade</TableHead>
+              <TableHead>Total do Contrato</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Assinatura</TableHead>
               <TableHead>Término</TableHead>
@@ -111,6 +118,9 @@ export function ContractsTable({ contracts, searchQuery, onSearchChange, onDelet
                   {contract.description || "—"}
                 </TableCell>
                 <TableCell className="font-mono font-medium text-success">{contract.mrr}</TableCell>
+                <TableCell className="font-mono font-medium text-[var(--color-text-primary)]">
+                  {contract.totalValue !== undefined ? formatCurrency(contract.totalValue) : "—"}
+                </TableCell>
                 <TableCell>
                   <Badge variant={statusBadgeVariant(contract.status)}>{contract.status}</Badge>
                 </TableCell>

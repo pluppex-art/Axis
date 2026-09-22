@@ -11,6 +11,8 @@ interface PropostaItem {
   product_name: string;
   quantidade: number;
   preco_unitario: number;
+  billing_type?: string | null;
+  contract_months?: number | null;
 }
 
 function isThisMonth(iso?: string): boolean {

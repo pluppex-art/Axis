@@ -569,6 +569,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       client,
       plan,
       mrr: r.mrr_value ?? r.value ?? 0,
+      // `r.value` é o total do contrato (recorrente + avulso/implantação) —
+      // existia gravado no banco desde sempre (ver addContract/updateContract
+      // abaixo), mas nunca era lido de volta pro objeto usado na tela, então
+      // Contratos/Propostas não tinham como mostrar "total" separado de "MRR".
+      totalValue: r.value !== undefined && r.value !== null ? Number(r.value) : undefined,
       status: r.status,
       date,
       endDate,
@@ -2475,6 +2480,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         .filter((m: number) => m > 0)
         .sort((a: number, b: number) => b - a)[0];
 
+    // Proposta pode ter sido fechada com desconto (ex.: permuta/cortesia
+    // negociada no modal Novo Produto) — `prop.valor` já reflete isso, mas
+    // `recurringTotal`/`oneTimeTotal` acima vêm do preço de catálogo CHEIO
+    // dos itens (proposal_items não guarda o desconto, só o preço unitário).
+    // Sem distribuir esse desconto proporcionalmente aqui, o contrato
+    // gerado ao aceitar a proposta reaparecia pelo valor cheio, ignorando o
+    // desconto já fechado com o cliente. Achado real: negócio "permuta" com
+    // Murilo (Geplan Contabilidade) — contrato anual negociado a R$4.367
+    // reaparecendo como R$11.964 (preço de catálogo) assim que a proposta
+    // era aceita.
+    const undiscountedItemsTotal = recurringTotal + oneTimeTotal;
+    const discountRatio = undiscountedItemsTotal > 0 && prop.valor
+      ? Math.min(1, prop.valor / undiscountedItemsTotal)
+      : 1;
+    const recurringTotalFinal = recurringTotal * discountRatio;
+    const oneTimeTotalFinal = oneTimeTotal * discountRatio;
+    // `mrr` precisa ser a mensalidade de verdade. `recurringTotalFinal` é o
+    // total do PERÍODO INTEIRO (preco_unitario × quantidade, onde
+    // quantidade já é meses × unidades num item recorrente — ver
+    // AddProdutoLeadModal), não uma mensalidade — sem dividir pelos meses
+    // do contrato, o card de MRR mostrava o valor total do contrato inteiro
+    // como se fosse a mensalidade (ex.: contrato anual de R$11.964
+    // aparecendo como "MRR: R$11.964", quando a mensalidade real era ~R$997).
+    const monthlyMrr = contractMonths && contractMonths > 0 ? recurringTotalFinal / contractMonths : recurringTotalFinal;
+
     if (jaExiste) {
       // Backfill: contratos criados ANTES das correções de plano/data de
       // término (fase de auditoria) ficaram presos com o título genérico da
@@ -2526,8 +2556,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       client: prop.cliente || "Cliente",
       plan: planLabel || prop.titulo || "Proposta Comercial",
       description: prop.titulo || null,
-      mrr: formatCurrency(recurringTotal),
-      totalValue: recurringTotal + oneTimeTotal,
+      mrr: formatCurrency(monthlyMrr),
+      totalValue: recurringTotalFinal + oneTimeTotalFinal,
       status: "Ativo",
       date: signedDate.toLocaleDateString("pt-BR"),
       endDate,
@@ -2538,7 +2568,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     addFinanceEntry({
       description: `Contrato: ${prop.titulo} (${prop.cliente})`,
       category: "Contrato / Recorrente",
-      value: recurringTotal,
+      value: recurringTotalFinal,
       type: "Receber",
       date: new Date().toISOString().slice(0, 10),
       status: "A Vencer",
@@ -2546,11 +2576,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     // Implantação/setup é receita única — lançamento à parte, não recorrente,
     // pra não poluir relatórios de MRR/receita recorrente com valor avulso.
-    if (oneTimeTotal > 0) {
+    if (oneTimeTotalFinal > 0) {
       addFinanceEntry({
         description: `Implantação/Setup: ${prop.titulo} (${prop.cliente})`,
         category: "Implantação / Setup",
-        value: oneTimeTotal,
+        value: oneTimeTotalFinal,
         type: "Receber",
         date: new Date().toISOString().slice(0, 10),
         status: "A Vencer",

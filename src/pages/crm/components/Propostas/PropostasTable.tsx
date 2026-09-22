@@ -51,6 +51,8 @@ interface PropostaItem {
   product_name: string;
   quantidade: number;
   preco_unitario: number;
+  billing_type?: string | null;
+  contract_months?: number | null;
 }
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -131,6 +133,23 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
             {paged.map((item) => {
               const status = STATUS_CONFIG[item.status as keyof typeof STATUS_CONFIG] || DEFAULT_STATUS;
               const itens = proposalItems.filter(pi => pi.proposal_id === item.id);
+              // `preco_unitario`/`quantidade` guardam o preço de catálogo CHEIO
+              // (quantidade já é meses × unidades num item recorrente — ver
+              // AddProdutoLeadModal); um desconto negociado (permuta, cortesia)
+              // só existe no total da proposta (`item.valor`), então sem essa
+              // proporção o resumo de produto mostrava o valor cheio mesmo numa
+              // venda com desconto — inconsistente com a coluna "Valor" ao lado.
+              const undiscountedTotal = itens.reduce((s, i) => s + (Number(i.preco_unitario) || 0) * (Number(i.quantidade) || 1), 0);
+              const discountRatio = undiscountedTotal > 0 && item.valor ? Math.min(1, item.valor / undiscountedTotal) : 1;
+              const itensResumo = itens.map((i) => {
+                const itemTotal = (Number(i.preco_unitario) || 0) * (Number(i.quantidade) || 1) * discountRatio;
+                const months = Number(i.contract_months) || 0;
+                const isRecurringItem = i.billing_type !== "one_time";
+                const monthly = isRecurringItem && months > 1 ? itemTotal / months : null;
+                return monthly
+                  ? `${i.quantidade}x ${i.product_name} — ${formatCurrency(monthly)}/mês (${months}x, total ${formatCurrency(itemTotal)})`
+                  : `${i.quantidade}x ${i.product_name} — ${formatCurrency(itemTotal)}`;
+              });
               return (
                 <TableRow key={item.id} className="group">
                   <TableCell>
@@ -148,9 +167,12 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
                           )}
                         </div>
                         <div className="text-xs text-[var(--color-text-muted)] italic">{item.titulo}</div>
-                        {itens.length > 0 && (
-                          <div className="text-[10px] text-[var(--color-text-faint)] mt-0.5 truncate max-w-[220px]">
-                            {itens.map(i => `${i.quantidade}x ${i.product_name}`).join(", ")}
+                        {itensResumo.length > 0 && (
+                          <div
+                            className="text-[10px] text-[var(--color-text-faint)] mt-0.5 truncate max-w-[280px]"
+                            title={itensResumo.join(" • ")}
+                          >
+                            {itensResumo.join(" • ")}
                           </div>
                         )}
                       </div>
