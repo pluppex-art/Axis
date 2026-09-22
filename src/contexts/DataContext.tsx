@@ -891,6 +891,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // nunca sobrescrever dado fresco com uma prévia potencialmente mais velha
   // chegando atrasada.
   const leadsAuthoritativeLoadedRef = React.useRef(false);
+  // Mesma ideia, pro load de clientes — usado pela reconciliação de leads
+  // ganhos abaixo, pra não rodar antes de `clienteBase` ter carregado de
+  // verdade (ver clientesAuthoritativeLoadedRef mais abaixo).
+  const clientesAuthoritativeLoadedRef = React.useRef(false);
   // Mesma ideia, pro preview de products (ver GET /api/operative/produtos-list).
   const productsAuthoritativeLoadedRef = React.useRef(false);
   // Mesma ideia, pro preview de reuniões (ver GET /api/crm/reunioes-list).
@@ -961,6 +965,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setCertificates([]);
     setCargos([]);
     setClienteBase([]);
+    clientesAuthoritativeLoadedRef.current = false;
     setReunioes([]);
     reunioesAuthoritativeLoadedRef.current = false;
     setFinancialGoals([]);
@@ -1092,7 +1097,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           // buscar toda carga. certificates/financial_goals/scheduled_exports:
           // só usados em Educação/Indicadores — lazy load de nicho abaixo.
           { name: 'cargos', promise: fetchAllRowsForTenant('cargos', tenantId), apply: (res) => { if (res.data) setCargos(res.data); } },
-          { name: 'clientes', promise: fetchAllRowsForTenant('clientes', tenantId), apply: (res) => { if (res.data) setClienteBase(res.data); } },
+          { name: 'clientes', promise: fetchAllRowsForTenant('clientes', tenantId), apply: (res) => { if (res.data) setClienteBase(res.data); clientesAuthoritativeLoadedRef.current = true; } },
           { name: 'reunioes', promise: fetchAllRowsForTenant('reunioes', tenantId), apply: (res) => { if (res.data) setReunioes(res.data as Reuniao[]); reunioesAuthoritativeLoadedRef.current = true; } },
           { name: 'crm_funis', promise: cachedFetchAllRowsForTenant('crm_funis', tenantId, true), apply: (res) => { if (res.data) setFunis(res.data.map(rowToFunil)); } },
           { name: 'empresa_filiais', promise: fetchAllRowsForTenant('empresa_filiais', tenantId), apply: (res) => { if (res.data) setEmpresaFiliais(res.data); } },
@@ -1578,7 +1583,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // e-mail/CNPJ) o registro correspondente na Base de Clientes, evitando duplicar
   // clientes quando mais de um lead da mesma empresa fecha negócio.
   const createClientFromWonLead = async (lead: Lead) => {
-    if (!supabase || !tenantId || lead.clientId) return;
+    // BUG real (visto em produção: lead "Fabiano Fagundes" — To Na Pista
+    // Boliche — sumido da Base de Clientes): `lead.clientId` confiava cego
+    // que o registro apontado ainda existia. Excluir um cliente pela tela
+    // de Clientes (handleDeleteCliente) removia só a linha em `clientes`,
+    // sem limpar `clientId` nos leads que apontavam pra ela — o lead ficava
+    // "vinculado" pra sempre a um cliente que não existe mais, e nem a
+    // reconciliação nem uma nova tentativa manual recriava o registro.
+    // Confirma que o clientId aponta pra um cliente que existe de verdade
+    // antes de aceitar como "já vinculado".
+    if (!supabase || !tenantId) return;
+    if (lead.clientId && clienteBase.some((c: any) => c.id === lead.clientId)) return;
     try {
       const documento = lead.cnpj || null;
       let existing: any = null;
@@ -1720,11 +1735,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // (mesmo padrão de reconciliação de proposals/contracts acima), sequencial
   // (não Promise.all) pra evitar duas leads da mesma empresa disparando
   // consultas de "cliente já existe" concorrentes e criando dois clientes
-  // pro mesmo documento/e-mail.
+  // pro mesmo documento/e-mail. `!l.clientId` sozinho não basta — um
+  // clientId "órfão" (cliente excluído depois, sem limpar a referência no
+  // lead) precisa ser tratado como não vinculado também; só dá pra saber
+  // isso depois que `clienteBase` carregou de verdade.
   useEffect(() => {
-    if (!leadsAuthoritativeLoadedRef.current) return;
+    if (!leadsAuthoritativeLoadedRef.current || !clientesAuthoritativeLoadedRef.current) return;
     const pending = (leads || []).filter(
-      (l: any) => l.status === 'Fechado' && !l.clientId && !reconciledWonLeadIdsRef.current.has(l.id)
+      (l: any) =>
+        l.status === 'Fechado' &&
+        (!l.clientId || !clienteBase.some((c: any) => c.id === l.clientId)) &&
+        !reconciledWonLeadIdsRef.current.has(l.id)
     );
     if (pending.length === 0) return;
     (async () => {
@@ -1735,7 +1756,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads]);
+  }, [leads, clienteBase]);
 
   const deleteLead = async (id: string) => {
     setLeads(prev => prev.filter(l => l.id !== id));

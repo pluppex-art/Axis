@@ -95,6 +95,13 @@ export default function Clientes() {
     }))) return;
     const { error } = await supabase.from("clientes").delete().eq("id", id);
     if (error) { toast.error(`Erro ao remover cliente: ${friendlyError(error)}`); return; }
+    // Sem isso, o(s) lead(s) que apontavam pra esse cliente ficam com um
+    // `clientId` órfão pra sempre — a reconciliação em DataContext trata
+    // "clientId setado" como "já vinculado" mesmo quando o cliente por trás
+    // foi excluído, então o negócio ganho nunca reaparece na Base de
+    // Clientes sozinho (achado real: exclusão de "To Na Pista Boliche"
+    // deixou o lead "Fabiano Fagundes" preso a um cliente inexistente).
+    await supabase.from("leads").update({ clientId: null }).eq("clientId", id).eq("tenant_id", activeTenantId);
     setClientes(prev => prev.filter(c => c.id !== id));
     toast.success("Cliente removido com sucesso!");
   };
