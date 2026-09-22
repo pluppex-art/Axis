@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Loader2, Zap, RefreshCw, Wrench, ChevronUp, ChevronDown,
   Receipt, Percent, DollarSign, Layers, TrendingUp, TrendingDown,
-  CreditCard, Banknote, QrCode, FileText, Calendar, ArrowRightLeft, Repeat,
+  CreditCard, Banknote, QrCode, FileText, Calendar, ArrowRightLeft,
 } from "lucide-react";
 import { Modal } from "../../modal";
 import { Button } from "../../button";
@@ -20,7 +20,7 @@ const PAYMENT_OPTIONS = [
   { id: "Transferência / TED", label: "TED", icon: ArrowRightLeft },
   { id: "Link de Pagamento", label: "Link Pgto.", icon: Zap },
   { id: "A Prazo (Crediário)", label: "A Prazo", icon: Calendar },
-  { id: "Permuta", label: "Permuta", icon: Repeat },
+  { id: "Desconto", label: "Desconto", icon: Percent },
 ] as const;
 
 interface AddProdutoLeadModalProps {
@@ -163,7 +163,7 @@ export function AddProdutoLeadModal({
       });
 
       const dueDate = dataPagamento || new Date().toISOString().slice(0, 10);
-      const isInstantPayment = formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito" || formaPagamento === "Permuta";
+      const isInstantPayment = formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito" || formaPagamento === "Desconto";
       const formattedDate = new Date(dueDate + "T12:00:00").toLocaleDateString("pt-BR");
       const installmentInfo = parcelas > 1 ? ` (${parcelas}x de ${formatCurrency(valorParcela)})` : " (À Vista)";
       const paymentInfoStr = `Forma: ${formaPagamento}${installmentInfo} | Data: ${formattedDate}${detalhesPagamento ? ` - Obs: ${detalhesPagamento}` : ""}`;
@@ -296,16 +296,16 @@ export function AddProdutoLeadModal({
 
             <div>
               <label className={labelClass}>
-                {formaPagamento === "Permuta" ? "Valor em Permuta (R$)" : "Desconto (R$)"}
+                {formaPagamento === "Desconto" ? "Valor do Desconto (R$)" : "Desconto (R$)"}
               </label>
               <input
                 type="number" min={0} value={discountValue}
                 onChange={(e) => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
                 className={inputClass}
               />
-              {formaPagamento === "Permuta" && (
+              {formaPagamento === "Desconto" && (
                 <p className="text-[10px] text-[var(--color-text-faint)] mt-1">
-                  Parte (ou todo) o valor negociado via troca de produto/serviço, sem cobrança em dinheiro — reduz o total a receber deste contrato.
+                  Parte (ou todo) o valor negociado sem cobrança em dinheiro — permuta, cortesia ou desconto negociado — reduz o total a receber deste contrato. Funciona tanto pra venda pontual quanto recorrente.
                 </p>
               )}
             </div>
