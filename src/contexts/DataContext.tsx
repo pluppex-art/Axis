@@ -2275,6 +2275,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
     return proposalId;
   };
+
+  // Excluir uma proposta não tirava o valor dela de volta do lead — como
+  // `updateLead` só SOMA (createProposalWithItems/AddProdutoLeadModal/
+  // syncAcceptedProposal todos acumulam `prop.valor` em cima do valor já
+  // existente, nunca substituem), apagar a proposta deixava o valor "preso"
+  // no lead pra sempre. Achado real: lead do Murilo (Geplan Contabilidade)
+  // mostrando R$22.729 mesmo sem nenhuma proposta restante depois de
+  // excluir as de teste. proposal_items é FK ON DELETE CASCADE no banco
+  // (já limpa sozinho); só o estado local precisa do mesmo tratamento.
+  const deleteProposal = async (id: string) => {
+    const prop = (proposals || []).find((p: any) => p.id === id);
+    const ok = await proposalCrud.del(id);
+    if (ok) {
+      setProposalItems(prev => prev.filter((pi: any) => pi.proposal_id !== id));
+      if (prop?.lead_id) {
+        const lead = (leads || []).find((l: any) => l.id === prop.lead_id);
+        if (lead) {
+          const newValue = Math.max(0, (Number(lead.value) || 0) - (Number(prop.valor) || 0));
+          updateLead(prop.lead_id, { value: newValue });
+        }
+      }
+    }
+    return ok;
+  };
+
   const turmaCrud = createCrudHelper('turmas', setTurmas);
   const reuniaoCrud = createCrudHelper('reunioes', setReunioes as any);
   const studentCrud = createCrudHelper('students', setStudents);
@@ -2812,7 +2837,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setProposals,
       addProposal: proposalCrud.add,
       updateProposal: proposalCrud.update,
-      deleteProposal: proposalCrud.del,
+      deleteProposal,
       proposalItems,
       createProposalWithItems,
       syncAcceptedProposal,
