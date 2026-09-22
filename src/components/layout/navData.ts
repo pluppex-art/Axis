@@ -50,10 +50,13 @@ import {
  * Condições de visibilidade que dependem do usuário logado (não dá pra
  * resolver estaticamente aqui).
  */
-export type NavReqCondition = "master-or-gtech" | "master-or-partner";
+export type NavReqCondition = "master-only" | "master-or-partner";
 
 export const conditionCheckers: Record<NavReqCondition, (user: any) => boolean> = {
-  "master-or-gtech": (user) => !!user?.isMaster || user?.tenantName?.trim().toLowerCase() === "g-tech master",
+  // Antes também liberava por `tenantName === "g-tech master"` — resquício do
+  // tenant master original (excluído em 2026-09-22); `isMaster` sozinho já é
+  // a condição correta e suficiente.
+  "master-only": (user) => !!user?.isMaster,
   "master-or-partner": (user) => !!user?.isMaster || !!user?.partnerId,
 };
 
@@ -227,7 +230,7 @@ export const navSections = [
   {
     title: "Administração Master",
     items: [
-      { name: "Painel SaaS & Infra", path: "/app/admin", icon: Server, reqCondition: "master-or-gtech" as NavReqCondition },
+      { name: "Painel SaaS & Infra", path: "/app/admin", icon: Server, reqCondition: "master-only" as NavReqCondition },
       { name: "Portal de Parceiros", path: "/app/parceiros", icon: Handshake, reqCondition: "master-or-partner" as NavReqCondition },
     ],
   },

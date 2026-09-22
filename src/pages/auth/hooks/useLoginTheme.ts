@@ -186,11 +186,9 @@ export function useLoginTheme(): LoginTheme {
         const currentTenants = activeTenantsRef.current;
 
         for (const token of tokens) {
-          // Match específico para casos conhecidos (ex: gthec -> G-Tech)
-          const normalized = token === "gthec" ? "g-tech" : token;
           const match = currentTenants.find((t) => {
             const nameLower = t.name.toLowerCase();
-            return nameLower.includes(normalized) || normalized.includes(nameLower);
+            return nameLower.includes(token) || token.includes(nameLower);
           });
 
           if (match) {
