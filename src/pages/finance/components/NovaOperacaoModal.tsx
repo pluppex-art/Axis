@@ -6,43 +6,13 @@ import { useData } from "../../../contexts/DataContext";
 import { useLocalization } from "../../../contexts/LocalizationContext";
 import { toast } from "sonner";
 import { cn } from "../../../lib/utils";
+import { type Frequencia, addPeriodo, splitInstallments } from "../../../lib/saleCalculator";
 
-type Frequencia = "semanal" | "quinzenal" | "mensal" | "bimestral" | "trimestral" | "semestral" | "anual";
 type RepeatMode = "none" | "recorrente" | "parcelado";
 
 const PAYMENT_METHODS = ["Pix", "Boleto", "Cartão de Crédito", "Cartão de Débito", "Transferência/TED", "Dinheiro", "Cheque", "Outro"];
 
 const parseTags = (raw: string): string[] => raw.split(",").map(t => t.trim()).filter(Boolean);
-
-/** Mesma regra de "clamp" do GenericFinanceiroList: 31/01 + 1 mês tem que
- * cair em 28/02, nunca estourar pro dia 3 de março. */
-function addMonthsClamped(date: Date, n: number): Date {
-  const day = date.getDate();
-  const firstOfTargetMonth = new Date(date.getFullYear(), date.getMonth() + n, 1);
-  const lastDayOfTargetMonth = new Date(firstOfTargetMonth.getFullYear(), firstOfTargetMonth.getMonth() + 1, 0).getDate();
-  firstOfTargetMonth.setDate(Math.min(day, lastDayOfTargetMonth));
-  return firstOfTargetMonth;
-}
-
-function addPeriodo(date: Date, freq: Frequencia, n: number): Date {
-  const d = new Date(date);
-  if (freq === "semanal") { d.setDate(d.getDate() + 7 * n); return d; }
-  if (freq === "quinzenal") { d.setDate(d.getDate() + 15 * n); return d; }
-  if (freq === "bimestral") return addMonthsClamped(d, 2 * n);
-  if (freq === "trimestral") return addMonthsClamped(d, 3 * n);
-  if (freq === "semestral") return addMonthsClamped(d, 6 * n);
-  if (freq === "anual") return addMonthsClamped(d, 12 * n);
-  return addMonthsClamped(d, n); // mensal
-}
-
-/** Última parcela absorve o resto dos centavos — nunca perde 1 centavo por
- * arredondamento (100,00 em 3x = 33,33 + 33,33 + 33,34). */
-function splitInstallments(total: number, count: number): number[] {
-  const cents = Math.round(total * 100);
-  const base = Math.floor(cents / count);
-  const remainder = cents - base * count;
-  return Array.from({ length: count }, (_, i) => (i < count - 1 ? base : base + remainder) / 100);
-}
 
 interface NovaOperacaoModalProps {
   isOpen: boolean;

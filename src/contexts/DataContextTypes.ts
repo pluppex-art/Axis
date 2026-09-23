@@ -45,7 +45,7 @@ export interface FinanceEntry {
   type: 'Pagar' | 'Receber';
   date: string;
   is_recurring?: boolean;
-  recurring_frequency?: 'semanal' | 'quinzenal' | 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual' | null;
+  recurring_frequency?: 'semanal' | 'quinzenal' | 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual' | 'personalizado' | null;
   /** Liga todas as ocorrências geradas pela mesma recorrência — útil pra
    * identificar/gerenciar o grupo depois (ex.: cancelar as futuras). */
   recurring_group_id?: string | null;

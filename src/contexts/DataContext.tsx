@@ -2227,7 +2227,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     tipo?: 'itens' | 'texto' | 'arquivo';
     conteudoTexto?: string | null;
     linkPdf?: string | null;
-    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null }>;
+    itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null; frequency?: string | null }>;
   }) => {
     const proposalId = crypto.randomUUID();
     await proposalCrud.add({
@@ -2258,6 +2258,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         // do catálogo do produto) — usado depois pra calcular a data de
         // término do contrato com o prazo que foi de fato negociado.
         contract_months: item.contractMonths ?? null,
+        // Frequência do ciclo (mensal/trimestral/semestral/anual/personalizado)
+        // — distinta de contract_months (vigência total). Ver saleCalculator.ts.
+        frequency: item.frequency ?? null,
       });
     }
     // Sincroniza valor/produtos de volta no lead vinculado — sem isso, o card
