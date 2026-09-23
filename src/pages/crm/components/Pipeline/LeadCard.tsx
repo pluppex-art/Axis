@@ -104,23 +104,33 @@ export function LeadCard({
         .sort((a, b) => b - a)[0]
     : undefined;
   // `item.value` é a fonte de verdade — soma corretamente múltiplas propostas
-  // já realizadas/aceitas pro mesmo lead (mini PDV, aceite de proposta). Somar
-  // só o preço atual de catálogo dos produtos vinculados (branch antiga)
-  // ignorava quantidade, preço histórico da venda e compras repetidas do
-  // mesmo produto — só entra como fallback se o lead genuinamente não tiver
-  // valor nenhum ainda.
+  // já realizadas/aceitas pro mesmo lead (mini PDV, aceite de proposta).
+  //
+  // BUG real (reportado: "Produto (catálogo): R$2.997, não existe esse
+  // produto" — mesma causa aqui): `linkedProducts` vem de `item.productIds`,
+  // que é preenchido por DOIS fluxos sem relação — "Produtos de Interesse"
+  // marcado na qualificação do lead (um checkbox, nunca virou venda) E os
+  // itens de uma venda de verdade. Tratar a soma do catálogo desses produtos
+  // como se fosse o valor REAL do negócio mostrava um card de R$2.997 pra
+  // leads que só tiveram uma caixinha marcada, nunca compraram nada.
+  // `linkedProposalValue` (proposals.valor) só existe quando uma proposta de
+  // verdade foi criada — prioridade sobre `linkedProducts`, que agora vira
+  // só uma ESTIMATIVA (mesmo tratamento visual de avgWonTicket, com "~").
+  const hasRealValue = parseCurrencyBR(item.value) > 0 || !!linkedProposalValue;
+  const estimateFromInterest = !hasRealValue && linkedProducts.length > 0
+    ? linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0)
+    : 0;
   // Lead genuinamente sem venda/produto/proposta ainda (ex.: cliente cadastrado
   // que nunca reservou) — em vez de "R$ 0" (parece erro/dado quebrado), mostra
   // o ticket médio dos negócios Fechado do tenant como ESTIMATIVA, marcada com
   // "~" e estilo diferenciado. Não é valor real — só um sinal de potencial.
-  const hasRealValue = parseCurrencyBR(item.value) > 0 || linkedProducts.length > 0 || !!linkedProposalValue;
-  const isEstimated = !hasRealValue && avgWonTicket > 0;
+  const isEstimated = !hasRealValue && (estimateFromInterest > 0 || avgWonTicket > 0);
   const displayValue = parseCurrencyBR(item.value) > 0
     ? formatCurrency(parseCurrencyBR(item.value))
-    : linkedProducts.length > 0
-      ? formatCurrency(linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0))
-      : linkedProposalValue
-        ? formatCurrency(Number(linkedProposalValue))
+    : linkedProposalValue
+      ? formatCurrency(Number(linkedProposalValue))
+      : estimateFromInterest > 0
+        ? `~${formatCurrency(estimateFromInterest)}`
         : isEstimated
           ? `~${formatCurrency(avgWonTicket)}`
           : 'R$ 0';
@@ -351,7 +361,13 @@ export function LeadCard({
                   ? "text-[var(--color-text-muted)] italic"
                   : "text-emerald-600 dark:text-emerald-400"
               )}
-              title={isEstimated ? "Estimativa (ticket médio) — este lead ainda não tem venda/produto vinculado" : undefined}
+              title={
+                isEstimated
+                  ? (estimateFromInterest > 0
+                      ? "Estimativa a partir dos produtos de interesse marcados na qualificação — ainda não é uma venda/proposta real"
+                      : "Estimativa (ticket médio) — este lead ainda não tem venda/proposta vinculada")
+                  : undefined
+              }
             >
               {displayValue}
               {!!contractMonths && (

@@ -77,7 +77,7 @@ export function ProfileSection({
   applyMessageTemplate, updateLead,
 }: ProfileSectionProps) {
   const [cnpjFetching, setCnpjFetching] = useState(false);
-  const { leads: allLeads, colaboradores, addLeadActivity: addActivityCtx, products, proposals, contracts } = useData();
+  const { leads: allLeads, colaboradores, addLeadActivity: addActivityCtx, proposals, proposalItems, contracts } = useData();
   const { formatCurrency } = useLocalization();
 
   const sellerOptions = useMemo(() => {
@@ -101,18 +101,31 @@ export function ProfileSection({
   );
 
   // Valor do Produto: referência de catálogo (preço cheio, sem desconto) dos
-  // produtos vinculados ao lead — um número DIFERENTE do valor da proposta
-  // (que já reflete o negociado/descontado), mostrado ao lado pra dar
-  // contexto de quanto do preço de tabela essa venda representa.
+  // itens de uma proposta REAL deste lead — um número DIFERENTE do valor da
+  // proposta (que já reflete o negociado/descontado), mostrado ao lado pra
+  // dar contexto de quanto do preço de tabela essa venda representa.
+  //
+  // BUG real (reportado: "Produto (catálogo): R$2.997,00, não existe esse
+  // produto"): isso usava `lead.productIds`, mas esse campo é preenchido por
+  // DOIS fluxos sem relação nenhuma — "Produtos de Interesse" marcado na
+  // qualificação do lead (NewLeadModal.tsx/QualificationBlock.tsx, um mero
+  // checkbox, nunca virou venda) E os itens de uma venda de verdade
+  // (AddProdutoLeadModal). Muitos leads da Pluppex tinham só os checkboxes de
+  // interesse marcados (mesmos 2 produtos em ~8 leads diferentes) e nunca
+  // fecharam negócio nenhum — mesmo assim apareciam com "Produto (catálogo):
+  // R$2.997" como se fosse um produto de fato vinculado. `proposal_items` só
+  // existe quando `createProposalWithItems` roda de verdade (venda real),
+  // nunca a partir do checkbox de interesse — fonte confiável.
   const productValue = useMemo(() => {
-    const ids: string[] = Array.isArray(lead?.productIds) ? lead.productIds : [];
-    if (ids.length === 0) return null;
-    const total = (products as any[]).reduce(
-      (s: number, p: any) => ids.includes(p.id) ? s + (Number(p.price) || 0) : s,
-      0
+    if (!lead?.id) return null;
+    const leadProposalIds = new Set(
+      (proposals as any[]).filter((p: any) => p.lead_id === lead.id).map((p: any) => p.id)
     );
+    if (leadProposalIds.size === 0) return null;
+    const items = (proposalItems as any[]).filter((pi: any) => leadProposalIds.has(pi.proposal_id));
+    const total = items.reduce((s: number, pi: any) => s + (Number(pi.preco_unitario) || 0) * (Number(pi.quantidade) || 1), 0);
     return total > 0 ? formatCurrency(total) : null;
-  }, [lead?.productIds, products, formatCurrency]);
+  }, [lead?.id, proposals, proposalItems, formatCurrency]);
 
   // MRR deste lead: mesma fonte e mesma fórmula usada em todo o resto do
   // sistema (getMRR/revenueMetrics.ts — Financeiro, Dashboard, Contracts) —
