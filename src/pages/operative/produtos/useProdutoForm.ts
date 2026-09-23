@@ -59,6 +59,12 @@ export function useProdutoForm() {
   const [formHasImplementation, setFormHasImplementation] = useState(false);
   const [formImplementationFee, setFormImplementationFee] = useState("0");
 
+  // Fidelidade: prazo mínimo de permanência com multa por cancelamento
+  // antecipado — distinto de formContractMonths (vigência normal do contrato).
+  const [formHasLoyalty, setFormHasLoyalty] = useState(false);
+  const [formLoyaltyMonths, setFormLoyaltyMonths] = useState("12");
+  const [formEarlyTerminationFee, setFormEarlyTerminationFee] = useState("0");
+
   const { products, addProduct, updateProduct, deleteProduct, setProducts, clienteBase } = useData();
   const { user, activeTenantId } = useAuth();
 
@@ -113,6 +119,9 @@ export function useProdutoForm() {
     setFormContractMonths("12");
     setFormHasImplementation(false);
     setFormImplementationFee("0");
+    setFormHasLoyalty(false);
+    setFormLoyaltyMonths("12");
+    setFormEarlyTerminationFee("0");
     setActiveTab("info");
     setSimulateTax(false);
     setAttachments([]);
@@ -155,6 +164,10 @@ export function useProdutoForm() {
     );
     setFormImplementationFee(String(p.implementationFee || p.typeAttributes?.implementationFee || "0"));
 
+    setFormHasLoyalty(!!(p.hasLoyalty || p.typeAttributes?.hasLoyalty));
+    setFormLoyaltyMonths(String(p.loyaltyMonths || p.typeAttributes?.loyaltyMonths || "12"));
+    setFormEarlyTerminationFee(String(p.earlyTerminationFeePercent || p.typeAttributes?.earlyTerminationFeePercent || "0"));
+
     setActiveTab("info");
     setSimulateTax(false);
     setAttachments(p.attachments || []);
@@ -182,6 +195,8 @@ export function useProdutoForm() {
 
     const contractMonthsNum = parseInt(formContractMonths) || 12;
     const implFeeNum = parseFloat(formImplementationFee) || 0;
+    const loyaltyMonthsNum = parseInt(formLoyaltyMonths) || 12;
+    const earlyTerminationFeeNum = parseFloat(formEarlyTerminationFee) || 0;
     const enrichedTypeAttributes = {
       ...formTypeAttributes,
       isRecurring: formIsRecurring,
@@ -189,6 +204,9 @@ export function useProdutoForm() {
       contractMonths: contractMonthsNum,
       hasImplementation: formHasImplementation,
       implementationFee: implFeeNum,
+      hasLoyalty: formHasLoyalty,
+      loyaltyMonths: loyaltyMonthsNum,
+      earlyTerminationFeePercent: earlyTerminationFeeNum,
     };
 
     const tenantName = user?.tenantName || "";
@@ -205,6 +223,9 @@ export function useProdutoForm() {
         contractMonths: contractMonthsNum,
         hasImplementation: formHasImplementation,
         implementationFee: implFeeNum,
+        hasLoyalty: formHasLoyalty,
+        loyaltyMonths: loyaltyMonthsNum,
+        earlyTerminationFeePercent: earlyTerminationFeeNum,
         price: priceNum,
         cost: costNum,
         margin: marginRatio,
@@ -238,6 +259,9 @@ export function useProdutoForm() {
         contractMonths: contractMonthsNum,
         hasImplementation: formHasImplementation,
         implementationFee: implFeeNum,
+        hasLoyalty: formHasLoyalty,
+        loyaltyMonths: loyaltyMonthsNum,
+        earlyTerminationFeePercent: earlyTerminationFeeNum,
         price: priceNum,
         cost: costNum,
         margin: marginRatio,
@@ -377,6 +401,9 @@ export function useProdutoForm() {
     formContractMonths, setFormContractMonths,
     formHasImplementation, setFormHasImplementation,
     formImplementationFee, setFormImplementationFee,
+    formHasLoyalty, setFormHasLoyalty,
+    formLoyaltyMonths, setFormLoyaltyMonths,
+    formEarlyTerminationFee, setFormEarlyTerminationFee,
     products, setProducts,
     categories, types,
     handleOpenAddModal,

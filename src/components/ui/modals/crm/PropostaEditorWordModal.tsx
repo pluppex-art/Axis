@@ -49,6 +49,13 @@ export interface PropostaEditorData {
     product_name: string;
     quantidade: number;
     preco_unitario: number;
+    /** 'recurring' | 'one_time' | null — recorrente NÃO deve multiplicar
+     * quantidade×preço na linha (quantidade ali guarda ciclos×unidades pro
+     * cálculo de MRR em DataContext.tsx, não "quantas unidades comprou"; ver
+     * AddProdutoLeadModal.tsx). Exibir isso multiplicado faz uma assinatura
+     * de R$997/mês por 12 meses aparecer como "12x R$997 = R$11.964", como
+     * se fosse uma compra avulsa de 12 unidades em vez de uma recorrência. */
+    billing_type?: string | null;
   }>;
 }
 
@@ -116,7 +123,7 @@ export function PropostaEditorWordModal({
   const [decisorCargo, setDecisorCargo] = useState("");
   const [conteudoTexto, setConteudoTexto] = useState("");
   const [itens, setItens] = useState<
-    Array<{ product_name: string; quantidade: number; preco_unitario: number }>
+    Array<{ product_name: string; quantidade: number; preco_unitario: number; billing_type?: string | null }>
   >([]);
   const [viewToken, setViewToken] = useState<string | null>(null);
 
@@ -726,22 +733,33 @@ export function PropostaEditorWordModal({
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-800">
                   {itens.length > 0 ? (
-                    itens.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-2.5 px-4 font-semibold text-slate-900">
-                          {item.product_name}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-bold">
-                          {item.quantidade}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono text-slate-600">
-                          R$ {item.preco_unitario.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
-                          R$ {(item.quantidade * item.preco_unitario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))
+                    itens.map((item, idx) => {
+                      // Item recorrente: `quantidade` guarda ciclos×unidades (não "quantas
+                      // unidades"), então multiplicar aqui infla a linha pro valor do
+                      // contrato inteiro — a recorrência já está descrita no nome do item.
+                      // Mostra 1x pelo valor do ciclo; o total do contrato já aparece à
+                      // parte no rodapé (Investimento Total da Proposta).
+                      const isRecurringItem = !!item.billing_type && item.billing_type !== "one_time";
+                      const displayQty = isRecurringItem ? 1 : item.quantidade;
+                      const displaySubtotal = isRecurringItem ? item.preco_unitario : item.quantidade * item.preco_unitario;
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2.5 px-4 font-semibold text-slate-900">
+                            {item.product_name}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-bold">
+                            {displayQty}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                            R$ {item.preco_unitario.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            {isRecurringItem && <span className="text-[10px] text-slate-400">/ciclo</span>}
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
+                            R$ {displaySubtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
                       <td colSpan={4} className="py-4 text-center text-slate-400 italic">

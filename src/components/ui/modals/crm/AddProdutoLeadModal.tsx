@@ -3,7 +3,7 @@ import {
   Loader2, Zap, Wrench, ChevronUp, ChevronDown,
   Receipt, Percent, DollarSign, Layers, TrendingUp, TrendingDown,
   CreditCard, Banknote, QrCode, FileText, Calendar, ArrowRightLeft,
-  Repeat, CalendarClock, Info,
+  Repeat, CalendarClock, Info, Plus, Trash2, ShoppingCart,
 } from "lucide-react";
 import { Modal } from "../../modal";
 import { Button } from "../../button";
@@ -56,6 +56,21 @@ interface AddProdutoLeadModalProps {
    * histórico de alterações do lead (setAlterationLogs) sem esse modal precisar saber
    * desse detalhe. */
   onDone?: (summary: string) => void;
+}
+
+/** Um produto já "confirmado" nesta venda — snapshot congelado do que estava configurado
+ * no formulário no momento em que o usuário clicou "Adicionar Produto". Guarda `sale` já
+ * calculado (calculateSale) pra não precisar re-derivar nada na hora de fechar a venda. */
+interface CartItem {
+  key: string;
+  product: any;
+  quantity: number;
+  isRecurring: boolean;
+  frequency: Frequencia;
+  durationMonths: number | null;
+  isOpenEnded: boolean;
+  implFee: number;
+  sale: ReturnType<typeof calculateSale>;
 }
 
 const labelClass = "text-[10px] font-bold uppercase text-[var(--color-text-muted)] mb-1 block";
@@ -125,8 +140,16 @@ export function AddProdutoLeadModal({
   const [firstDueDateInput, setFirstDueDateInput] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
 
+  // Carrinho: mais de um produto pode ser adicionado a UMA MESMA proposta (antes só dava
+  // pra vender 1 produto por vez — clicar "adicionar produto" de novo criava uma proposta
+  // NOVA e separada pro mesmo lead, e a aba Produtos só mostrava a mais recente, fazendo o
+  // produto anterior "sumir"). Cada clique em "Adicionar Produto" empilha um snapshot aqui;
+  // "Concluir Venda" processa todos de uma vez numa única proposta com N itens.
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+
   useEffect(() => {
     if (!isOpen) return;
+    setCartItems([]);
     setProductId(initialProductId || "");
     setQuantity(1);
     setBillingTypeOverride(null);
@@ -202,9 +225,74 @@ export function AddProdutoLeadModal({
     if (!discountOptions.some((o) => o.id === discountType)) setDiscountType("none");
   }, [isRecurring]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSubmit = async () => {
+  // Congela a configuração atual do formulário (produto + recorrência/parcelamento +
+  // implantação já calculados em `sale`) e empilha no carrinho, liberando o formulário
+  // pro próximo produto. Desconto e composição comercial/margem são só do vendedor
+  // decidindo o preço deste item — não precisam sobreviver no snapshot além do `sale`
+  // já resolvido.
+  const handleAddToCart = () => {
     if (!product) {
       toast.error("Selecione um produto.");
+      return;
+    }
+    const item: CartItem = {
+      key: crypto.randomUUID(),
+      product,
+      quantity,
+      isRecurring,
+      frequency,
+      durationMonths,
+      isOpenEnded: sale.isOpenEnded,
+      implFee: showImplToggle ? implFee : 0,
+      sale,
+    };
+    setCartItems((prev) => [...prev, item]);
+    toast.success(`"${product.name}" adicionado à proposta.`);
+
+    // Reresta só a configuração DESTE produto — forma de pagamento, parcelas e 1º
+    // vencimento continuam valendo pro próximo item (é a mesma venda/lead).
+    setProductId("");
+    setQuantity(1);
+    setBillingTypeOverride(null);
+    setFrequency("mensal");
+    setCustomCycleMonthsInput("1");
+    setDurationOverride(null);
+    setIsOpenEndedDuration(false);
+    setCustomDurationDraft("");
+    setHasImplementation(null);
+    setImplementationFeeInput(null);
+    setDiscountType("none");
+    setDiscountInput("0");
+  };
+
+  const handleRemoveFromCart = (key: string) => {
+    setCartItems((prev) => prev.filter((ci) => ci.key !== key));
+  };
+
+  const cartTotal = cartItems.reduce((sum, ci) => sum + ci.sale.totalProjectedAmount, 0);
+
+  const handleSubmit = async () => {
+    // O produto ainda configurado no formulário (se houver) entra na venda junto com o
+    // carrinho — assim quem vende só 1 produto continua sem precisar clicar "Adicionar"
+    // antes de "Concluir Venda".
+    const allItems: CartItem[] = [
+      ...cartItems,
+      ...(product
+        ? [{
+            key: "current",
+            product,
+            quantity,
+            isRecurring,
+            frequency,
+            durationMonths,
+            isOpenEnded: sale.isOpenEnded,
+            implFee: showImplToggle ? implFee : 0,
+            sale,
+          }]
+        : []),
+    ];
+    if (allItems.length === 0) {
+      toast.error("Selecione ao menos um produto.");
       return;
     }
     setSaving(true);
@@ -217,33 +305,43 @@ export function AddProdutoLeadModal({
       const vendasCategoryId = await resolveFinanceCategoryId("Vendas / Serviços", "Receita");
       const contatoId = leadId ? (leads || []).find((l: any) => l.id === leadId)?.clientId || null : null;
 
-      const items: any[] = [{
-        productId: product.id,
-        descricao: isRecurring
-          ? `${product.name} (Assinatura ${freqLabel} — ${sale.numberOfCycles} ciclo${sale.numberOfCycles > 1 ? "s" : ""}${sale.isOpenEnded ? ", contínua" : ""})`
-          : product.name,
-        quantidade: isRecurring ? sale.numberOfCycles * quantity : quantity,
-        precoUnitario: unitPrice,
-        billingType: isRecurring ? "recurring" : "one_time",
-        contractMonths: isRecurring ? (sale.isOpenEnded ? null : durationMonths) : null,
-        frequency: isRecurring ? frequency : null,
-      }];
-      if (showImplToggle && implFee > 0) {
+      // Todos os produtos entram como itens de UMA proposta só (nunca uma proposta por
+      // produto — era isso que fazia "adicionar produto" de novo apagar/esconder o
+      // anterior, já que só a proposta mais recente do lead aparecia na aba Produtos).
+      const items: any[] = [];
+      for (const ci of allItems) {
+        const ciFreqLabel = FREQUENCY_LABELS[ci.frequency];
+        const ciUnitPrice = Number(ci.product.price) || 0;
         items.push({
-          productId: product.id,
-          descricao: `Taxa de Implantação e Setup Inicial — ${product.name}`,
-          quantidade: 1,
-          precoUnitario: implFee,
-          billingType: "one_time",
-          contractMonths: null,
-          frequency: null,
+          productId: ci.product.id,
+          descricao: ci.isRecurring
+            ? `${ci.product.name} (Assinatura ${ciFreqLabel} — ${ci.sale.numberOfCycles} ciclo${ci.sale.numberOfCycles > 1 ? "s" : ""}${ci.isOpenEnded ? ", contínua" : ""})`
+            : ci.product.name,
+          quantidade: ci.isRecurring ? ci.sale.numberOfCycles * ci.quantity : ci.quantity,
+          precoUnitario: ciUnitPrice,
+          billingType: ci.isRecurring ? "recurring" : "one_time",
+          contractMonths: ci.isRecurring ? (ci.isOpenEnded ? null : ci.durationMonths) : null,
+          frequency: ci.isRecurring ? ci.frequency : null,
         });
+        if (ci.implFee > 0) {
+          items.push({
+            productId: ci.product.id,
+            descricao: `Taxa de Implantação e Setup Inicial — ${ci.product.name}`,
+            quantidade: 1,
+            precoUnitario: ci.implFee,
+            billingType: "one_time",
+            contractMonths: null,
+            frequency: null,
+          });
+        }
       }
+
+      const totalValor = allItems.reduce((sum, ci) => sum + ci.sale.totalProjectedAmount, 0);
 
       const proposalId = await createProposalWithItems({
         titulo: `Proposta Comercial — ${clientName}`,
         cliente: clientName,
-        valor: sale.totalProjectedAmount,
+        valor: totalValor,
         validade: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         status: "Enviada",
         vendedor: seller || "Consultor S.P.Y.",
@@ -254,55 +352,59 @@ export function AddProdutoLeadModal({
       });
 
       const isInstantPayment = formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito";
-      const groupId = crypto.randomUUID();
 
-      // Recorrente: um lançamento POR CICLO, cada um com o valor do ciclo (nunca o total
-      // do contrato numa cobrança só) — ligados por recurring_group_id, mesma convenção já
-      // usada em NovaOperacaoModal.tsx/GenericFinanceiroList.tsx.
-      if (isRecurring) {
-        for (let i = 0; i < sale.paymentSchedule.length; i++) {
-          const cycle = sale.paymentSchedule[i];
-          const isFirst = i === 0;
-          await addFinanceEntry({
-            description: `Assinatura — ${clientName} | ${product.name} | Ciclo ${cycle.cycleNumber}/${sale.numberOfCycles}${isFirst && sale.setupAmount > 0 ? " (inclui implantação)" : ""}`,
-            category: "Vendas / Serviços",
-            category_id: vendasCategoryId,
-            contato_id: contatoId,
-            value: cycle.amount,
-            type: "Receber",
-            status: isFirst && isInstantPayment ? "Pago" : "A Vencer",
-            date: cycle.dueDate.toISOString().slice(0, 10),
-            is_recurring: true,
-            recurring_frequency: frequency,
-            recurring_group_id: groupId,
-            payment_method: formaPagamento,
-            notes: sale.isOpenEnded
-              ? "Recorrência contínua (sem prazo definido) — lote inicial de ciclos gerado agora; os próximos ciclos precisam ser gerados manualmente ou por uma automação futura."
-              : (detalhesPagamento || null),
-            proposal_id: proposalId,
-          }, { silent: !isFirst });
-        }
-      } else {
-        // Cobrança única (com ou sem parcelamento): divide o MESMO total em N parcelas —
-        // nunca multiplica o valor pelas parcelas. installment_group_id só quando há mais
-        // de 1 parcela de verdade.
-        for (let i = 0; i < sale.paymentSchedule.length; i++) {
-          const cycle = sale.paymentSchedule[i];
-          const isFirst = i === 0;
-          await addFinanceEntry({
-            description: `Venda — ${clientName} | ${product.name}${sale.numberOfCycles > 1 ? ` (parcela ${cycle.cycleNumber}/${sale.numberOfCycles})` : ""}`,
-            category: "Vendas / Serviços",
-            category_id: vendasCategoryId,
-            contato_id: contatoId,
-            value: cycle.amount,
-            type: "Receber",
-            status: isFirst && isInstantPayment ? "Pago" : "A Vencer",
-            date: cycle.dueDate.toISOString().slice(0, 10),
-            ...(sale.numberOfCycles > 1 ? { installment_group_id: groupId, installment_number: cycle.cycleNumber, installment_total: sale.numberOfCycles } : {}),
-            payment_method: formaPagamento,
-            notes: detalhesPagamento || null,
-            proposal_id: proposalId,
-          }, { silent: !isFirst });
+      // Um grupo de cobrança (recurring_group_id / installment_group_id) POR PRODUTO —
+      // nunca misturando ciclos de produtos diferentes no mesmo grupo.
+      for (const ci of allItems) {
+        const groupId = crypto.randomUUID();
+        if (ci.isRecurring) {
+          // Recorrente: um lançamento POR CICLO, cada um com o valor do ciclo (nunca o
+          // total do contrato numa cobrança só) — ligados por recurring_group_id, mesma
+          // convenção já usada em NovaOperacaoModal.tsx/GenericFinanceiroList.tsx.
+          for (let i = 0; i < ci.sale.paymentSchedule.length; i++) {
+            const cycle = ci.sale.paymentSchedule[i];
+            const isFirst = i === 0;
+            await addFinanceEntry({
+              description: `Assinatura — ${clientName} | ${ci.product.name} | Ciclo ${cycle.cycleNumber}/${ci.sale.numberOfCycles}${isFirst && ci.sale.setupAmount > 0 ? " (inclui implantação)" : ""}`,
+              category: "Vendas / Serviços",
+              category_id: vendasCategoryId,
+              contato_id: contatoId,
+              value: cycle.amount,
+              type: "Receber",
+              status: isFirst && isInstantPayment ? "Pago" : "A Vencer",
+              date: cycle.dueDate.toISOString().slice(0, 10),
+              is_recurring: true,
+              recurring_frequency: ci.frequency,
+              recurring_group_id: groupId,
+              payment_method: formaPagamento,
+              notes: ci.isOpenEnded
+                ? "Recorrência contínua (sem prazo definido) — lote inicial de ciclos gerado agora; os próximos ciclos precisam ser gerados manualmente ou por uma automação futura."
+                : (detalhesPagamento || null),
+              proposal_id: proposalId,
+            }, { silent: !isFirst });
+          }
+        } else {
+          // Cobrança única (com ou sem parcelamento): divide o MESMO total em N parcelas —
+          // nunca multiplica o valor pelas parcelas. installment_group_id só quando há
+          // mais de 1 parcela de verdade.
+          for (let i = 0; i < ci.sale.paymentSchedule.length; i++) {
+            const cycle = ci.sale.paymentSchedule[i];
+            const isFirst = i === 0;
+            await addFinanceEntry({
+              description: `Venda — ${clientName} | ${ci.product.name}${ci.sale.numberOfCycles > 1 ? ` (parcela ${cycle.cycleNumber}/${ci.sale.numberOfCycles})` : ""}`,
+              category: "Vendas / Serviços",
+              category_id: vendasCategoryId,
+              contato_id: contatoId,
+              value: cycle.amount,
+              type: "Receber",
+              status: isFirst && isInstantPayment ? "Pago" : "A Vencer",
+              date: cycle.dueDate.toISOString().slice(0, 10),
+              ...(ci.sale.numberOfCycles > 1 ? { installment_group_id: groupId, installment_number: cycle.cycleNumber, installment_total: ci.sale.numberOfCycles } : {}),
+              payment_method: formaPagamento,
+              notes: detalhesPagamento || null,
+              proposal_id: proposalId,
+            }, { silent: !isFirst });
+          }
         }
       }
 
@@ -312,46 +414,43 @@ export function AddProdutoLeadModal({
       // mesma inconsistência que motivou centralizar esse cálculo.
       if (leadId) {
         const currentLead = (leads || []).find((l: any) => l.id === leadId);
-        const accumulatedProductIds = [...new Set([...(currentLead?.productIds || []), product.id])];
+        const newProductIds = allItems.map((ci) => ci.product.id);
+        const accumulatedProductIds = [...new Set([...(currentLead?.productIds || []), ...newProductIds])];
+        const anyRecurring = allItems.some((ci) => ci.isRecurring);
         await updateLead(leadId, {
           productIds: accumulatedProductIds,
           status: "Fechado",
           scoreIA: 100,
           temperature: "quente",
           customFields: {
-            tags: ["Venda", formaPagamento, isRecurring ? `${sale.numberOfCycles}x ${freqLabel}` : (sale.numberOfCycles > 1 ? `${sale.numberOfCycles}x` : "1x")],
-            billingType: isRecurring ? "recurring" : "one_time",
-            frequency: isRecurring ? frequency : null,
-            numberOfCycles: sale.numberOfCycles,
-            cycleAmount: sale.cycleAmount,
-            setupAmount: sale.setupAmount,
-            firstChargeAmount: sale.firstChargeAmount,
-            totalProjectedAmount: sale.totalProjectedAmount,
+            tags: ["Venda", formaPagamento, `${allItems.length} produto${allItems.length > 1 ? "s" : ""}`],
+            billingType: anyRecurring ? "recurring" : "one_time",
+            totalProjectedAmount: totalValor,
             formaPagamento,
-            installments: isRecurring ? null : sale.numberOfCycles,
             dataPagamento: firstDueDateInput,
             detalhesPagamento,
           },
         });
       }
 
-      const resumoMsg = isRecurring
-        ? `${formatCurrency(sale.cycleAmount)}/${freqLabel.toLowerCase()} — 1ª cobrança ${formatCurrency(sale.firstChargeAmount)}, ${sale.numberOfCycles} ciclos, total previsto ${formatCurrency(sale.totalProjectedAmount)}`
-        : `${formatCurrency(sale.firstChargeAmount)}${sale.numberOfCycles > 1 ? ` (1ª de ${sale.numberOfCycles}x)` : ""} via ${formaPagamento}`;
+      const productNames = allItems.map((ci) => ci.product.name).join(", ");
+      const resumoMsg = allItems.length > 1
+        ? `${allItems.length} produtos — total previsto ${formatCurrency(totalValor)}`
+        : (allItems[0].isRecurring
+          ? `${formatCurrency(allItems[0].sale.cycleAmount)}/${FREQUENCY_LABELS[allItems[0].frequency].toLowerCase()} — 1ª cobrança ${formatCurrency(allItems[0].sale.firstChargeAmount)}, ${allItems[0].sale.numberOfCycles} ciclos, total previsto ${formatCurrency(allItems[0].sale.totalProjectedAmount)}`
+          : `${formatCurrency(allItems[0].sale.firstChargeAmount)}${allItems[0].sale.numberOfCycles > 1 ? ` (1ª de ${allItems[0].sale.numberOfCycles}x)` : ""} via ${formaPagamento}`);
 
       addNotification({
         title: `🎉 Venda Concluída: ${clientName}`,
-        description: `${product.name} — ${resumoMsg}`,
+        description: `${productNames} — ${resumoMsg}`,
         type: "success",
         link_url: "/app/crm/propostas",
       });
 
       toast.success("⚡ Venda concluída e automatizada!", {
-        description: isRecurring
-          ? `Proposta criada, ${sale.numberOfCycles} cobrança(s) recorrente(s) lançada(s) no financeiro e lead atualizado.`
-          : "Proposta criada, contas a receber provisionado e lead atualizado.",
+        description: `Proposta criada com ${allItems.length} item${allItems.length > 1 ? "s" : ""}, financeiro lançado e lead atualizado.`,
       });
-      onDone?.(`⚡ Produto "${product.name}" adicionado — ${resumoMsg}: proposta gerada, financeiro lançado e lead atualizado.`);
+      onDone?.(`⚡ ${productNames} — ${resumoMsg}: proposta gerada, financeiro lançado e lead atualizado.`);
       onClose();
     } catch (err: any) {
       toast.error("Erro ao processar a venda: " + err?.message);
@@ -361,8 +460,44 @@ export function AddProdutoLeadModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Novo Produto" maxWidth="max-w-2xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="Adicionar Produtos" maxWidth="max-w-2xl">
       <div className="space-y-4 max-h-[75vh] overflow-y-auto scrollbar-thin pr-1">
+        {/* ── CARRINHO DESTA PROPOSTA (produtos já adicionados) ── */}
+        {cartItems.length > 0 && (
+          <div className="bg-emerald-500/5 border border-emerald-500/25 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <ShoppingCart className="w-3.5 h-3.5" /> Itens desta Proposta ({cartItems.length})
+              </span>
+              <span className="text-[11px] font-mono font-black text-emerald-600 dark:text-emerald-400">
+                {formatCurrency(cartTotal)}
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {cartItems.map((ci) => (
+                <div key={ci.key} className="flex items-center justify-between gap-2 bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold text-[var(--color-text-primary)] truncate">{ci.product.name}</p>
+                    <p className="text-[9px] text-[var(--color-text-faint)] font-mono">
+                      {ci.isRecurring
+                        ? `${formatCurrency(ci.sale.cycleAmount)}/${FREQUENCY_LABELS[ci.frequency].toLowerCase()} · ${ci.sale.numberOfCycles} ciclos · total ${formatCurrency(ci.sale.totalProjectedAmount)}`
+                        : `${formatCurrency(ci.sale.totalProjectedAmount)}${ci.sale.numberOfCycles > 1 ? ` em ${ci.sale.numberOfCycles}x` : ""}`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFromCart(ci.key)}
+                    title="Remover item"
+                    className="p-1.5 text-[var(--color-text-faint)] hover:text-danger hover:bg-danger/10 rounded-lg transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── 1. PRODUTO ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
@@ -703,10 +838,22 @@ export function AddProdutoLeadModal({
           <Button type="button" variant="outline" onClick={onClose} className="h-9 px-4 text-xs font-bold">
             Cancelar
           </Button>
+          {product && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleAddToCart}
+              disabled={saving}
+              title="Adiciona este produto à proposta e libera o formulário pro próximo"
+              className="h-9 px-4 text-xs font-bold gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar Produto
+            </Button>
+          )}
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={!product || saving}
+            disabled={(!product && cartItems.length === 0) || saving}
             className="h-9 px-5 text-xs font-bold gap-1.5"
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}

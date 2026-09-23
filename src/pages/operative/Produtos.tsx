@@ -271,6 +271,12 @@ export default function Catalog() {
           setFormHasImplementation={f.setFormHasImplementation}
           formImplementationFee={f.formImplementationFee}
           setFormImplementationFee={f.setFormImplementationFee}
+          formHasLoyalty={f.formHasLoyalty}
+          setFormHasLoyalty={f.setFormHasLoyalty}
+          formLoyaltyMonths={f.formLoyaltyMonths}
+          setFormLoyaltyMonths={f.setFormLoyaltyMonths}
+          formEarlyTerminationFee={f.formEarlyTerminationFee}
+          setFormEarlyTerminationFee={f.setFormEarlyTerminationFee}
           categories={f.categories}
           handleSaveProduct={f.handleSaveProduct}
         />

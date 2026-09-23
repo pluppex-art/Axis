@@ -99,6 +99,7 @@ export function ProductsSection({
         product_name: i.product_name,
         quantidade: i.quantidade,
         preco_unitario: i.preco_unitario,
+        billing_type: i.billing_type,
       })),
     });
     setIsWordModalOpen(true);

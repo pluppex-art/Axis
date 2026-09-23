@@ -70,6 +70,9 @@ export interface ProdutoModalProps {
   formContractMonths?: string; setFormContractMonths?: (v: string) => void;
   formHasImplementation?: boolean; setFormHasImplementation?: (v: boolean) => void;
   formImplementationFee?: string; setFormImplementationFee?: (v: string) => void;
+  formHasLoyalty?: boolean; setFormHasLoyalty?: (v: boolean) => void;
+  formLoyaltyMonths?: string; setFormLoyaltyMonths?: (v: string) => void;
+  formEarlyTerminationFee?: string; setFormEarlyTerminationFee?: (v: string) => void;
   categories: string[];
   handleSaveProduct: (e: React.FormEvent<HTMLFormElement>) => void;
 }
@@ -144,6 +147,9 @@ export function ProdutoModal(props: ProdutoModalProps) {
                 formContractMonths={props.formContractMonths} setFormContractMonths={props.setFormContractMonths}
                 formHasImplementation={props.formHasImplementation} setFormHasImplementation={props.setFormHasImplementation}
                 formImplementationFee={props.formImplementationFee} setFormImplementationFee={props.setFormImplementationFee}
+                formHasLoyalty={props.formHasLoyalty} setFormHasLoyalty={props.setFormHasLoyalty}
+                formLoyaltyMonths={props.formLoyaltyMonths} setFormLoyaltyMonths={props.setFormLoyaltyMonths}
+                formEarlyTerminationFee={props.formEarlyTerminationFee} setFormEarlyTerminationFee={props.setFormEarlyTerminationFee}
               />
             )}
             {props.activeTab === "estoque" && (

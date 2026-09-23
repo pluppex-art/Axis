@@ -41,6 +41,14 @@ export interface Product {
     /** Implantação / Setup / Onboarding */
     hasImplementation?: boolean;
     implementationFee?: number;
+    /** Fidelidade contratual: prazo mínimo de permanência com multa por
+     * cancelamento antecipado — distinto de `contractMonths` (vigência/
+     * duração normal do contrato). Só se aplica a produtos recorrentes. */
+    hasLoyalty?: boolean;
+    loyaltyMonths?: number;
+    /** Percentual da multa sobre as mensalidades restantes em caso de
+     * cancelamento antes do fim do prazo de fidelidade. */
+    earlyTerminationFeePercent?: number;
 }
 
 export interface CustomField {

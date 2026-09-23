@@ -17,6 +17,7 @@ import { friendlyError } from "../../lib/friendlyError";
 export default function Clientes() {
   const { activeTenantId } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCliente, setEditingCliente] = useState<any | null>(null);
   const [contatosClienteId, setContatosClienteId] = useState<string | null>(null);
   const [detalhesClienteId, setDetalhesClienteId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("Todos as situações");
@@ -63,11 +64,30 @@ export default function Clientes() {
     inativos:    clientes.filter(c => c.status === "Inativo").length,
   }), [clientes]);
 
-  const handleCreateCliente = async (data: any) => {
+  const handleSaveCliente = async (data: any) => {
     if (!data.nome) { toast.error("Nome da empresa é obrigatório."); return; }
     if (!supabase) { toast.error("Não foi possível conectar ao servidor."); return; }
     if (!activeTenantId) { toast.error("Tenant não identificado."); return; }
-    const newClient = {
+
+    const documento = data.documento || null;
+    const email = data.email || null;
+
+    // Evita duplicar cliente: mesmo documento (CPF/CNPJ) ou e-mail já cadastrado
+    // pra este tenant vira o mesmo registro, não uma linha nova — mesmo critério
+    // já usado em createClientFromWonLead (DataContext.tsx) pro fluxo automático,
+    // só que faltava aqui no cadastro manual (achado real: "Guruseg" duplicado
+    // na Base de Clientes).
+    const duplicate = clientes.find(c =>
+      c.id !== editingCliente?.id &&
+      ((documento && c.documento && c.documento === documento) ||
+       (email && c.email && c.email.toLowerCase() === email.toLowerCase()))
+    );
+    if (duplicate) {
+      toast.error(`Já existe um cliente cadastrado com esse ${duplicate.documento === documento && documento ? "documento" : "e-mail"}: ${duplicate.name}.`);
+      return;
+    }
+
+    const clientPayload = {
       name: data.nome,
       industry: data.industry || "Tecnologia",
       // Sem fallback fixo pra "São Paulo"/(11) — nem todo tenant fica lá,
@@ -75,13 +95,20 @@ export default function Clientes() {
       city: data.cidade || null,
       state: data.estado ? String(data.estado).toUpperCase() : null,
       phone: data.telefone || null,
-      email: data.email || null,
-      documento: data.documento || null,
-      status: "Ativo",
-      tenant_id: activeTenantId,
+      email,
+      documento,
     };
 
-    const { data: inserted, error } = await supabase.from("clientes").insert(newClient).select().maybeSingle();
+    if (editingCliente) {
+      const { data: updated, error } = await supabase.from("clientes").update(clientPayload).eq("id", editingCliente.id).select().maybeSingle();
+      if (error) { toast.error(`Erro ao atualizar cliente: ${friendlyError(error)}`); return; }
+      if (updated) setClientes(prev => prev.map(c => c.id === updated.id ? updated : c));
+      toast.success("Cliente atualizado com sucesso!");
+      setEditingCliente(null);
+      return;
+    }
+
+    const { data: inserted, error } = await supabase.from("clientes").insert({ ...clientPayload, status: "Ativo", tenant_id: activeTenantId }).select().maybeSingle();
     if (error) { toast.error(`Erro ao cadastrar cliente: ${friendlyError(error)}`); return; }
     if (inserted) setClientes(prev => [inserted, ...prev]);
     toast.success("Cliente cadastrado com sucesso!");
@@ -132,14 +159,16 @@ export default function Clientes() {
         statusFilter={statusFilter}
         onStatusChange={setStatusFilter}
         onDelete={handleDeleteCliente}
+        onEdit={(c) => setEditingCliente(c)}
         onManageContatos={setContatosClienteId}
         onOpenDetalhes={setDetalhesClienteId}
       />
 
       <NovoClienteModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onAction={handleCreateCliente}
+        isOpen={isModalOpen || !!editingCliente}
+        onClose={() => { setIsModalOpen(false); setEditingCliente(null); }}
+        onAction={handleSaveCliente}
+        cliente={editingCliente}
       />
 
       <ClienteContatosModal

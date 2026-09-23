@@ -1,4 +1,4 @@
-import { DollarSign, Coins, Percent, TrendingUp, RotateCw, Wrench, Calendar, Sparkles } from "lucide-react";
+import { DollarSign, Coins, Percent, TrendingUp, RotateCw, Wrench, Calendar, Sparkles, Lock, AlertTriangle } from "lucide-react";
 import { cn } from "../../../../lib/utils";
 
 interface ProdutoTabComercialProps {
@@ -20,6 +20,12 @@ interface ProdutoTabComercialProps {
   setFormHasImplementation?: (v: boolean) => void;
   formImplementationFee?: string;
   setFormImplementationFee?: (v: string) => void;
+  formHasLoyalty?: boolean;
+  setFormHasLoyalty?: (v: boolean) => void;
+  formLoyaltyMonths?: string;
+  setFormLoyaltyMonths?: (v: string) => void;
+  formEarlyTerminationFee?: string;
+  setFormEarlyTerminationFee?: (v: string) => void;
 }
 
 export function ProdutoTabComercial({
@@ -41,6 +47,12 @@ export function ProdutoTabComercial({
   setFormHasImplementation,
   formImplementationFee = "0",
   setFormImplementationFee,
+  formHasLoyalty = false,
+  setFormHasLoyalty,
+  formLoyaltyMonths = "12",
+  setFormLoyaltyMonths,
+  formEarlyTerminationFee = "0",
+  setFormEarlyTerminationFee,
 }: ProdutoTabComercialProps) {
   const inputCls =
     "w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-primary-blue)] font-mono font-bold transition-all";
@@ -208,6 +220,99 @@ export function ProdutoTabComercial({
             </div>
           </div>
         )}
+
+        {/* Fidelidade: prazo mínimo de permanência com multa por cancelamento
+            antecipado — separado da Duração do Contrato acima (aquela é só a
+            vigência normal; fidelidade é o compromisso mínimo com penalidade).
+            Sempre visível (mesmo desativado quando o produto não é recorrente)
+            — escondê-la por completo fazia parecer que a opção nem existia. */}
+        <div className="pt-3 border-t border-violet-500/15 space-y-3">
+          <div
+            onClick={() => formIsRecurring && setFormHasLoyalty && setFormHasLoyalty(!formHasLoyalty)}
+            className={cn(
+              "p-3.5 rounded-xl border transition-all flex items-start gap-3",
+              !formIsRecurring
+                ? "opacity-50 cursor-not-allowed bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]"
+                : formHasLoyalty
+                  ? "cursor-pointer bg-amber-500/10 border-amber-500/50 text-[var(--color-text-primary)] shadow-sm"
+                  : "cursor-pointer bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-default)] hover:text-[var(--color-text-primary)]"
+            )}
+          >
+            <div
+              className={cn(
+                "w-5 h-5 rounded-md flex items-center justify-center mt-0.5 transition-colors shrink-0",
+                formIsRecurring && formHasLoyalty ? "bg-amber-500 text-white" : "bg-[var(--color-surface-elevated)] text-[var(--color-text-faint)]"
+              )}
+            >
+              <Lock className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold leading-tight text-[var(--color-text-primary)]">Contrato com Fidelidade</p>
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                {formIsRecurring
+                  ? "Prazo mínimo de permanência com multa por cancelamento antecipado"
+                  : "Disponível só para produtos com Cobrança Recorrente ativada acima"}
+              </p>
+            </div>
+          </div>
+
+          {formIsRecurring && formHasLoyalty && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-1 animate-in fade-in slide-in-from-top-1">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-amber-600 dark:text-amber-400 font-extrabold uppercase block tracking-wider flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Prazo de Fidelidade (Meses)
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    {["6", "12", "24"].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setFormLoyaltyMonths && setFormLoyaltyMonths(m)}
+                        className={cn(
+                          "px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer",
+                          formLoyaltyMonths === m
+                            ? "bg-amber-600 border-amber-500 text-white shadow-sm"
+                            : "bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                        )}
+                      >
+                        {m}m
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min="1"
+                      value={formLoyaltyMonths}
+                      onChange={(e) => setFormLoyaltyMonths && setFormLoyaltyMonths(e.target.value)}
+                      placeholder="Meses"
+                      className="w-16 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-lg px-2 py-1 text-xs text-[var(--color-text-primary)] font-mono text-center"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-amber-600 dark:text-amber-400 font-extrabold uppercase block tracking-wider flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> Multa por Cancelamento Antecipado (%)
+                  </label>
+                  <div className="relative max-w-[140px]">
+                    <Percent className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      max="100"
+                      value={formEarlyTerminationFee}
+                      onChange={(e) => setFormEarlyTerminationFee && setFormEarlyTerminationFee(e.target.value)}
+                      placeholder="Ex: 100"
+                      className={`${inputCls} pl-8 text-amber-700 dark:text-amber-300`}
+                    />
+                  </div>
+                  <p className="text-[9px] text-[var(--color-text-faint)]">
+                    Aplicado sobre as mensalidades restantes até o fim da fidelidade
+                  </p>
+                </div>
+              </div>
+            )}
+        </div>
 
         {/* Campo Condicional de Taxa de Implantação */}
         {formHasImplementation && (

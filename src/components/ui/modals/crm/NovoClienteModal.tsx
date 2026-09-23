@@ -16,10 +16,25 @@ interface NovoClienteForm {
   estado: string;
 }
 
+interface ClienteParaEdicao {
+  id: string;
+  name: string;
+  documento?: string | null;
+  industry?: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  state?: string;
+}
+
 interface NovoClienteModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAction: (data: Record<string, string | string[] | null>) => void;
+  /** Presente = modal abre em modo edição, pré-preenchido com os dados deste
+   * cliente (nada de reabrir em branco e o usuário ter que redigitar tudo
+   * de novo só pra corrigir um telefone). */
+  cliente?: ClienteParaEdicao | null;
 }
 
 const DEFAULT: NovoClienteForm = {
@@ -68,7 +83,8 @@ function formatDocumento(raw: string): string {
 
 type CnpjStatus = "idle" | "checking" | "active" | "inactive" | "invalid";
 
-export function NovoClienteModal({ isOpen, onClose, onAction }: NovoClienteModalProps) {
+export function NovoClienteModal({ isOpen, onClose, onAction, cliente }: NovoClienteModalProps) {
+  const isEditMode = !!cliente;
   const [form, setForm] = useState<NovoClienteForm>(DEFAULT);
   const [loading, setLoading] = useState(false);
   const [cnpjStatus, setCnpjStatus] = useState<{ status: CnpjStatus; message?: string }>({ status: "idle" });
@@ -78,10 +94,23 @@ export function NovoClienteModal({ isOpen, onClose, onAction }: NovoClienteModal
 
   useEffect(() => {
     if (isOpen) {
-      setForm(DEFAULT);
+      setForm(
+        cliente
+          ? {
+              nome: cliente.name || "",
+              documento: cliente.documento ? formatDocumento(cliente.documento) : "",
+              industry: (cliente.industry as Setor) || "Tecnologia",
+              email: cliente.email || "",
+              telefone: cliente.phone ? formatPhone(cliente.phone) : "",
+              cidade: cliente.city || "",
+              estado: cliente.state || "",
+            }
+          : DEFAULT
+      );
       setCnpjStatus({ status: "idle" });
     }
-  }, [isOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, cliente?.id]);
 
   const set = (k: keyof NovoClienteForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -146,9 +175,9 @@ export function NovoClienteModal({ isOpen, onClose, onAction }: NovoClienteModal
             <Building2 className="w-5 h-5 text-blue-400" />
           </div>
           <div>
-            <div className="text-base font-black text-white">Novo Cliente</div>
+            <div className="text-base font-black text-white">{isEditMode ? "Editar Cliente" : "Novo Cliente"}</div>
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-0.5">
-              Cadastro de conta no CRM S.P.Y.
+              {isEditMode ? "Atualize os dados desta conta no CRM S.P.Y." : "Cadastro de conta no CRM S.P.Y."}
             </div>
           </div>
         </div>
@@ -170,7 +199,7 @@ export function NovoClienteModal({ isOpen, onClose, onAction }: NovoClienteModal
             disabled={!canSubmit || loading}
             className="bg-blue-600 hover:bg-blue-500 text-white px-6 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/20 disabled:opacity-50"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cadastrar Cliente"}
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isEditMode ? "Salvar Alterações" : "Cadastrar Cliente"}
           </Button>
         </>
       }

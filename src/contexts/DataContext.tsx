@@ -645,6 +645,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       contractMonths: p.contractMonths ?? ta.contractMonths,
       hasImplementation: p.hasImplementation ?? ta.hasImplementation,
       implementationFee: p.implementationFee ?? p.implementation_fee ?? ta.implementationFee,
+      hasLoyalty: p.hasLoyalty ?? ta.hasLoyalty,
+      loyaltyMonths: p.loyaltyMonths ?? ta.loyaltyMonths,
+      earlyTerminationFeePercent: p.earlyTerminationFeePercent ?? ta.earlyTerminationFeePercent,
       attachments: Array.isArray(p.attachments) ? p.attachments : [],
     };
   };
