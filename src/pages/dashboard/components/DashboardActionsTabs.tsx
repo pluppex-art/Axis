@@ -1,6 +1,6 @@
-import { Gauge, Zap, Megaphone, HeartHandshake } from "lucide-react";
+import { Gauge, Zap, Megaphone, HeartHandshake, BarChart3 } from "lucide-react";
 
-type TabId = "executivo" | "comercial" | "marketing" | "sucesso";
+type TabId = "executivo" | "comercial" | "marketing" | "sucesso" | "bi";
 
 export function DashboardActionsTabs(props: {
   activeTab: TabId;
@@ -15,6 +15,7 @@ export function DashboardActionsTabs(props: {
         { id: "comercial" as const, label: "Comercial", icon: Zap },
         { id: "marketing" as const, label: "Marketing", icon: Megaphone },
         { id: "sucesso" as const, label: "Retenção", icon: HeartHandshake },
+        { id: "bi" as const, label: "BI", icon: BarChart3 },
       ].map((tab) => (
         <button
           key={tab.id}

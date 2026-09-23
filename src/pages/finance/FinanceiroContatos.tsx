@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Plus, Search, Pencil, Trash2, Users } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { useIbgeLocalidades } from "../../lib/ibgeLocalidades";
 
 type Tipo = "CLIENTE" | "FORNECEDOR" | "FUNCIONARIO";
 const TIPO_LABEL: Record<Tipo, string> = { CLIENTE: "Cliente", FORNECEDOR: "Fornecedor", FUNCIONARIO: "Funcionário" };
@@ -43,6 +44,7 @@ export default function FinanceiroContatos() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState("");
+  const { estados, municipios, loadingMunicipios } = useIbgeLocalidades(form.state);
 
   const emUso = useMemo(() => new Set((financeEntries as any[]).map(e => e.contato_id).filter(Boolean)), [financeEntries]);
 
@@ -233,8 +235,32 @@ export default function FinanceiroContatos() {
               <input type="text" placeholder="Número" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
               <input type="text" placeholder="Bairro" value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
               <input type="text" placeholder="Complemento" value={form.complemento} onChange={(e) => setForm({ ...form, complemento: e.target.value })} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
-              <input type="text" placeholder="Cidade" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
-              <input type="text" placeholder="UF" maxLength={2} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase() })} className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
+              <select
+                value={form.state}
+                onChange={(e) => setForm({ ...form, state: e.target.value, city: "" })}
+                className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs uppercase"
+              >
+                <option value="">UF...</option>
+                {estados.map((uf) => <option key={uf.sigla} value={uf.sigla}>{uf.sigla}</option>)}
+              </select>
+              {form.state && municipios.length > 0 ? (
+                <select
+                  value={form.city}
+                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs"
+                >
+                  <option value="">{loadingMunicipios ? "Carregando..." : "Cidade..."}</option>
+                  {municipios.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  placeholder={form.state ? "Digite a cidade" : "Cidade (escolha a UF primeiro)"}
+                  value={form.city}
+                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs"
+                />
+              )}
             </div>
           </details>
 

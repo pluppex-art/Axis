@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { friendlyError } from "../../lib/friendlyError";
+import { useIbgeLocalidades } from "../../lib/ibgeLocalidades";
 
 type Imovel = {
   id: string;
@@ -88,7 +89,11 @@ function ImovelFormModal({ onClose, onSave, initial, corretoresNomes = [] }: {
     status: initial?.status ?? "Disponível",
     valor: String(initial?.valor ?? ""),
     bairro: initial?.bairro ?? "",
-    cidade: initial?.cidade ?? "São Paulo",
+    // Sem cidade fixa — nem todo tenant fica em São Paulo. `estadoUf` é só um
+    // filtro client-side pro seletor de cidade (API do IBGE) — a tabela
+    // imobiliario_imoveis não tem coluna de estado, então nunca é persistido.
+    cidade: initial?.cidade ?? "",
+    estadoUf: "",
     area: String(initial?.area ?? ""),
     quartos: String(initial?.quartos ?? "2"),
     banheiros: String(initial?.banheiros ?? "1"),
@@ -100,11 +105,13 @@ function ImovelFormModal({ onClose, onSave, initial, corretoresNomes = [] }: {
   });
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
   const isEdit = Boolean(initial?.id);
+  const { estados, municipios, loadingMunicipios } = useIbgeLocalidades(form.estadoUf);
 
   const handleSave = () => {
     if (!form.titulo.trim()) { toast.error("Título é obrigatório"); return; }
+    const { estadoUf, ...formToSave } = form; // estadoUf é só filtro de UI — sem coluna correspondente no banco
     onSave({
-      ...form,
+      ...formToSave,
       valor: Number(form.valor), area: Number(form.area),
       quartos: Number(form.quartos), banheiros: Number(form.banheiros), vagas: Number(form.vagas),
       condominio: form.condominio ? Number(form.condominio) : undefined,
@@ -193,8 +200,27 @@ function ImovelFormModal({ onClose, onSave, initial, corretoresNomes = [] }: {
             <input value={form.bairro} onChange={e => set("bairro", e.target.value)} placeholder="Moema" className={FIELD} />
           </div>
           <div>
+            <label className={LABEL}>Estado (UF)</label>
+            <select value={form.estadoUf} onChange={e => { set("estadoUf", e.target.value); set("cidade", ""); }} className={SELECT}>
+              <option value="">Selecione...</option>
+              {estados.map((uf) => <option key={uf.sigla} value={uf.sigla}>{uf.sigla}</option>)}
+            </select>
+          </div>
+          <div>
             <label className={LABEL}>Cidade</label>
-            <input value={form.cidade} onChange={e => set("cidade", e.target.value)} placeholder="São Paulo" className={FIELD} />
+            {form.estadoUf && municipios.length > 0 ? (
+              <select value={form.cidade} onChange={e => set("cidade", e.target.value)} className={SELECT}>
+                <option value="">{loadingMunicipios ? "Carregando..." : "Selecione..."}</option>
+                {municipios.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+              </select>
+            ) : (
+              <input
+                value={form.cidade}
+                onChange={e => set("cidade", e.target.value)}
+                placeholder={form.estadoUf ? "Digite a cidade" : "Escolha o estado primeiro"}
+                className={FIELD}
+              />
+            )}
           </div>
           <div>
             <label className={LABEL}>Quartos</label>
@@ -388,7 +414,7 @@ function rowToImovel(r: any): Imovel {
   return {
     id: r.id, titulo: r.titulo, tipo: r.tipo, operacao: r.operacao,
     status: r.status, valor: Number(r.valor), bairro: r.bairro ?? "",
-    cidade: r.cidade ?? "São Paulo", area: Number(r.area), quartos: r.quartos,
+    cidade: r.cidade ?? "", area: Number(r.area), quartos: r.quartos,
     banheiros: r.banheiros, vagas: r.vagas, corretor: r.corretor ?? "",
     visitas: r.visitas ?? 0, descricao: r.descricao ?? "", created_at: r.created_at,
   };

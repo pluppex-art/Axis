@@ -2,10 +2,11 @@ import { StrategicalView } from "./StrategicalView";
 import { CommercialView } from "./CommercialView";
 import { MarketingView } from "./MarketingView";
 import { CustomerSuccessView } from "./CustomerSuccessView";
+import { BusinessIntelligenceView } from "./BusinessIntelligenceView";
 import type { DashboardSummary } from "../useDashboard";
 
 export function DashboardTabContent(props: {
-  activeTab: "executivo" | "comercial" | "marketing" | "sucesso";
+  activeTab: "executivo" | "comercial" | "marketing" | "sucesso" | "bi";
   comparisonPeriod: "month" | "year";
   setComparisonPeriod: (p: "month" | "year") => void;
   performanceData: any[];
@@ -53,6 +54,8 @@ export function DashboardTabContent(props: {
       {activeTab === "marketing" && <MarketingView />}
 
       {activeTab === "sucesso" && <CustomerSuccessView serverSummary={serverSummary} />}
+
+      {activeTab === "bi" && <BusinessIntelligenceView />}
     </>
   );
 }

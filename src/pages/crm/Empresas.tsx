@@ -11,6 +11,7 @@ import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { useAuth } from "../../contexts/AuthContext";
 import { friendlyError } from "../../lib/friendlyError";
+import { useIbgeLocalidades } from "../../lib/ibgeLocalidades";
 
 export default function Empresas() {
   const { activeTenantId } = useAuth();
@@ -28,6 +29,7 @@ export default function Empresas() {
     email: "",
     phone: "",
   });
+  const { estados, municipios, loadingMunicipios } = useIbgeLocalidades(novaEmpresa.estado);
 
   const fetchEmpresas = async () => {
     setLoading(true);
@@ -265,24 +267,36 @@ export default function Empresas() {
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] block mb-1">Cidade</label>
-                  <input
-                    value={novaEmpresa.cidade}
-                    onChange={e => setNovaEmpresa({ ...novaEmpresa, cidade: e.target.value })}
-                    placeholder="São Paulo"
-                    className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3 py-2 text-xs text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-blue)]"
-                  />
-                </div>
                 <div>
                   <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] block mb-1">UF</label>
-                  <input
+                  <select
                     value={novaEmpresa.estado}
-                    onChange={e => setNovaEmpresa({ ...novaEmpresa, estado: e.target.value })}
-                    placeholder="SP"
-                    maxLength={2}
+                    onChange={e => setNovaEmpresa({ ...novaEmpresa, estado: e.target.value, cidade: "" })}
                     className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3 py-2 text-xs text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-blue)] uppercase"
-                  />
+                  >
+                    <option value="">...</option>
+                    {estados.map((uf) => <option key={uf.sigla} value={uf.sigla}>{uf.sigla}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)] block mb-1">Cidade</label>
+                  {novaEmpresa.estado && municipios.length > 0 ? (
+                    <select
+                      value={novaEmpresa.cidade}
+                      onChange={e => setNovaEmpresa({ ...novaEmpresa, cidade: e.target.value })}
+                      className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3 py-2 text-xs text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-blue)]"
+                    >
+                      <option value="">{loadingMunicipios ? "Carregando..." : "Selecione..."}</option>
+                      {municipios.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      value={novaEmpresa.cidade}
+                      onChange={e => setNovaEmpresa({ ...novaEmpresa, cidade: e.target.value })}
+                      placeholder={novaEmpresa.estado ? "Digite a cidade" : "Escolha o estado primeiro"}
+                      className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3 py-2 text-xs text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-blue)]"
+                    />
+                  )}
                 </div>
               </div>
               <div>

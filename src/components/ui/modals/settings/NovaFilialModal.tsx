@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Building2, ShieldCheck, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Modal } from "../../modal";
 import { Button } from "../../button";
+import { useIbgeLocalidades } from "../../../../lib/ibgeLocalidades";
 
 type FilialPayload = {
   nome: string;
   cnpj: string;
   cidade: string;
+  estado: string;
 };
 
 interface NovaFilialModalProps {
@@ -44,8 +46,10 @@ export function NovaFilialModal({ isOpen, onClose, onSave }: NovaFilialModalProp
   const [nome, setNome] = useState("");
   const [cnpjInput, setCnpjInput] = useState("");
   const [cidade, setCidade] = useState("");
+  const [estado, setEstado] = useState("");
   const [loading, setLoading] = useState(false);
   const [cnpjStatus, setCnpjStatus] = useState<{ status: CnpjApiStatus; message?: string }>({ status: "idle" });
+  const { estados, municipios, loadingMunicipios } = useIbgeLocalidades(estado);
 
   const cnpjNormalized = useMemo(() => normalizeAndValidateCnpj(cnpjInput), [cnpjInput]);
 
@@ -54,6 +58,7 @@ export function NovaFilialModal({ isOpen, onClose, onSave }: NovaFilialModalProp
     setNome("");
     setCnpjInput("");
     setCidade("");
+    setEstado("");
     setLoading(false);
     setCnpjStatus({ status: "idle" });
   }, [isOpen]);
@@ -77,7 +82,8 @@ export function NovaFilialModal({ isOpen, onClose, onSave }: NovaFilialModalProp
           const isActive = data.situacao_cadastral === 2;
           setCnpjStatus({ status: isActive ? "active" : "inactive", message: data.descricao_situacao_cadastral });
           if (!nome && (data.nome_fantasia || data.razao_social)) setNome(data.nome_fantasia || data.razao_social);
-          if (data.municipio && data.uf) setCidade(`${data.municipio} / ${data.uf}`);
+          if (data.uf) setEstado(data.uf);
+          if (data.municipio) setCidade(data.municipio);
         } else {
           const err = await resp.json().catch(() => ({}));
           setCnpjStatus({ status: "invalid", message: err.message || "CNPJ não encontrado." });
@@ -94,9 +100,10 @@ export function NovaFilialModal({ isOpen, onClose, onSave }: NovaFilialModalProp
     if (loading) return false;
     if (!nome.trim()) return false;
     if (!cidade.trim()) return false;
+    if (!estado.trim()) return false;
     if (!cnpjNormalized.ok) return false;
     return true;
-  }, [loading, nome, cidade, cnpjNormalized.ok]);
+  }, [loading, nome, cidade, estado, cnpjNormalized.ok]);
 
   const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -109,6 +116,7 @@ export function NovaFilialModal({ isOpen, onClose, onSave }: NovaFilialModalProp
         nome: nome.trim(),
         cnpj: cnpjNormalized.digits,
         cidade: cidade.trim(),
+        estado: estado.trim(),
       };
 
       onSave?.(payload);
@@ -235,18 +243,49 @@ export function NovaFilialModal({ isOpen, onClose, onSave }: NovaFilialModalProp
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="filial-cidade" className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Cidade / Estado
-            </label>
-            <input
-              id="filial-cidade"
-              value={cidade}
-              onChange={(e) => setCidade(e.target.value)}
-              placeholder="Ex.: São Paulo / SP"
-              className="w-full bg-[var(--color-surface)] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-[#2563EB] focus:bg-[var(--color-surface)] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 transition-all"
-              required
-            />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label htmlFor="filial-estado" className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Estado (UF)
+              </label>
+              <select
+                id="filial-estado"
+                value={estado}
+                onChange={(e) => { setEstado(e.target.value); setCidade(""); }}
+                className="w-full bg-[var(--color-surface)] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-[#2563EB] focus:bg-[var(--color-surface)] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 transition-all uppercase"
+                required
+              >
+                <option value="">Selecione...</option>
+                {estados.map((uf) => <option key={uf.sigla} value={uf.sigla}>{uf.sigla}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label htmlFor="filial-cidade" className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Cidade
+              </label>
+              {estado && municipios.length > 0 ? (
+                <select
+                  id="filial-cidade"
+                  value={cidade}
+                  onChange={(e) => setCidade(e.target.value)}
+                  className="w-full bg-[var(--color-surface)] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-[#2563EB] focus:bg-[var(--color-surface)] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 transition-all"
+                  required
+                >
+                  <option value="">{loadingMunicipios ? "Carregando..." : "Selecione..."}</option>
+                  {municipios.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                </select>
+              ) : (
+                <input
+                  id="filial-cidade"
+                  value={cidade}
+                  onChange={(e) => setCidade(e.target.value)}
+                  placeholder={estado ? "Digite a cidade" : "Escolha o estado primeiro"}
+                  className="w-full bg-[var(--color-surface)] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:border-[#2563EB] focus:bg-[var(--color-surface)] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 transition-all"
+                  required
+                />
+              )}
+            </div>
           </div>
         </form>
       </div>

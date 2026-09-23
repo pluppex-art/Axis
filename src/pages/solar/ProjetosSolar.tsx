@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { useIbgeLocalidades } from "../../lib/ibgeLocalidades";
 
 interface ProjetoSolarItem {
   id: string;
@@ -73,7 +74,12 @@ export default function ProjetosSolar() {
   const [potenciaKwp, setPotenciaKwp] = useState("");
   const [geracaoKwh, setGeracaoKwh] = useState("");
   const [valorContrato, setValorContrato] = useState("");
-  const [cidade, setCidade] = useState("");
+  // `cidade` continua salva como string combinada "Cidade - UF" (mesmo
+  // formato já usado na coluna); estadoUf/cidadeNome só alimentam os selects
+  // do IBGE e são combinados no submit — sem mudança de schema.
+  const [estadoUf, setEstadoUf] = useState("");
+  const [cidadeNome, setCidadeNome] = useState("");
+  const { estados, municipios, loadingMunicipios } = useIbgeLocalidades(estadoUf);
   const [concessionaria, setConcessionaria] = useState("CPFL Paulista");
   const [status, setStatus] = useState<ProjetoSolarItem["status"]>("Dimensionamento");
 
@@ -101,7 +107,7 @@ export default function ProjetosSolar() {
         potencia_kwp: kwp,
         geracao_mensal_kwh: kwh,
         valor_contrato: val,
-        cidade: cidade.trim() || "São Paulo - SP",
+        cidade: cidadeNome.trim() && estadoUf ? `${cidadeNome.trim()} - ${estadoUf}` : (cidadeNome.trim() || ""),
         concessionaria,
         status,
         data: new Date().toISOString().split("T")[0],
@@ -123,7 +129,8 @@ export default function ProjetosSolar() {
     setPotenciaKwp("");
     setGeracaoKwh("");
     setValorContrato("");
-    setCidade("");
+    setEstadoUf("");
+    setCidadeNome("");
   };
 
   const handleDelete = async (item: ProjetoSolarItem) => {
@@ -411,15 +418,40 @@ export default function ProjetosSolar() {
                 className="w-full px-3 py-2 text-xs bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-xl text-[var(--color-text-primary)] focus:outline-none focus:border-amber-500"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-[var(--color-text-primary)] block mb-1.5">Cidade / Estado</label>
-              <input
-                type="text"
-                placeholder="Ex: Santos - SP"
-                value={cidade}
-                onChange={e => setCidade(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-xl text-[var(--color-text-primary)] focus:outline-none focus:border-amber-500"
-              />
+              <label className="text-xs font-semibold text-[var(--color-text-primary)] block mb-1.5">Estado (UF)</label>
+              <select
+                value={estadoUf}
+                onChange={e => { setEstadoUf(e.target.value); setCidadeNome(""); }}
+                className="w-full px-3 py-2 text-xs bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-xl text-[var(--color-text-primary)] focus:outline-none focus:border-amber-500 uppercase"
+              >
+                <option value="">Selecione...</option>
+                {estados.map((uf) => <option key={uf.sigla} value={uf.sigla}>{uf.sigla}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-[var(--color-text-primary)] block mb-1.5">Cidade</label>
+              {estadoUf && municipios.length > 0 ? (
+                <select
+                  value={cidadeNome}
+                  onChange={e => setCidadeNome(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-xl text-[var(--color-text-primary)] focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">{loadingMunicipios ? "Carregando..." : "Selecione..."}</option>
+                  {municipios.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  placeholder={estadoUf ? "Digite a cidade" : "Escolha o estado primeiro"}
+                  value={cidadeNome}
+                  onChange={e => setCidadeNome(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] rounded-xl text-[var(--color-text-primary)] focus:outline-none focus:border-amber-500"
+                />
+              )}
             </div>
           </div>
 

@@ -593,6 +593,203 @@ app.get("/api/finance/visao-geral-summary", requireUser, async (req: any, res) =
   }
 });
 
+/**
+ * Resumo cacheado do Dashboard/BI unificado (src/pages/dashboard/BusinessIntelligence.tsx)
+ * — CRM/Vendas + Financeiro + Operacional numa chamada só, com filtro de
+ * período (`?from=YYYY-MM-DD&to=YYYY-MM-DD`, default = últimos 12 meses).
+ * Mesma resolução/validação de tenant das rotas acima (?tenantId=,
+ * revalidado via has_tenant_access) e mesmo padrão de fetchAllRowsPaginated
+ * (sem risco do cap de 1000 linhas do PostgREST — testado com tenant de
+ * 4700+ leads).
+ *
+ * Métricas deliberadamente NÃO incluídas por falta de dado confiável na
+ * base atual: "produtividade por responsável" pra tarefas (tabela `tasks`
+ * tem volume real baixíssimo hoje — a métrica é calculada e devolvida, mas
+ * vai aparecer quase vazia até o módulo de Tarefas ser mais usado; isso é
+ * esperado, não um bug). "Conversão"/"ganho no período" usa `leads.created_at`
+ * como proxy de quando o negócio fechou, porque não existe uma coluna
+ * "wonAt"/"closedAt" separada — um lead criado num mês e fechado 3 meses
+ * depois aparece no mês de CRIAÇÃO, não no mês em que de fato fechou.
+ */
+app.get("/api/dashboard/bi-summary", requireUser, async (req: any, res) => {
+  try {
+    const tenantId = await resolveRequestedTenantId(req, res);
+    if (!tenantId) return;
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const now = new Date();
+    const defaultFrom = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : isoDate(defaultFrom);
+    const to = typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : isoDate(now);
+
+    const cacheKey = `dashboard-bi:tenant:${tenantId}:${from}:${to}`;
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const sb = req.supabase;
+    const inRange = (d: string | null | undefined, f: string, t: string) => !!d && d >= f && d <= t;
+    const monthKey = (d: string) => d.slice(0, 7);
+    const sumBy = (rows: { value: number | null }[]) => rows.reduce((s, r) => s + (Number(r.value) || 0), 0);
+
+    const [leadsAll, contracts, entries, clientesAll, tasksAll, reunioesAll] = await Promise.all([
+      fetchAllRowsPaginated(sb, "leads", '"id",status,value,source,seller,"stageId","pipelineId",created_at', (q) => q.eq("tenant_id", tenantId)) as Promise<
+        { id: string; status: string; value: number | null; source: string | null; seller: string | null; stageId: string | null; pipelineId: string | null; created_at: string }[]
+      >,
+      fetchAllRowsPaginated(sb, "contracts", "mrr_value,status", (q) => q.eq("tenant_id", tenantId)) as Promise<{ mrr_value: number | null; status: string }[]>,
+      fetchAllRowsPaginated(sb, "finance_entries", "type,status,value,date_normalized", (q) => q.eq("tenant_id", tenantId)) as Promise<
+        { type: string; status: string; value: number; date_normalized: string | null }[]
+      >,
+      fetchAllRowsPaginated(sb, "clientes", "status,created_at", (q) => q.eq("tenant_id", tenantId)) as Promise<{ status: string | null; created_at: string }[]>,
+      fetchAllRowsPaginated(sb, "tasks", "status,due_date,assigned_to,created_at", (q) => q.eq("tenant_id", tenantId)) as Promise<
+        { status: string; due_date: string | null; assigned_to: string | null; created_at: string }[]
+      >,
+      fetchAllRowsPaginated(sb, "reunioes", '"status","scheduledAt","closerName"', (q) => q.eq("tenant_id", tenantId)) as Promise<
+        { status: string; scheduledAt: string | null; closerName: string | null }[]
+      >,
+    ]);
+
+    // ── CRM / Vendas ──────────────────────────────────────────────────────
+    const leadsNoPeriodo = leadsAll.filter((l) => inRange(l.created_at?.slice(0, 10), from, to));
+    const leadsGanhos = leadsNoPeriodo.filter((l) => l.status === "Fechado");
+    const leadsPerdidos = leadsNoPeriodo.filter((l) => l.status === "Perdido");
+    const valorGanho = sumBy(leadsGanhos);
+    const valorTotalOportunidades = sumBy(leadsNoPeriodo);
+    const taxaConversao = leadsNoPeriodo.length > 0 ? Math.round((leadsGanhos.length / leadsNoPeriodo.length) * 1000) / 10 : 0;
+    const ticketMedio = leadsGanhos.length > 0 ? valorGanho / leadsGanhos.length : 0;
+
+    const porEtapa = new Map<string, number>();
+    for (const l of leadsAll) { // etapa = estado ATUAL do pipeline, não do período (snapshot de hoje)
+      const key = l.stageId || "sem-etapa";
+      porEtapa.set(key, (porEtapa.get(key) || 0) + 1);
+    }
+
+    const porOrigem = new Map<string, number>();
+    for (const l of leadsNoPeriodo) {
+      const key = l.source?.trim() || "Não informado";
+      porOrigem.set(key, (porOrigem.get(key) || 0) + 1);
+    }
+
+    const porVendedor = new Map<string, { leads: number; ganhos: number; valorGanho: number }>();
+    for (const l of leadsNoPeriodo) {
+      const key = l.seller?.trim() || "Não atribuído";
+      const cur = porVendedor.get(key) || { leads: 0, ganhos: 0, valorGanho: 0 };
+      cur.leads += 1;
+      if (l.status === "Fechado") { cur.ganhos += 1; cur.valorGanho += Number(l.value) || 0; }
+      porVendedor.set(key, cur);
+    }
+
+    const evolucaoVendas = new Map<string, { valorGanho: number; negociosGanhos: number; leadsNovos: number }>();
+    for (const l of leadsNoPeriodo) {
+      const key = monthKey(l.created_at.slice(0, 10));
+      const cur = evolucaoVendas.get(key) || { valorGanho: 0, negociosGanhos: 0, leadsNovos: 0 };
+      cur.leadsNovos += 1;
+      if (l.status === "Fechado") { cur.negociosGanhos += 1; cur.valorGanho += Number(l.value) || 0; }
+      evolucaoVendas.set(key, cur);
+    }
+
+    // ── Financeiro ────────────────────────────────────────────────────────
+    const receitaRecebidaRows = entries.filter((e) => e.type === "Receber" && e.status === "Pago" && inRange(e.date_normalized, from, to));
+    const despesasPagasRows = entries.filter((e) => e.type === "Pagar" && e.status === "Pago" && inRange(e.date_normalized, from, to));
+    const receitaAReceberRows = entries.filter((e) => e.type === "Receber" && (e.status === "A Vencer" || e.status === "Atrasado"));
+    const despesasAPagarRows = entries.filter((e) => e.type === "Pagar" && (e.status === "A Vencer" || e.status === "Atrasado"));
+    const inadimplenciaRows = entries.filter((e) => e.type === "Receber" && e.status === "Atrasado");
+
+    const receitaRecebida = sumBy(receitaRecebidaRows);
+    const despesasPagas = sumBy(despesasPagasRows);
+
+    const evolucaoFinanceira = new Map<string, { receita: number; despesa: number }>();
+    for (const e of entries) {
+      if (!inRange(e.date_normalized, from, to) || e.status !== "Pago") continue;
+      const key = monthKey(e.date_normalized!);
+      const cur = evolucaoFinanceira.get(key) || { receita: 0, despesa: 0 };
+      if (e.type === "Receber") cur.receita += Number(e.value) || 0;
+      else cur.despesa += Number(e.value) || 0;
+      evolucaoFinanceira.set(key, cur);
+    }
+
+    // Mesma definição de inadimplência já usada em /api/dashboard/summary
+    // (contratos status "Inadimplente") — reaproveitada aqui em vez de
+    // inventar uma segunda fórmula divergente pra "a mesma palavra".
+    const contractsEmRisco = contracts.filter((c) => c.status === "Inadimplente");
+    const taxaInadimplenciaContratos = contracts.length > 0 ? Math.round((contractsEmRisco.length / contracts.length) * 1000) / 10 : 0;
+
+    // ── Operacional ───────────────────────────────────────────────────────
+    const clientesNovos = clientesAll.filter((c) => inRange(c.created_at?.slice(0, 10), from, to)).length;
+    const clientesAtivos = clientesAll.filter((c) => c.status === "Ativo").length;
+
+    const reunioesNoPeriodo = reunioesAll.filter((r) => inRange(r.scheduledAt?.slice(0, 10), from, to));
+    const reunioesConcluidas = reunioesNoPeriodo.filter((r) => r.status === "Concluída").length;
+    const reunioesPendentes = reunioesNoPeriodo.filter((r) => r.status === "Agendada").length;
+
+    const tasksNoPeriodo = tasksAll.filter((t) => inRange(t.created_at?.slice(0, 10), from, to));
+    const tasksConcluidas = tasksNoPeriodo.filter((t) => t.status === "Concluída").length;
+    const tasksPendentes = tasksNoPeriodo.filter((t) => t.status !== "Concluída").length;
+
+    const produtividadeResponsavel = new Map<string, { total: number; concluidas: number }>();
+    for (const t of tasksNoPeriodo) {
+      const key = t.assigned_to || "Não atribuído";
+      const cur = produtividadeResponsavel.get(key) || { total: 0, concluidas: 0 };
+      cur.total += 1;
+      if (t.status === "Concluída") cur.concluidas += 1;
+      produtividadeResponsavel.set(key, cur);
+    }
+    for (const r of reunioesNoPeriodo) {
+      const key = r.closerName?.trim() || "Não atribuído";
+      const cur = produtividadeResponsavel.get(key) || { total: 0, concluidas: 0 };
+      cur.total += 1;
+      if (r.status === "Concluída") cur.concluidas += 1;
+      produtividadeResponsavel.set(key, cur);
+    }
+
+    const summary = {
+      periodo: { from, to },
+      crm: {
+        leadsCadastrados: leadsAll.length,
+        leadsNovosNoPeriodo: leadsNoPeriodo.length,
+        leadsPorEtapa: Object.fromEntries(porEtapa),
+        negociosGanhos: leadsGanhos.length,
+        negociosPerdidos: leadsPerdidos.length,
+        taxaConversao,
+        valorTotalOportunidades,
+        valorGanho,
+        ticketMedio,
+        origemLeads: Object.fromEntries(porOrigem),
+        distribuicaoPorVendedor: Object.fromEntries(porVendedor),
+        evolucaoVendas: [...evolucaoVendas.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([mes, v]) => ({ mes, ...v })),
+      },
+      financeiro: {
+        receitaRecebida,
+        despesasPagas,
+        saldoPeriodo: receitaRecebida - despesasPagas,
+        receitaAReceber: { value: sumBy(receitaAReceberRows), count: receitaAReceberRows.length },
+        despesasAPagar: { value: sumBy(despesasAPagarRows), count: despesasAPagarRows.length },
+        inadimplenciaReceber: { value: sumBy(inadimplenciaRows), count: inadimplenciaRows.length },
+        taxaInadimplenciaContratos,
+        evolucaoFinanceira: [...evolucaoFinanceira.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([mes, v]) => ({ mes, ...v, resultado: v.receita - v.despesa })),
+      },
+      operacional: {
+        clientesAtivos,
+        clientesNovos,
+        reunioes: { total: reunioesNoPeriodo.length, concluidas: reunioesConcluidas, pendentes: reunioesPendentes },
+        tarefas: { total: tasksNoPeriodo.length, concluidas: tasksConcluidas, pendentes: tasksPendentes },
+        produtividadePorResponsavel: Object.fromEntries(produtividadeResponsavel),
+      },
+      cachedAt: new Date().toISOString(),
+    };
+
+    await cacheSet(cacheKey, summary, 60);
+    res.setHeader("X-Cache", "MISS");
+    return res.json(summary);
+  } catch (err: any) {
+    console.error("[dashboard/bi-summary]", err?.message);
+    return res.status(500).json({ error: "Erro ao calcular o resumo de BI." });
+  }
+});
+
 const WEEKDAYS_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 /**
