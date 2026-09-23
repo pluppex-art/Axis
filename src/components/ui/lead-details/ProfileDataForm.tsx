@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  Mail, Phone, Building2, User, FileCheck, Briefcase, DollarSign, Lock, Edit, Search, Package,
+  Mail, Phone, Building2, User, FileCheck, Briefcase, DollarSign, Lock, Edit, Search, Package, Repeat,
 } from "lucide-react";
 import { formatCNPJ } from "../../../lib/utils";
 
@@ -25,6 +25,9 @@ interface ProfileDataFormProps {
   /** Referência de catálogo dos produtos vinculados (null quando nenhum) —
    * exibida ao lado do valor da proposta, mas sem ser o número principal. */
   productValue: string | null;
+  /** MRR deste lead (soma do `mrr` dos contratos ativos ligados às propostas
+   * dele) — null até a proposta ser de fato aceita e virar contrato. */
+  leadMRR: string | null;
   seller: string;
   setSeller: (val: string) => void;
   priority: "Alta" | "Média" | "Baixa";
@@ -62,6 +65,7 @@ export function ProfileDataForm({
   value, setValue,
   displayValue,
   productValue,
+  leadMRR,
   seller, setSeller,
   priority, setPriority,
   sellerOptions,
@@ -127,6 +131,23 @@ export function ProfileDataForm({
               className={isEditingInline ? inputActiveClass : viewCls()}
             />
           </div>
+        </div>
+
+        <div className="p-3">
+          <div
+            className="text-[10px] font-bold text-[var(--color-text-faint)] mb-1 uppercase tracking-wider flex items-center gap-1"
+            title="Vai junto com o nome do decisor (campo acima) pra proposta gerada a partir deste lead."
+          >
+            <User className="w-3 h-3 text-[var(--color-text-muted)]" /> Cargo do Decisor
+          </div>
+          <input
+            type="text"
+            value={(customFieldsState.currentRole as string) || ""}
+            placeholder="Ex: Diretor Financeiro, CEO..."
+            onFocus={() => setIsEditingInline(true)}
+            onChange={(e) => setCustomFieldsState((prev) => ({ ...prev, currentRole: e.target.value }))}
+            className={isEditingInline ? inputActiveClass : viewCls()}
+          />
         </div>
 
         <div className="grid grid-cols-2 divide-x divide-[var(--color-border-subtle)]">
@@ -220,6 +241,11 @@ export function ProfileDataForm({
             {productValue && (
               <span className="flex items-center gap-1 text-[10px] font-mono text-[var(--color-text-faint)] mt-0.5">
                 <Package className="w-2.5 h-2.5" /> Produto (catálogo): {productValue}
+              </span>
+            )}
+            {leadMRR && (
+              <span className="flex items-center gap-1 text-[10px] font-mono text-[var(--color-primary-blue)] mt-0.5" title="Mesma métrica do Financeiro/Dashboard (MRR de contratos ativos) — calculada a partir das propostas deste lead que já viraram contrato.">
+                <Repeat className="w-2.5 h-2.5" /> MRR: {leadMRR}/mês
               </span>
             )}
           </div>

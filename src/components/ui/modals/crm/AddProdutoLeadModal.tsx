@@ -89,7 +89,7 @@ export function AddProdutoLeadModal({
   initialProductId,
   onDone,
 }: AddProdutoLeadModalProps) {
-  const { createProposalWithItems, addFinanceEntry, updateLead, addNotification, leads } = useData();
+  const { createProposalWithItems, addFinanceEntry, updateLead, addNotification, leads, resolveFinanceCategoryId } = useData();
   const { formatCurrency } = useLocalization();
 
   const [productId, setProductId] = useState("");
@@ -210,6 +210,12 @@ export function AddProdutoLeadModal({
     setSaving(true);
     try {
       const clientName = companyName || leadName || "Cliente";
+      // Vínculos reais que dá pra derivar sem inventar nada: category_id (o
+      // DRE lê o id, não só o texto livre `category`) e o contato (cliente já
+      // vinculado a este lead, se existir) — nunca um centro de custo/conta
+      // bancária adivinhados.
+      const vendasCategoryId = await resolveFinanceCategoryId("Vendas / Serviços", "Receita");
+      const contatoId = leadId ? (leads || []).find((l: any) => l.id === leadId)?.clientId || null : null;
 
       const items: any[] = [{
         productId: product.id,
@@ -260,6 +266,8 @@ export function AddProdutoLeadModal({
           await addFinanceEntry({
             description: `Assinatura — ${clientName} | ${product.name} | Ciclo ${cycle.cycleNumber}/${sale.numberOfCycles}${isFirst && sale.setupAmount > 0 ? " (inclui implantação)" : ""}`,
             category: "Vendas / Serviços",
+            category_id: vendasCategoryId,
+            contato_id: contatoId,
             value: cycle.amount,
             type: "Receber",
             status: isFirst && isInstantPayment ? "Pago" : "A Vencer",
@@ -284,6 +292,8 @@ export function AddProdutoLeadModal({
           await addFinanceEntry({
             description: `Venda — ${clientName} | ${product.name}${sale.numberOfCycles > 1 ? ` (parcela ${cycle.cycleNumber}/${sale.numberOfCycles})` : ""}`,
             category: "Vendas / Serviços",
+            category_id: vendasCategoryId,
+            contato_id: contatoId,
             value: cycle.amount,
             type: "Receber",
             status: isFirst && isInstantPayment ? "Pago" : "A Vencer",

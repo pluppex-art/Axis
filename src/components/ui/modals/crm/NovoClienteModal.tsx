@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Building2, Mail, Phone, FileText, MapPin, Briefcase, Loader2, ShieldCheck, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Modal } from "../../modal";
 import { Button } from "../../button";
+import { useIbgeLocalidades } from "../../../../lib/ibgeLocalidades";
 
 type Setor = "Tecnologia" | "Engenharia" | "Saúde" | "Varejo" | "Indústria" | "Educação" | "Financeiro" | "Outros";
 
@@ -27,8 +28,11 @@ const DEFAULT: NovoClienteForm = {
   industry: "Tecnologia",
   email: "",
   telefone: "",
-  cidade: "São Paulo",
-  estado: "SP",
+  // Sem cidade/estado fixo — nem todo tenant fica em São Paulo (ex.: Palmas/TO).
+  // Um valor pré-preenchido nesses campos vira dado real se o usuário não
+  // reparar e não mexer, "assumindo" a cidade errada pra qualquer cliente novo.
+  cidade: "",
+  estado: "",
 };
 
 const inputClass =
@@ -68,6 +72,9 @@ export function NovoClienteModal({ isOpen, onClose, onAction }: NovoClienteModal
   const [form, setForm] = useState<NovoClienteForm>(DEFAULT);
   const [loading, setLoading] = useState(false);
   const [cnpjStatus, setCnpjStatus] = useState<{ status: CnpjStatus; message?: string }>({ status: "idle" });
+  // Estado/Cidade reais (API do IBGE) em vez de texto livre com valor padrão
+  // fixo — evita repetir o mesmo bug de sempre "virar São Paulo" sem querer.
+  const { estados, municipios, loadingMunicipios } = useIbgeLocalidades(form.estado);
 
   useEffect(() => {
     if (isOpen) {
@@ -286,29 +293,43 @@ export function NovoClienteModal({ isOpen, onClose, onAction }: NovoClienteModal
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            {/* Cidade */}
+            {/* Estado — vem primeiro porque a lista de cidades depende dele */}
+            <div>
+              <label className={labelClass}>Estado (UF)</label>
+              <select
+                value={form.estado}
+                onChange={(e) => setForm((prev) => ({ ...prev, estado: e.target.value, cidade: "" }))}
+                className={inputClass + " uppercase"}
+              >
+                <option value="">Selecione...</option>
+                {estados.map((uf) => (
+                  <option key={uf.sigla} value={uf.sigla}>{uf.sigla}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Cidade — lista real do IBGE pro estado escolhido (API pública,
+                sem chave); se a API estiver fora do ar ou nenhum estado for
+                escolhido ainda, cai pra texto livre em vez de travar o form. */}
             <div className="col-span-2">
               <label className={labelClass}>
                 <span className="flex items-center gap-1.5"><MapPin className="w-3 h-3" /> Cidade</span>
               </label>
-              <input
-                value={form.cidade}
-                onChange={set("cidade")}
-                placeholder="São Paulo"
-                className={inputClass}
-              />
-            </div>
-
-            {/* Estado */}
-            <div>
-              <label className={labelClass}>Estado (UF)</label>
-              <input
-                value={form.estado}
-                onChange={set("estado")}
-                placeholder="SP"
-                maxLength={2}
-                className={inputClass + " uppercase"}
-              />
+              {form.estado && municipios.length > 0 ? (
+                <select value={form.cidade} onChange={set("cidade")} className={inputClass}>
+                  <option value="">{loadingMunicipios ? "Carregando..." : "Selecione..."}</option>
+                  {municipios.map((m) => (
+                    <option key={m.id} value={m.nome}>{m.nome}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={form.cidade}
+                  onChange={set("cidade")}
+                  placeholder={form.estado ? "Digite a cidade" : "Escolha o estado primeiro"}
+                  className={inputClass}
+                />
+              )}
             </div>
           </div>
         </form>

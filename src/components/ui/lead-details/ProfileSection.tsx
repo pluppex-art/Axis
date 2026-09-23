@@ -9,6 +9,7 @@ import { Badge } from "../badge";
 import { useData } from "../../../contexts/DataContext";
 import { useLocalization } from "../../../contexts/LocalizationContext";
 import { parseCurrencyBR } from "../../../lib/utils";
+import { getMRR } from "../../../lib/revenueMetrics";
 import { toast } from "sonner";
 import { ProfileDataForm } from "./ProfileDataForm";
 
@@ -76,7 +77,7 @@ export function ProfileSection({
   applyMessageTemplate, updateLead,
 }: ProfileSectionProps) {
   const [cnpjFetching, setCnpjFetching] = useState(false);
-  const { leads: allLeads, colaboradores, addLeadActivity: addActivityCtx, products } = useData();
+  const { leads: allLeads, colaboradores, addLeadActivity: addActivityCtx, products, proposals, contracts } = useData();
   const { formatCurrency } = useLocalization();
 
   const sellerOptions = useMemo(() => {
@@ -112,6 +113,23 @@ export function ProfileSection({
     );
     return total > 0 ? formatCurrency(total) : null;
   }, [lead?.productIds, products, formatCurrency]);
+
+  // MRR deste lead: mesma fonte e mesma fórmula usada em todo o resto do
+  // sistema (getMRR/revenueMetrics.ts — Financeiro, Dashboard, Contracts) —
+  // soma o `mrr` dos contratos ATIVOS gerados a partir de propostas deste
+  // lead (proposals.lead_id -> contracts.proposalId). Só existe depois que
+  // uma proposta é de fato aceita (syncAcceptedProposal cria o contrato); até
+  // lá é null, não zero "fake".
+  const leadMRR = useMemo(() => {
+    if (!lead?.id) return null;
+    const leadProposalIds = new Set(
+      (proposals as any[]).filter((p: any) => p.lead_id === lead.id).map((p: any) => p.id)
+    );
+    if (leadProposalIds.size === 0) return null;
+    const linkedContracts = (contracts as any[]).filter((c: any) => c.proposalId && leadProposalIds.has(c.proposalId));
+    const mrr = getMRR(linkedContracts as any);
+    return mrr > 0 ? formatCurrency(mrr) : null;
+  }, [lead?.id, proposals, contracts, formatCurrency]);
 
   const fetchCnpjData = async () => {
     const digits = (cnpj || lead.cnpj || "").replace(/\D/g, "");
@@ -221,6 +239,7 @@ export function ProfileSection({
         value={value} setValue={setValue}
         displayValue={displayValue}
         productValue={productValue}
+        leadMRR={leadMRR}
         seller={seller} setSeller={setSeller}
         priority={priority} setPriority={setPriority}
         sellerOptions={sellerOptions}

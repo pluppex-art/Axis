@@ -41,6 +41,10 @@ export interface PropostaEditorData {
   vendedor: string;
   conteudo_texto?: string | null;
   view_token?: string | null;
+  /** Copiado do lead vinculado no momento da criação (Contato/Decisor + Cargo
+   * do Decisor em Lead Details) — ver DataContext.tsx (createProposalWithItems). */
+  decisor_nome?: string | null;
+  decisor_cargo?: string | null;
   itens?: Array<{
     product_name: string;
     quantidade: number;
@@ -108,6 +112,8 @@ export function PropostaEditorWordModal({
   const [valor, setValor] = useState<number>(0);
   const [validade, setValidade] = useState("");
   const [status, setStatus] = useState("Enviada");
+  const [decisorNome, setDecisorNome] = useState("");
+  const [decisorCargo, setDecisorCargo] = useState("");
   const [conteudoTexto, setConteudoTexto] = useState("");
   const [itens, setItens] = useState<
     Array<{ product_name: string; quantidade: number; preco_unitario: number }>
@@ -133,6 +139,8 @@ export function PropostaEditorWordModal({
         new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
     );
     setStatus(proposalData.status || "Enviada");
+    setDecisorNome(proposalData.decisor_nome || "");
+    setDecisorCargo(proposalData.decisor_cargo || "");
     setConteudoTexto(
       proposalData.conteudo_texto?.trim() || DEFAULT_TERMS_TEMPLATE(tenantName)
     );
@@ -202,6 +210,8 @@ export function PropostaEditorWordModal({
         valor,
         validade,
         status,
+        decisor_nome: decisorNome || null,
+        decisor_cargo: decisorCargo || null,
         conteudo_texto: conteudoTexto,
         itens,
       };
@@ -216,6 +226,8 @@ export function PropostaEditorWordModal({
           valor,
           validade,
           status,
+          decisor_nome: decisorNome || null,
+          decisor_cargo: decisorCargo || null,
           conteudo_texto: conteudoTexto,
         });
       }
@@ -652,6 +664,40 @@ export function PropostaEditorWordModal({
                     ? new Date(validade).toLocaleDateString("pt-BR")
                     : "15 dias a contar da emissão"}
                 </p>
+              )}
+            </div>
+
+            <div>
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block mb-1">
+                Decisor (Contato Responsável)
+              </span>
+              {mode === "edit" ? (
+                <input
+                  type="text"
+                  value={decisorNome}
+                  onChange={(e) => setDecisorNome(e.target.value)}
+                  placeholder="Nome do decisor"
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 font-medium text-slate-800 focus:outline-none focus:border-blue-600 shadow-xs"
+                />
+              ) : (
+                <p className="font-semibold text-slate-800">{decisorNome || "Não informado"}</p>
+              )}
+            </div>
+
+            <div>
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block mb-1">
+                Cargo do Decisor
+              </span>
+              {mode === "edit" ? (
+                <input
+                  type="text"
+                  value={decisorCargo}
+                  onChange={(e) => setDecisorCargo(e.target.value)}
+                  placeholder="Ex: Diretor Financeiro"
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 font-medium text-slate-800 focus:outline-none focus:border-blue-600 shadow-xs"
+                />
+              ) : (
+                <p className="font-semibold text-slate-800">{decisorCargo || "Não informado"}</p>
               )}
             </div>
           </div>

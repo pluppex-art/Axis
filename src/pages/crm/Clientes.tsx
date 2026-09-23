@@ -70,10 +70,12 @@ export default function Clientes() {
     const newClient = {
       name: data.nome,
       industry: data.industry || "Tecnologia",
-      city: data.cidade || "São Paulo",
-      state: (data.estado || "SP").toUpperCase(),
-      phone: data.telefone || "(11) 99999-9999",
-      email: data.email || "contato@empresa.com",
+      // Sem fallback fixo pra "São Paulo"/(11) — nem todo tenant fica lá,
+      // e dado inventado num cadastro real de cliente é pior que campo vazio.
+      city: data.cidade || null,
+      state: data.estado ? String(data.estado).toUpperCase() : null,
+      phone: data.telefone || null,
+      email: data.email || null,
       documento: data.documento || null,
       status: "Ativo",
       tenant_id: activeTenantId,

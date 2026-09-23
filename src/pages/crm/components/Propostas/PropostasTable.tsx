@@ -41,6 +41,8 @@ interface Proposta {
   view_token?: string | null;
   view_count?: number;
   last_viewed_at?: string | null;
+  decisor_nome?: string | null;
+  decisor_cargo?: string | null;
 }
 
 const TIPO_LABEL: Record<string, string> = { itens: "Modelo", texto: "Texto", arquivo: "Arquivo" };
@@ -237,6 +239,8 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
                               vendedor: item.vendedor,
                               conteudo_texto: item.conteudo_texto,
                               view_token: item.view_token,
+                              decisor_nome: item.decisor_nome,
+                              decisor_cargo: item.decisor_cargo,
                               itens: itens.map((i) => ({
                                 product_name: i.product_name,
                                 quantidade: i.quantidade,
@@ -295,6 +299,8 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
               valor: updated.valor,
               validade: updated.validade,
               status: updated.status,
+              decisor_nome: updated.decisor_nome,
+              decisor_cargo: updated.decisor_cargo,
               conteudo_texto: updated.conteudo_texto,
             });
           }

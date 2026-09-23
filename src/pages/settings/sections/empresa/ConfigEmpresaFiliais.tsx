@@ -21,11 +21,13 @@ export function ConfigEmpresaFiliais() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleCreateFilial = (data: any) => {
+    // Sem CNPJ/cidade/estado fictícios — um valor "parecendo real" (fake CNPJ
+    // ou "São Paulo" fixo) num cadastro de filial é pior que deixar em branco.
     addEmpresaFilial({
       nome: data.nome,
-      cnpj: data.cnpj || "00.000.000/0001-00",
-      cidade: data.cidade || "São Paulo",
-      estado: data.estado || "SP",
+      cnpj: data.cnpj || "",
+      cidade: data.cidade || "",
+      estado: data.estado || "",
       status: filiais.length === 0 ? "Principal" : "Filial",
     });
     toast.success(`Filial "${data.nome}" cadastrada com sucesso!`);

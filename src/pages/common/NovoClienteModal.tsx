@@ -25,8 +25,10 @@ const fields: Field[] = [
     { name: "industry", label: "Setor / Indústria", type: "select", options: ["Tecnologia", "Engenharia", "Saúde", "Varejo", "Indústria"], required: true },
     { name: "email", label: "E-mail Principal", type: "email", required: true, placeholder: "contato@empresa.com" },
     { name: "telefone", label: "Telefone", type: "tel", required: true, placeholder: "(XX) XXXXX-XXXX" },
-    { name: "cidade", label: "Cidade", type: "text", required: true, defaultValue: "São Paulo", placeholder: "Ex: São Paulo" },
-    { name: "estado", label: "Estado (Sigla)", type: "text", required: true, defaultValue: "SP", placeholder: "Ex: SP" },
+    // Sem defaultValue fixo — nem todo tenant fica em São Paulo (o placeholder já
+    // dá o exemplo de formato sem forçar um valor real caso o usuário não mexa).
+    { name: "cidade", label: "Cidade", type: "text", required: true, placeholder: "Ex: São Paulo" },
+    { name: "estado", label: "Estado (Sigla)", type: "text", required: true, placeholder: "Ex: SP" },
 ];
 
 export function NovoClienteModal({ isOpen, onClose, onAction }: NovoClienteModalProps) {

@@ -234,6 +234,10 @@ export interface DataContextType {
   addFinanceCategory: (category: any) => Promise<any>;
   updateFinanceCategory: (id: string, updates: any) => Promise<void>;
   deleteFinanceCategory: (id: string) => Promise<boolean>;
+  /** Acha (por nome+tipo) ou cria uma finance_categories e devolve o id — usado
+   * pelos fluxos automáticos (AddProdutoLeadModal, aceite de proposta) pra
+   * preencher `category_id` de verdade em vez de deixar nulo. */
+  resolveFinanceCategoryId: (nome: string, tipo: 'Receita' | 'Despesa') => Promise<string | null>;
   financeBankAccounts: any[];
   addFinanceBankAccount: (conta: any) => Promise<any>;
   updateFinanceBankAccount: (id: string, updates: any) => Promise<void>;
@@ -327,7 +331,7 @@ export interface DataContextType {
    * do aceite quanto pela reconciliação global — ver DataContext.tsx). Retorna
    * `true` quando criou um contrato novo, `false` quando já existia (ou só
    * atualizou plano/data de término de um existente). */
-  syncAcceptedProposal: (prop: any, options?: { silent?: boolean }) => boolean;
+  syncAcceptedProposal: (prop: any, options?: { silent?: boolean }) => Promise<boolean>;
   certificates: any[];
   setCertificates: (v: any[]) => void;
   turmas: any[];

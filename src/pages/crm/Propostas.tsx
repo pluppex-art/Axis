@@ -100,13 +100,19 @@ export default function Propostas() {
   // contrato correspondente (ou com contrato desatualizado) agora é global —
   // vive em DataContext.tsx e roda assim que os dados do tenant carregam, não
   // só enquanto esta página está aberta (ver comentário lá pra detalhes).
-  const handleUpdateStatus = (id: string, newStatus: any) => {
+  const handleUpdateStatus = async (id: string, newStatus: any) => {
     updateProposal(id, { status: newStatus });
     setTimeout(refetchPropostas, 300);
 
     if (newStatus === "Aceita") {
       const prop = (propostas || []).find((p: any) => p.id === id);
-      if (prop && syncAcceptedProposal(prop)) return;
+      // syncAcceptedProposal já mostra seu próprio toast ("🎉 Proposta
+      // Aceita!...") quando de fato cria contrato/fatura — precisa esperar o
+      // resultado real (agora async, por causa do lookup de category_id) em
+      // vez de tratar a Promise como sempre truthy, senão o toast genérico
+      // abaixo nunca mais aparece nem quando nada foi criado (contrato já
+      // existia).
+      if (prop && await syncAcceptedProposal(prop)) return;
     }
     toast.success(`Proposta atualizada para: ${newStatus}`);
   };

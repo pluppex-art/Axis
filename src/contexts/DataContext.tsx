@@ -1631,13 +1631,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       let clientName = existing?.name;
 
       if (!existing) {
+        // BUG real: cliente novo (criado automaticamente ao ganhar um lead)
+        // sempre nascia com "São Paulo/SP" e telefone/e-mail fictícios
+        // ((11) 99999-9999, contato@empresa.com) quando o lead não tinha
+        // esses dados — parecia dado real, mas era invenção, e o DDD 11
+        // reforçava a aparência de "tudo vira São Paulo" mesmo pra tenants
+        // de outras cidades (ex.: Palmas/TO). Sem endereço estruturado do
+        // tenant ainda (empresa_dados só tem um campo de endereço livre),
+        // o certo é deixar em branco em vez de inventar — nulo é honesto,
+        // "São Paulo" fixo é um dado errado.
         const newClient = {
           name: lead.company || lead.name,
           industry: "Tecnologia",
-          city: "São Paulo",
-          state: "SP",
-          phone: lead.phone || "(11) 99999-9999",
-          email: lead.email || "contato@empresa.com",
+          city: null,
+          state: null,
+          phone: lead.phone || null,
+          email: lead.email || null,
           documento,
           status: "Ativo",
           tenant_id: tenantId,
@@ -2247,6 +2256,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null; frequency?: string | null }>;
   }) => {
     const proposalId = crypto.randomUUID();
+    // Traz o decisor do lead vinculado (Lead Details -> Contato/Decisor +
+    // Cargo do Decisor) pra dentro da proposta — copiado agora, não um
+    // vínculo ao vivo: a proposta é um documento emitido, então se o decisor
+    // mudar depois no lead, a proposta já gerada mantém o que valia quando
+    // foi criada.
+    const linkedLeadForDecisor = payload.leadId ? (leads || []).find((l: any) => l.id === payload.leadId) : null;
     const stampedProposal = await proposalCrud.add({
       id: proposalId,
       titulo: payload.titulo,
@@ -2259,6 +2274,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       tipo: payload.tipo || 'itens',
       conteudo_texto: payload.conteudoTexto || null,
       link_pdf: payload.linkPdf || null,
+      decisor_nome: linkedLeadForDecisor?.name || null,
+      decisor_cargo: linkedLeadForDecisor?.customFields?.currentRole || null,
     });
     for (const item of payload.itens || []) {
       await proposalItemCrud.add({
@@ -2452,6 +2469,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const certCrud = createCrudHelper('certificates', setCertificates);
   const indicacaoCrud = createCrudHelper('indicacoes', setIndicacoes as any);
 
+  // Lançamentos gerados automaticamente (aceite de proposta, AddProdutoLeadModal)
+  // só preenchiam o texto livre `category` — `category_id` (o vínculo real com
+  // finance_categories, usado pelo DRE) ficava sempre nulo. Acha uma categoria já
+  // existente com esse nome+tipo (mesmo padrão de match usado em
+  // FinanceiroImportarMovimentacoes.tsx) ou cria uma na hora — nunca inventa um
+  // id de categoria que não existe.
+  const resolveFinanceCategoryId = async (nome: string, tipo: 'Receita' | 'Despesa'): Promise<string | null> => {
+    const norm = (s: string) => String(s || "").trim().toLowerCase();
+    const existing = (financeCategories as any[]).find((c: any) => c.tipo === tipo && norm(c.nome) === norm(nome));
+    if (existing) return existing.id;
+    const created = await financeCategoryCrud.add({ nome, tipo, subtipo: null });
+    return created?.id ?? null;
+  };
+
   const addFinanceEntry = async (entry: Omit<FinanceEntry, 'id'>, options: { silent?: boolean } = {}) => {
     if (checkFinanceEntryLock(entry)) {
       toast.error("Este período está bloqueado para fechamento — não é possível lançar transações pagas nessa data.");
@@ -2486,7 +2517,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // abaixo (dentro do bloco `jaExiste`).
   const reconciledProposalIdsRef = React.useRef<Set<string>>(new Set());
 
-  const syncAcceptedProposal = (prop: any, { silent = false }: { silent?: boolean } = {}) => {
+  const syncAcceptedProposal = async (prop: any, { silent = false }: { silent?: boolean } = {}) => {
     // BUG real (visto em produção: contrato/lançamento de "Casa Sao Paulo" e
     // "To Na Pista Boliche" — clientes REAIS da Pluppex — aparecendo com
     // tenant_id do To Na Pista): essa reconciliação roda automaticamente
@@ -2642,6 +2673,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ? new Date(signedDate.getFullYear(), signedDate.getMonth() + contractMonths, signedDate.getDate()).toLocaleDateString("pt-BR")
       : null;
 
+    // Preenche os vínculos reais que dá pra derivar sem inventar nada: a
+    // categoria (mesmo nome já usado no texto livre `category`, agora também
+    // como category_id de verdade — o DRE lê o id, não o texto) e o contato
+    // (cliente já vinculado ao lead desta proposta, se existir). Conta
+    // bancária/centro de custo ficam de fora de propósito — não tem como
+    // adivinhar qual conta ou centro de custo o usuário quis sem perguntar.
+    const contratoCategoryId = await resolveFinanceCategoryId("Contrato / Recorrente", "Receita");
+    const implantacaoCategoryId = await resolveFinanceCategoryId("Implantação / Setup", "Receita");
+    const leadForContato = prop.lead_id ? (leads || []).find((l: any) => l.id === prop.lead_id) : null;
+    const contatoId = leadForContato?.clientId || null;
+
     addContract({
       client: prop.cliente || "Cliente",
       plan: planLabel || prop.titulo || "Proposta Comercial",
@@ -2658,6 +2700,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     addFinanceEntry({
       description: `Contrato: ${prop.titulo} (${prop.cliente})`,
       category: "Contrato / Recorrente",
+      category_id: contratoCategoryId,
+      contato_id: contatoId,
       value: recurringTotalFinal,
       type: "Receber",
       date: new Date().toISOString().slice(0, 10),
@@ -2673,6 +2717,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addFinanceEntry({
         description: `Implantação/Setup: ${prop.titulo} (${prop.cliente})`,
         category: "Implantação / Setup",
+        category_id: implantacaoCategoryId,
+        contato_id: contatoId,
         value: oneTimeTotalFinal,
         type: "Receber",
         date: new Date().toISOString().slice(0, 10),
@@ -2834,6 +2880,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addFinanceCategory: financeCategoryCrud.add,
       updateFinanceCategory: financeCategoryCrud.update,
       deleteFinanceCategory: financeCategoryCrud.del,
+      resolveFinanceCategoryId,
       financeBankAccounts,
       addFinanceBankAccount: financeBankAccountCrud.add,
       updateFinanceBankAccount: financeBankAccountCrud.update,

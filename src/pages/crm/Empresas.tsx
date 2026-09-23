@@ -22,8 +22,9 @@ export default function Empresas() {
     nome: "",
     documento: "",
     industry: "Tecnologia",
-    cidade: "São Paulo",
-    estado: "SP",
+    // Sem cidade/estado fixo — nem todo tenant fica em São Paulo.
+    cidade: "",
+    estado: "",
     email: "",
     phone: "",
   });
@@ -91,7 +92,7 @@ export default function Empresas() {
 
     toast.success("Empresa cadastrada com sucesso!");
     setShowModal(false);
-    setNovaEmpresa({ nome: "", documento: "", industry: "Tecnologia", cidade: "São Paulo", estado: "SP", email: "", phone: "" });
+    setNovaEmpresa({ nome: "", documento: "", industry: "Tecnologia", cidade: "", estado: "", email: "", phone: "" });
     fetchEmpresas();
   };
 

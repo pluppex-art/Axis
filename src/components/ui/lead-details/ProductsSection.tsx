@@ -93,6 +93,8 @@ export function ProductsSection({
       vendedor: existingProposal.vendedor,
       conteudo_texto: existingProposal.conteudo_texto,
       view_token: existingProposal.view_token,
+      decisor_nome: existingProposal.decisor_nome,
+      decisor_cargo: existingProposal.decisor_cargo,
       itens: existingProposalItems.map((i: any) => ({
         product_name: i.product_name,
         quantidade: i.quantidade,
@@ -299,6 +301,8 @@ export function ProductsSection({
               valor: updated.valor,
               validade: updated.validade,
               status: updated.status,
+              decisor_nome: updated.decisor_nome,
+              decisor_cargo: updated.decisor_cargo,
               conteudo_texto: updated.conteudo_texto,
             });
           }
