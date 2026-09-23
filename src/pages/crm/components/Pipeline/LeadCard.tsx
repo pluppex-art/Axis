@@ -85,6 +85,15 @@ export function LeadCard({
 
   const linkedProducts = (products as any[]).filter(p => (item.productIds || []).includes(p.id));
   const primaryProduct = linkedProducts[0] ?? null;
+  // Produtos de Interesse: tag leve marcada na aba Produtos do lead (ver
+  // ProductsSection.tsx), guardada à parte em customFields.produtosInteresseIds
+  // — NUNCA em productIds (esse fica só pra produtos de uma venda real). Fonte
+  // certa pra estimativa abaixo desde a separação; productIds sozinho não
+  // reflete mais "interesse" nenhum.
+  const produtosInteresseIds: string[] = Array.isArray(item.customFields?.produtosInteresseIds)
+    ? item.customFields.produtosInteresseIds
+    : [];
+  const produtosInteresse = (products as any[]).filter(p => produtosInteresseIds.includes(p.id));
   // Fallback: quando o lead ainda não tem productIds sincronizado mas já tem
   // uma proposta vinculada (proposals.lead_id), usa o valor dela em vez de
   // mostrar "R$ 0" com uma proposta real (às vezes já aceita) por trás.
@@ -117,8 +126,8 @@ export function LeadCard({
   // verdade foi criada — prioridade sobre `linkedProducts`, que agora vira
   // só uma ESTIMATIVA (mesmo tratamento visual de avgWonTicket, com "~").
   const hasRealValue = parseCurrencyBR(item.value) > 0 || !!linkedProposalValue;
-  const estimateFromInterest = !hasRealValue && linkedProducts.length > 0
-    ? linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0)
+  const estimateFromInterest = !hasRealValue && produtosInteresse.length > 0
+    ? produtosInteresse.reduce((s, p) => s + (Number(p.price) || 0), 0)
     : 0;
   // Lead genuinamente sem venda/produto/proposta ainda (ex.: cliente cadastrado
   // que nunca reservou) — em vez de "R$ 0" (parece erro/dado quebrado), mostra
@@ -364,7 +373,7 @@ export function LeadCard({
               title={
                 isEstimated
                   ? (estimateFromInterest > 0
-                      ? "Estimativa a partir dos produtos de interesse marcados na qualificação — ainda não é uma venda/proposta real"
+                      ? "Estimativa a partir dos produtos de interesse marcados na aba Produtos do lead — ainda não é uma venda/proposta real"
                       : "Estimativa (ticket médio) — este lead ainda não tem venda/proposta vinculada")
                   : undefined
               }
