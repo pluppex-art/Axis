@@ -27,6 +27,7 @@ export default function Dashboard() {
     funnelData,
     recentActivities,
     churnRate,
+    hasContractsData,
     dateFrom,
     setDateFrom,
     dateTo,
@@ -45,8 +46,9 @@ export default function Dashboard() {
     >
       <div className="space-y-6 max-w-[1600px] mx-auto pb-10">
 
-        {/* Filtro de período — afeta cartões, funil e ranking (por data de
-            cadastro do lead); o gráfico de tendência mantém sua janela fixa. */}
+        {/* Filtro de período — afeta cartões, gráfico de Fluxo de Performance,
+            Snapshot Financeiro e todo o resto da tela (mesmo intervalo em
+            todo componente, ver useDashboard.ts/StrategicalView.tsx). */}
         <div className="w-fit">
           <DateRangeFilter
             dateFrom={dateFrom}
@@ -67,6 +69,9 @@ export default function Dashboard() {
           leadsLength={activeLeadsCount}
           conversionRate={conversionRate}
           churnRate={churnRate}
+          hasContractsData={hasContractsData}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
         />
 
 
@@ -82,6 +87,8 @@ export default function Dashboard() {
           funnelData={funnelData}
           recentActivities={recentActivities}
           serverSummary={serverSummary}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
         />
 
 

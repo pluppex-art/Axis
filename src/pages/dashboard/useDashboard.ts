@@ -56,6 +56,45 @@ export function useDashboard() {
     });
   }, [allLeads, dateFrom, dateTo]);
 
+  // `contract.date` é "DD/MM/YYYY" (ver rowToContract em DataContext.tsx),
+  // convertido pra ISO antes de comparar com dateFrom/dateTo (que já vêm em
+  // ISO do DateRangeFilter). Usado só pelo gráfico de Fluxo de Performance
+  // abaixo (MRR assinado EM CADA mês/dia do período — uma métrica de fluxo,
+  // por natureza recortada por data de assinatura). "MRR Ativo"/"Contratos
+  // Ativos"/Snapshot continuam usando `contracts` inteiro (sem esse filtro):
+  // são saldos do momento atual ("ativo" = agora), não um fluxo do período —
+  // a mesma convenção de "MRR Ativo" já usada em todo o resto do sistema
+  // (Financeiro, BI, revenueMetrics.getMRR). Period-scopar esse número faria
+  // ele divergir do "MRR Ativo" mostrado em qualquer outra tela.
+  const contractDateToIso = (d: string | undefined | null): string | null => {
+    if (!d) return null;
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+  };
+  const filteredContracts = useMemo(() => {
+    if (!dateFrom && !dateTo) return contracts;
+    return (contracts as any[]).filter((c) => {
+      const iso = contractDateToIso(c.date);
+      if (!iso) return false;
+      if (dateFrom && iso < dateFrom) return false;
+      if (dateTo && iso > dateTo) return false;
+      return true;
+    });
+  }, [contracts, dateFrom, dateTo]);
+
+  // Quantos meses o período selecionado cobre — usado só pra Churn (ver
+  // abaixo): getChurnRate(contracts, {months}) já filtra por `cancelledAt`
+  // (data real do cancelamento), não por `signed_date` — a definição certa
+  // de "churn no período" é "cancelado durante o período", não "contrato
+  // assinado durante o período". `undefined` (sem período/"Tudo") cai na
+  // taxa geral (cancelados/total, sem recorte de data).
+  const churnPeriodMonths = useMemo(() => {
+    if (!dateFrom && !dateTo) return undefined;
+    const start = dateFrom ? new Date(dateFrom + "T00:00:00") : new Date(2000, 0, 1);
+    const end = dateTo ? new Date(dateTo + "T00:00:00") : new Date();
+    return Math.max(1, Math.round((end.getTime() - start.getTime()) / (30 * 86400000)));
+  }, [dateFrom, dateTo]);
+
   // Goal Alerts
   const goalAlerts = useMemo(() => {
     return squads.filter(sq => (sq.faturamentoAlcancado / sq.meta) >= 0.9);
@@ -89,11 +128,23 @@ export function useDashboard() {
   // Stats Calculations — via camada única de métricas (src/lib/revenueMetrics.ts)
   // pra usar exatamente a mesma definição de MRR/conversão/leads ativos em
   // todos os dashboards do sistema, não uma fórmula própria por tela.
+  // `getMRR(contracts)` (sem filtro de período) de propósito — ver comentário
+  // acima sobre "MRR Ativo" ser saldo atual, não fluxo do período.
   const totalRevenueClient = useMemo(() => getMRR(contracts), [contracts]);
   const conversionRateClient = useMemo(() => getConversionRate(leads).toFixed(1), [leads]);
   const activeLeadsCountClient = useMemo(() => getActiveLeadsCount(leads), [leads]);
+  // BUG real: essa função trocava de fórmula (churn de contrato cancelado ->
+  // churn de paciente sem visita há 90 dias) só porque a tabela `appointments`
+  // tinha alguma linha — sem checar se o tenant É de fato uma clínica. Um
+  // tenant de outro nicho que por qualquer motivo tivesse linhas nessa tabela
+  // (ela é usada só pelo módulo Clínica) exibiria uma métrica com definição
+  // completamente diferente sem nenhum aviso. Agora só entra nesse ramo
+  // clínico quando o nicho do tenant é realmente "Clínica".
+  const isClinicaNiche = user?.tenantNiche === 'Clínica';
   const churnRateClient = useMemo(() => {
-    if (!appointments || appointments.length === 0) return getChurnRate(contracts);
+    if (!isClinicaNiche || !appointments || appointments.length === 0) {
+      return getChurnRate(contracts, churnPeriodMonths ? { months: churnPeriodMonths } : undefined);
+    }
     const patientMap = new Map<string, Date>();
     appointments.forEach(a => {
       try {
@@ -110,37 +161,68 @@ export function useDashboard() {
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     const churnedPatients = Array.from(patientMap.values()).filter(d => d < ninetyDaysAgo).length;
     return parseFloat(((churnedPatients / totalPatients) * 100).toFixed(1));
-  }, [appointments, contracts]);
+  }, [isClinicaNiche, appointments, contracts, churnPeriodMonths]);
 
   const totalRevenue = serverSummary?.totalRevenue ?? totalRevenueClient;
   const conversionRate = (serverSummary?.conversionRate ?? Number(conversionRateClient)).toFixed(1);
   const activeLeadsCount = serverSummary?.activeLeadsCount ?? activeLeadsCountClient;
 
-  // Performance chart: group leads by month of creation (last 7 months)
+  // Fluxo de Performance: agrupa por mês (ou por dia, se o período selecionado
+  // for curto) dentro do MESMO intervalo (dateFrom/dateTo) usado pelos cards
+  // acima — antes o gráfico tinha uma janela fixa de "últimos 7 meses a
+  // partir de hoje" totalmente independente do filtro de período da página,
+  // violando a regra de que todo componente precisa refletir o mesmo
+  // intervalo. Sem filtro ("Tudo"), preserva a janela padrão de 7 meses de
+  // antes (mesma leitura visual que já existia pro caso mais comum).
   const performanceData = useMemo(() => {
     const now = new Date();
-    const months = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (6 - i), 1);
-      return { year: d.getFullYear(), month: d.getMonth(), name: MONTH_NAMES[d.getMonth()] };
-    });
+    const toDateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const rangeEndDate = dateTo ? toDateOnly(new Date(dateTo + "T12:00:00")) : toDateOnly(now);
+    const rangeStartDate = dateFrom
+      ? toDateOnly(new Date(dateFrom + "T12:00:00"))
+      : new Date(rangeEndDate.getFullYear(), rangeEndDate.getMonth() - 6, 1);
+    const spanDays = Math.max(0, Math.round((rangeEndDate.getTime() - rangeStartDate.getTime()) / 86400000));
+
+    // Período curto (<=31 dias): granularidade diária — um "Fluxo de
+    // Performance" mensal não faz sentido pra "Hoje"/"7 dias"/"30 dias".
+    if (spanDays <= 31) {
+      const days = Array.from({ length: spanDays + 1 }, (_, i) => {
+        const d = new Date(rangeStartDate.getFullYear(), rangeStartDate.getMonth(), rangeStartDate.getDate() + i);
+        return d;
+      });
+      return days.map((d) => {
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const dayLeads = leads.filter(l => (l.date || "").slice(0, 10) === iso);
+        const closedThisDay = dayLeads.filter(l => l.status === 'Fechado').length;
+        const revenueThisDay = filteredContracts.filter(c => contractDateToIso(c.date) === iso && c.status !== 'Cancelado')
+          .reduce((sum, c) => sum + parseCurrencyBR(c.mrr), 0);
+        return {
+          name: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
+          vendas: Math.round(revenueThisDay),
+          leads: dayLeads.length,
+          retention: closedThisDay,
+        };
+      });
+    }
+
+    // Período longo (ou "Tudo"): granularidade mensal, do mês de início ao
+    // mês de fim — cap de 24 meses pra não gerar um gráfico ilegível/pesado
+    // num tenant com muitos anos de histórico e "Tudo" selecionado.
+    const months: { year: number; month: number; name: string }[] = [];
+    let cursor = new Date(rangeStartDate.getFullYear(), rangeStartDate.getMonth(), 1);
+    const endCursor = new Date(rangeEndDate.getFullYear(), rangeEndDate.getMonth(), 1);
+    while (cursor <= endCursor && months.length < 24) {
+      months.push({ year: cursor.getFullYear(), month: cursor.getMonth(), name: MONTH_NAMES[cursor.getMonth()] });
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
 
     return months.map(({ year, month, name }) => {
-      const monthLeads = leads.filter(l => {
-        if (!l.date) return false;
-        try {
-          const d = new Date(l.date);
-          return !isNaN(d.getTime()) && d.getFullYear() === year && d.getMonth() === month;
-        } catch { return false; }
-      });
+      const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+      const monthLeads = leads.filter(l => (l.date || "").slice(0, 7) === monthKey);
       const closedThisMonth = monthLeads.filter(l => l.status === 'Fechado').length;
-      const mrrThisMonth = contracts.filter(c => {
-        if (c.status === 'Cancelado') return false;
-        if (!c.date) return false;
-        try {
-          const d = new Date(c.date.split('/').reverse().join('-'));
-          return !isNaN(d.getTime()) && d.getFullYear() === year && d.getMonth() === month;
-        } catch { return false; }
-      }).reduce((sum, c) => sum + parseCurrencyBR(c.mrr), 0);
+      const mrrThisMonth = filteredContracts
+        .filter(c => c.status !== 'Cancelado' && contractDateToIso(c.date)?.slice(0, 7) === monthKey)
+        .reduce((sum, c) => sum + parseCurrencyBR(c.mrr), 0);
 
       return {
         name,
@@ -149,7 +231,7 @@ export function useDashboard() {
         retention: closedThisMonth,
       };
     });
-  }, [leads, contracts]);
+  }, [leads, filteredContracts, dateFrom, dateTo]);
 
   // Sales ranking: group closed leads by seller
   // Mesma regra de fallback do LeadCard/PipelineKanbanBoard: quando o lead
@@ -240,10 +322,21 @@ export function useDashboard() {
   // mudança de comportamento) — só decide aqui se usa o valor do cache do
   // servidor ou o client-side, igual às outras 3 métricas "hero".
   const churnRate = serverSummary?.churnRate ?? churnRateClient;
+  // `getChurnRate([])` devolve 0 pra não quebrar o cálculo — mas 0 contratos
+  // não é "0% de churn", é "não dá pra medir". Sem essa distinção, um tenant
+  // que nunca cadastrou contrato nenhum mostrava "Taxa Churn: 0,0%" como se
+  // fosse uma métrica boa, quando na real não existe métrica nenhuma ali.
+  const hasContractsData = (isClinicaNiche ? (appointments?.length ?? 0) > 0 : contracts.length > 0);
 
   return {
     leads,
+    // Sem filtro de período de propósito — StrategicalView usa isso no
+    // Snapshot de Contratos (MRR Ativo/Contratos Ativos/Ticket Médio/
+    // Inadimplência), que são saldos do momento atual ("ativo" = agora),
+    // não um fluxo do período selecionado (ver comentário em
+    // filteredContracts acima).
     contracts,
+    hasContractsData,
     squads,
     leadActivities,
     activeLeadsCount,

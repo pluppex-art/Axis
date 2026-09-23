@@ -16,6 +16,8 @@ export function DashboardTabContent(props: {
   funnelData: any[];
   recentActivities: any[];
   serverSummary: DashboardSummary | null;
+  dateFrom: string | null;
+  dateTo: string | null;
 }) {
   const {
     activeTab,
@@ -28,6 +30,8 @@ export function DashboardTabContent(props: {
     funnelData,
     recentActivities,
     serverSummary,
+    dateFrom,
+    dateTo,
   } = props;
 
   return (
@@ -40,6 +44,8 @@ export function DashboardTabContent(props: {
           squads={squads}
           contracts={contracts}
           serverSummary={serverSummary}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
         />
       )}
 

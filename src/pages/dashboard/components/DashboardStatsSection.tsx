@@ -7,12 +7,18 @@ export function DashboardStatsSection({
   leadsLength,
   conversionRate,
   churnRate,
+  hasContractsData,
+  dateFrom,
+  dateTo,
 }: {
   tenantNiche: string | undefined;
   totalRevenue: number;
   leadsLength: number;
   conversionRate: number | string;
   churnRate: number;
+  hasContractsData: boolean;
+  dateFrom: string | null;
+  dateTo: string | null;
 }) {
   const stats = DashboardStatsByNiche({
     tenantNiche,
@@ -20,8 +26,13 @@ export function DashboardStatsSection({
     leadsLength,
     conversionRate: typeof conversionRate === "string" ? parseFloat(conversionRate) : conversionRate,
     churnRate,
+    hasContractsData,
   });
 
-  return <QuickStatsGrid stats={stats} />;
+  const periodoLabel = !dateFrom && !dateTo
+    ? "Todo o período"
+    : `${dateFrom ? dateFrom.split("-").reverse().join("/") : "…"} – ${dateTo ? dateTo.split("-").reverse().join("/") : "…"}`;
+
+  return <QuickStatsGrid stats={stats} periodoLabel={periodoLabel} />;
 }
 

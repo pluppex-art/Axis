@@ -115,3 +115,15 @@ export function formatCurrencyBR(value: number): string {
   }).format(value || 0);
 }
 
+/**
+ * Formata percentual em pt-BR (vírgula decimal, 1 casa). Todas as funções de
+ * métrica do sistema (getConversionRate/getChurnRate em revenueMetrics.ts,
+ * os endpoints /api/*-summary em server.ts) já devolvem o número na escala
+ * 0–100 (ex.: 6.8 = "6,8%", nunca 0.068) — este utilitário assume essa mesma
+ * escala. Não multiplicar de novo por 100 antes de chamar.
+ */
+export function formatPercentage(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return `${value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}
+

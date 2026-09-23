@@ -10,6 +10,9 @@ export type DashboardStatsCard = {
   bg: string;
   icon: React.ComponentType<any>;
   forecast: string;
+  /** Explica de onde vem o número e como é calculado — mostrado como tooltip
+   * no card (ver QuickStatsGrid.tsx). Nunca jargão de banco de dados. */
+  tooltip?: string;
 };
 
 export function DashboardStatsByNiche({
@@ -18,14 +21,20 @@ export function DashboardStatsByNiche({
   leadsLength,
   conversionRate,
   churnRate,
+  hasContractsData,
 }: {
   tenantNiche: string | undefined;
   totalRevenue: number;
   leadsLength: number;
   conversionRate: number;
   churnRate: number;
+  hasContractsData: boolean;
 }) {
   const { formatCurrency } = useLocalization();
+  // 0 contratos/pacientes não é "0% de churn" — é "não dá pra medir ainda".
+  // Mostrar "0,0%" nesse caso pareceria uma métrica boa quando na real não
+  // existe base nenhuma por trás dela.
+  const churnValue = hasContractsData ? `${churnRate.toFixed(1)}%` : 'Sem dados';
 
   const stats = useMemo<DashboardStatsCard[]>(() => {
     const niche = tenantNiche || 'Master';
@@ -143,7 +152,7 @@ export function DashboardStatsByNiche({
         },
         {
           label: 'Taxa Churn Pacientes',
-          value: `${churnRate.toFixed(1)}%`,
+          value: churnValue,
           trend: '--',
           color: 'text-slate-400',
           bg: 'bg-white/5',
@@ -204,6 +213,7 @@ export function DashboardStatsByNiche({
         bg: 'bg-white/5',
         icon: DollarSign,
         forecast: '--',
+        tooltip: 'Soma do valor recorrente (mrr) de todos os contratos ativos agora — não muda com o período selecionado, é um saldo do momento atual.',
       },
       {
         label: 'Leads Ativos',
@@ -213,6 +223,7 @@ export function DashboardStatsByNiche({
         bg: 'bg-white/5',
         icon: Users,
         forecast: '--',
+        tooltip: 'Leads criados no período selecionado que ainda não foram marcados como Perdido (inclui os já Fechados).',
       },
       {
         label: 'Conversão',
@@ -222,18 +233,20 @@ export function DashboardStatsByNiche({
         bg: 'bg-white/5',
         icon: Target,
         forecast: '--',
+        tooltip: 'Leads com status Fechado ÷ total de leads criados no período selecionado.',
       },
       {
         label: 'Taxa Churn',
-        value: `${churnRate.toFixed(1)}%`,
+        value: churnValue,
         trend: '--',
         color: 'text-slate-400',
         bg: 'bg-white/5',
         icon: TrendingDown,
+        tooltip: 'Contratos cancelados durante o período selecionado ÷ total de contratos existentes nesse intervalo.',
         forecast: '--',
       },
     ];
-  }, [tenantNiche, totalRevenue, leadsLength, conversionRate, churnRate, formatCurrency]);
+  }, [tenantNiche, totalRevenue, leadsLength, conversionRate, churnRate, churnValue, formatCurrency]);
 
   return stats;
 }

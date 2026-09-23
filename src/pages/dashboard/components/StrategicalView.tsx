@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Card } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
-import { ResponsiveContainer, AreaChart, CartesianGrid, XAxis, YAxis, Tooltip, Area, Line } from 'recharts';
-import { BarChart3, RefreshCw, Target, Trophy, Layers, Zap, Briefcase, ChevronDown } from 'lucide-react';
+import { ResponsiveContainer, AreaChart, CartesianGrid, XAxis, YAxis, Tooltip, Area, Line, Legend } from 'recharts';
+import { BarChart3, RefreshCw, Target, Trophy, Layers, Zap, Briefcase, ChevronDown, Wallet, TrendingDown, TrendingUp, Users, Receipt } from 'lucide-react';
 import { useData } from '../../../contexts/DataContext';
 import { useLocalization } from '../../../contexts/LocalizationContext';
-import { parseCurrencyBR } from '../../../lib/utils';
+import { parseCurrencyBR, formatPercentage } from '../../../lib/utils';
+import { parseEntryDate } from '../../finance/lib/financeDates';
 import { getMRR } from '../../../lib/revenueMetrics';
 import type { DashboardSummary } from '../useDashboard';
 
@@ -29,6 +30,8 @@ interface StrategicalViewProps {
   squads?: Squad[];
   contracts?: Contract[];
   serverSummary?: DashboardSummary | null;
+  dateFrom: string | null;
+  dateTo: string | null;
 }
 
 export function StrategicalView({
@@ -38,8 +41,10 @@ export function StrategicalView({
   squads = [],
   contracts = [],
   serverSummary,
+  dateFrom,
+  dateTo,
 }: StrategicalViewProps) {
-  const { leads } = useData();
+  const { leads, financeEntries, clienteBase } = useData();
   const { formatCurrency } = useLocalization();
   const leadsAbertos = leads.filter(l => l.status !== 'Fechado' && l.status !== 'Perdido');
   // Cada métrica abaixo prefere o valor cacheado de GET /api/dashboard/summary
@@ -57,13 +62,50 @@ export function StrategicalView({
   const totalMeta = squads.reduce((s, sq) => s + (sq.meta || 0), 0);
   const totalAlcancado = squads.reduce((s, sq) => s + (sq.faturamentoAlcancado || 0), 0);
   const goalPct = totalMeta > 0 ? Math.min(100, Math.round((totalAlcancado / totalMeta) * 100)) : 0;
+  const restanteMeta = Math.max(0, totalMeta - totalAlcancado);
 
-  // Compute real MRR from contracts (camada única de métricas)
+  // Compute real MRR from contracts (camada única de métricas) — saldo do
+  // momento atual, não recortado pelo período selecionado (ver useDashboard.ts).
   const activeMRR = serverSummary?.mrrAtivo ?? getMRR(contracts);
 
   const hasSquads = squads.length > 0;
   const hasContracts = contracts.length > 0;
   const [showDetails, setShowDetails] = useState(false);
+
+  // Snapshot Financeiro — único bloco que de fato usa dateFrom/dateTo (o
+  // mesmo período dos cards/gráfico acima). Receita/Despesas/Novas Vendas são
+  // um FLUXO do período (só o que foi pago dentro da janela); Contas a
+  // Receber/Pagar são um SALDO do momento atual (o que está em aberto agora,
+  // independente de quando foi lançado — período não muda "quanto falta
+  // receber hoje"). `parseEntryDate` já trata os dois formatos de data que
+  // finance_entries.date pode ter (ver src/pages/finance/lib/financeDates.ts).
+  const financeSnapshot = useMemo(() => {
+    const inPeriod = (raw?: string | null) => {
+      if (!dateFrom && !dateTo) return true;
+      const d = parseEntryDate(raw);
+      if (!d) return false;
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      if (dateFrom && iso < dateFrom) return false;
+      if (dateTo && iso > dateTo) return false;
+      return true;
+    };
+    const entries = financeEntries as any[];
+    const pagosNoPeriodo = entries.filter(f => f.status === 'Pago' && inPeriod(f.date));
+    const receita = pagosNoPeriodo.filter(f => f.type === 'Receber').reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const despesas = pagosNoPeriodo.filter(f => f.type === 'Pagar').reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const novasVendas = pagosNoPeriodo.filter(f => f.type === 'Receber').length;
+    const contasAReceber = entries.filter(f => f.type === 'Receber' && (f.status === 'A Vencer' || f.status === 'Atrasado')).reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const contasAPagar = entries.filter(f => f.type === 'Pagar' && (f.status === 'A Vencer' || f.status === 'Atrasado')).reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const clientes = clienteBase as any[];
+    const clientesAtivos = clientes.filter(c => c.status === 'Ativo').length;
+    const clientesPerdidos = clientes.filter(c => c.status === 'Inativo').length;
+    return {
+      receita, despesas, receitaLiquida: receita - despesas, novasVendas,
+      contasAReceber, contasAPagar, clientesAtivos, clientesPerdidos,
+      hasAnyEntry: entries.length > 0, hasAnyCliente: clientes.length > 0,
+    };
+  }, [financeEntries, clienteBase, dateFrom, dateTo]);
 
   return (
     <motion.div
@@ -105,14 +147,23 @@ export function StrategicalView({
           <div className="flex items-center justify-end gap-3 mb-3">
             <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-[var(--color-primary-blue)]/10 rounded-full border border-[var(--color-primary-blue)]/20">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary-blue)]" />
-              <span className="text-[10px] text-[var(--color-primary-blue)] font-bold uppercase tracking-wider">Real</span>
+              <span className="text-[10px] text-[var(--color-primary-blue)] font-bold uppercase tracking-wider">MRR (R$)</span>
             </div>
             <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-cyan-500/10 rounded-full border border-cyan-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 opacity-60" />
               <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-bold uppercase tracking-wider">Volume de Leads</span>
             </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-purple-500/10 rounded-full border border-purple-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold uppercase tracking-wider">Negócios Fechados</span>
+            </div>
           </div>
 
+          {/* Receita (R$) e contagens (leads/negócios fechados) são unidades
+              diferentes — dividir em dois eixos Y evita que uma métrica
+              esmague visualmente a outra (achado real: um mês com centenas
+              de leads sincronizados de uma vez fazia a linha de MRR, em
+              milhares de reais, parecer achatada perto do zero). */}
           <div className="h-[340px] w-full min-w-0 -mx-2">
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300}>
               <AreaChart data={performanceData}>
@@ -124,7 +175,25 @@ export function StrategicalView({
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" vertical={false} />
                 <XAxis dataKey="name" stroke="var(--color-text-faint)" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--color-text-faint)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis
+                  yAxisId="revenue"
+                  stroke="var(--color-text-faint)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v: number) => formatCurrency(v)}
+                  width={90}
+                />
+                <YAxis
+                  yAxisId="count"
+                  orientation="right"
+                  stroke="var(--color-text-faint)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                  width={40}
+                />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'var(--color-surface-elevated)',
@@ -135,10 +204,12 @@ export function StrategicalView({
                     fontSize: '12px',
                   }}
                   itemStyle={{ fontSize: '11px', fontWeight: 'bold' }}
+                  formatter={(value: number, name: string) => name === 'MRR (R$)' ? [formatCurrency(value), name] : [value, name]}
                 />
-                <Area type="monotone" dataKey="vendas" stroke="#2563EB" fillOpacity={1} fill="url(#colorSales)" strokeWidth={3} strokeLinecap="round" />
-                <Area type="monotone" dataKey="leads" stroke="#06B6D4" fillOpacity={0} strokeWidth={2.5} strokeDasharray="5 5" name="Volume de Leads" />
-                <Line type="stepAfter" dataKey="retention" stroke="#8B5CF6" strokeWidth={2} dot={false} name="Health Index" />
+                <Legend wrapperStyle={{ display: 'none' }} />
+                <Area yAxisId="revenue" type="monotone" dataKey="vendas" name="MRR (R$)" stroke="#2563EB" fillOpacity={1} fill="url(#colorSales)" strokeWidth={3} strokeLinecap="round" />
+                <Area yAxisId="count" type="monotone" dataKey="leads" name="Volume de Leads" stroke="#06B6D4" fillOpacity={0} strokeWidth={2.5} strokeDasharray="5 5" />
+                <Line yAxisId="count" type="stepAfter" dataKey="retention" name="Negócios Fechados" stroke="#8B5CF6" strokeWidth={2} dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -154,9 +225,10 @@ export function StrategicalView({
             </div>
             <div className="flex-1 flex flex-col justify-center items-center py-4">
               {!hasSquads ? (
-                <div className="flex flex-col items-center justify-center py-10 gap-2 opacity-50">
-                  <Target className="w-8 h-8 text-[var(--color-text-faint)]" />
-                  <p className="text-xs font-bold text-[var(--color-text-muted)] text-center">Cadastre squads para visualizar as metas</p>
+                <div className="flex flex-col items-center justify-center py-6 gap-1.5 opacity-60">
+                  <Target className="w-6 h-6 text-[var(--color-text-faint)]" />
+                  <p className="text-[11px] font-bold text-[var(--color-text-muted)] text-center">Nenhum squad com meta cadastrada</p>
+                  <p className="text-[10px] text-[var(--color-text-faint)] text-center">Configure em RH → Squads pra acompanhar aqui</p>
                 </div>
               ) : (
                 <>
@@ -182,6 +254,13 @@ export function StrategicalView({
                   <div className="w-full space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[var(--color-text-faint)]" />
+                        <span className="text-xs text-[var(--color-text-muted)] font-medium">Meta Global:</span>
+                      </div>
+                      <span className="text-xs font-bold text-[var(--color-text-faint)]">{formatCurrency(totalMeta)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-emerald-500" />
                         <span className="text-xs text-[var(--color-text-muted)] font-medium">Realizado:</span>
                       </div>
@@ -189,10 +268,10 @@ export function StrategicalView({
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-[var(--color-text-faint)]" />
-                        <span className="text-xs text-[var(--color-text-muted)] font-medium">Meta Global:</span>
+                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span className="text-xs text-[var(--color-text-muted)] font-medium">Restante:</span>
                       </div>
-                      <span className="text-xs font-bold text-[var(--color-text-faint)]">{formatCurrency(totalMeta)}</span>
+                      <span className="text-xs font-bold text-amber-600 dark:text-amber-400">{formatCurrency(restanteMeta)}</span>
                     </div>
                   </div>
                 </>
@@ -248,7 +327,7 @@ export function StrategicalView({
                 </h3>
                 {taxaInadimplencia !== null && (
                   <Badge variant={taxaInadimplencia > 0 ? "destructive" : "success"} dot>
-                    {taxaInadimplencia === 0 ? "Sem inadimplência" : `${taxaInadimplencia.toFixed(1)}% inadimplente`}
+                    {taxaInadimplencia === 0 ? "Sem inadimplência" : `${formatPercentage(taxaInadimplencia)} inadimplente`}
                   </Badge>
                 )}
               </div>
@@ -272,6 +351,48 @@ export function StrategicalView({
                   ))
                 )}
               </div>
+            </Card>
+
+            <Card className="lg:col-span-4 p-6 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm">
+              <h3 className="text-xs font-black text-[var(--color-text-primary)] uppercase tracking-wider flex items-center gap-2.5 mb-6">
+                <Wallet className="w-4 h-4 text-emerald-500" /> Snapshot Financeiro
+                <span className="text-[10px] font-medium normal-case text-[var(--color-text-faint)]">
+                  {!dateFrom && !dateTo ? "· todo o período" : "· período selecionado"}
+                </span>
+              </h3>
+              {!financeSnapshot.hasAnyEntry ? (
+                <div className="flex flex-col items-center justify-center py-6 gap-2 opacity-50">
+                  <Wallet className="w-6 h-6 text-[var(--color-text-faint)]" />
+                  <p className="text-xs font-medium text-[var(--color-text-muted)]">Sem lançamentos financeiros para calcular este snapshot.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-5">
+                  {[
+                    { label: "Receita", value: formatCurrency(financeSnapshot.receita), desc: "Recebido no período", icon: TrendingUp, color: "text-emerald-600 dark:text-emerald-400" },
+                    { label: "Despesas", value: formatCurrency(financeSnapshot.despesas), desc: "Pago no período", icon: TrendingDown, color: "text-rose-600 dark:text-rose-400" },
+                    {
+                      label: "Receita Líquida", value: formatCurrency(financeSnapshot.receitaLiquida), desc: "Receita − Despesas",
+                      icon: Wallet, color: financeSnapshot.receitaLiquida >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400",
+                    },
+                    { label: "Novas Vendas", value: financeSnapshot.novasVendas.toString(), desc: "Recebimentos no período", icon: Receipt, color: "text-[var(--color-primary-blue)]" },
+                    { label: "Contas a Receber", value: formatCurrency(financeSnapshot.contasAReceber), desc: "Em aberto agora", icon: Receipt, color: "text-amber-600 dark:text-amber-400" },
+                    { label: "Contas a Pagar", value: formatCurrency(financeSnapshot.contasAPagar), desc: "Em aberto agora", icon: Receipt, color: "text-amber-600 dark:text-amber-400" },
+                    { label: "Clientes Ativos", value: financeSnapshot.clientesAtivos.toString(), desc: "Base de clientes atual", icon: Users, color: "text-[var(--color-primary-blue)]" },
+                    { label: "Clientes Perdidos", value: financeSnapshot.clientesPerdidos.toString(), desc: "Marcados como Inativo", icon: Users, color: "text-rose-600 dark:text-rose-400" },
+                  ].map((item, i) => (
+                    <div key={i} className="space-y-1">
+                      <p className="text-[10px] text-[var(--color-text-faint)] font-bold uppercase tracking-wider flex items-center gap-1">
+                        <item.icon className="w-3 h-3" /> {item.label}
+                      </p>
+                      <h4 className={`text-base font-black ${item.color} font-mono tracking-tight`}>{item.value}</h4>
+                      <p className="text-[10px] text-[var(--color-text-muted)]">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!financeSnapshot.hasAnyCliente && financeSnapshot.hasAnyEntry && (
+                <p className="text-[10px] text-[var(--color-text-faint)] mt-4">Clientes Ativos/Perdidos: sem registros na Base de Clientes ainda.</p>
+              )}
             </Card>
           </div>
         )}
