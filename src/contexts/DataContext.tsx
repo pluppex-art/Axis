@@ -2380,7 +2380,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (prop?.lead_id) {
         const snapshot = proposalsRef.current.filter((p: any) => p.id !== id);
         const totalValue = sumProposalsValueForLead(prop.lead_id, snapshot);
-        await updateLead(prop.lead_id, { value: totalValue });
+        const leadStillHasProposals = snapshot.some((p: any) => p.lead_id === prop.lead_id);
+        const leadNow = (leads || []).find((l: any) => l.id === prop.lead_id);
+
+        if (!leadStillHasProposals && leadNow?.status === 'Fechado') {
+          // BUG real (achado: "Rodrigo Magalhães" continuava "Fechado" e com
+          // um cliente fantasma na Base de Clientes mesmo depois da proposta
+          // que o fechou ser excluída): apagar a proposta já zerava o valor,
+          // mas nunca desfazia o "ganho" em si — status, clientId e as
+          // marcas de venda em customFields (parcelas/forma de pagamento/
+          // etc., gravadas por AddProdutoLeadModal) ficavam presas, como se
+          // o negócio ainda tivesse acontecido. Só desfaz quando não sobra
+          // NENHUMA proposta real pro lead — se ainda houver outra proposta
+          // de verdade, o lead continua Fechado por causa dela.
+          const cf = leadNow?.customFields || {};
+          const {
+            parcelas, valorParcela, billingType, frequency, numberOfCycles, cycleAmount,
+            setupAmount, firstChargeAmount, totalProjectedAmount, formaPagamento, installments,
+            dataPagamento, detalhesPagamento, tags, ...restCustomFields
+          } = cf;
+          const cleanedTags = Array.isArray(tags) ? tags.filter((t: string) => t !== 'Venda') : undefined;
+          await updateLead(prop.lead_id, {
+            value: totalValue,
+            status: 'Em Aberto',
+            clientId: null,
+            clientName: null,
+            customFields: { ...restCustomFields, ...(cleanedTags && cleanedTags.length > 0 ? { tags: cleanedTags } : {}) },
+          });
+        } else {
+          await updateLead(prop.lead_id, { value: totalValue });
+        }
       }
     }
     return ok;
