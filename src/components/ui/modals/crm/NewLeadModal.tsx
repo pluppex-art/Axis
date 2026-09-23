@@ -26,7 +26,7 @@ export function NewLeadModal({ isOpen, onClose, firstStageId = "1", firstComerci
   const [loading, setLoading] = useState(false);
   const [tags, setTags] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const { leads, addLead, customLeadFields, clienteBase, colaboradores, products } = useData();
+  const { leads, addLead, customLeadFields, clienteBase, colaboradores } = useData();
   const { user, allTenantModules, tenantIdMap } = useAuth();
   const isMaster = user?.isMaster;
 
@@ -46,7 +46,6 @@ export function NewLeadModal({ isOpen, onClose, firstStageId = "1", firstComerci
   const [currentRole, setCurrentRole] = useState("");
   const [teamSize, setTeamSize] = useState("");
   const [valueEstimate, setValueEstimate] = useState("");
-  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
 
   const isEmailDuplicate = leads.some(l => l.email.toLowerCase() === emailValue.toLowerCase() && emailValue !== "");
   const isCnpjDuplicate = leads.some(l => l.cnpj === cnpjValue && cnpjValue !== "");
@@ -193,7 +192,6 @@ export function NewLeadModal({ isOpen, onClose, firstStageId = "1", firstComerci
       tenantId: tenantIdMap[selectedTenant], tenantName: selectedTenant,
       clientId: selectedClientId || undefined, clientName: selectedClientName || undefined,
       customFields: { linkedinLink, currentRole, teamSize },
-      productIds: selectedProductIds.length > 0 ? selectedProductIds : undefined,
     });
 
     setLoading(false);
@@ -201,7 +199,7 @@ export function NewLeadModal({ isOpen, onClose, firstStageId = "1", firstComerci
     setValueEstimate("");
     setLinkedinLink(""); setCurrentRole(""); setTeamSize("");
     setClientSearch(""); setSelectedClientId(""); setSelectedClientName("");
-    setSelectedSeller(user?.name || sellerOptions[0] || ""); setSelectedProductIds([]);
+    setSelectedSeller(user?.name || sellerOptions[0] || "");
     setCnpjStatus({ status: "idle" });
     onClose();
   };
@@ -266,7 +264,6 @@ export function NewLeadModal({ isOpen, onClose, firstStageId = "1", firstComerci
           aiLoading={aiLoading} suggestTags={suggestTags}
           isMaster={!!isMaster} selectedTenant={selectedTenant} setSelectedTenant={setSelectedTenant}
           allTenantModules={allTenantModules}
-          products={products || []} selectedProductIds={selectedProductIds} setSelectedProductIds={setSelectedProductIds}
         />
       </form>
     </Modal>

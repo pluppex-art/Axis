@@ -3313,6 +3313,15 @@ const AURORA_TOOLS = [
     description: "Retorna o resumo do funil fotovoltaico do tenant: quantidade de análises por estágio, propostas enviadas, vendas fechadas e potência instalada. Use para perguntas sobre leads solares, propostas e status do funil de energia solar.",
     parameters: { type: Type.OBJECT, properties: {} },
   },
+  {
+    name: "buscar_produto",
+    description: "Busca produtos ativos do catálogo do tenant por nome/palavra-chave — usa pra 'selecionar' e referenciar o produto certo (nome exato, preço, recorrência, taxa de implantação) ao discutir ou sugerir uma proposta pro usuário. Só consulta o catálogo, nunca cria proposta/venda nenhuma sozinha — quem decide e confirma é sempre o usuário, no fluxo normal de criação de proposta.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: { termo: { type: Type.STRING, description: "Nome ou palavra-chave do produto (ex.: 'licença fundador', 'tráfego pago')" } },
+      required: ["termo"],
+    },
+  },
 ];
 
 // `tenantId` é opcional pro caminho autenticado (req.supabase já escopa por
@@ -3427,6 +3436,35 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any, tenan
       vendas_fechadas: fechados.length,
       potencia_instalada_kwp: fechados.reduce((s: number, r: any) => s + Number(r.potencia_estimada_kwp ?? 0), 0),
       receita_fechada: fechados.reduce((s: number, r: any) => s + Number(r.valor_proposta ?? 0), 0),
+    };
+  }
+
+  if (name === "buscar_produto") {
+    const termo = String(args?.termo || "").trim();
+    if (!termo) return { error: "Informe um termo de busca." };
+    const { data, error } = await scoped(
+      supabaseClient
+        .from("products")
+        .select("id, name, price, category, is_recurring, recurring_period, implementation_fee, description")
+        .eq("active", true)
+        .ilike("name", `%${termo}%`)
+    ).limit(10);
+    if (error) return { error: error.message };
+    if (!data || data.length === 0) {
+      return { encontrado: false, mensagem: `Nenhum produto ativo do catálogo bate com "${termo}".` };
+    }
+    return {
+      encontrado: true,
+      produtos: data.map((p: any) => ({
+        id: p.id,
+        nome: p.name,
+        preco: Number(p.price) || 0,
+        categoria: p.category || null,
+        recorrente: !!p.is_recurring,
+        frequencia: p.is_recurring ? (p.recurring_period || "mensal") : null,
+        taxa_implantacao: Number(p.implementation_fee) || 0,
+        descricao: p.description || null,
+      })),
     };
   }
 

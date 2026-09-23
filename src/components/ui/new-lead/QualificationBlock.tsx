@@ -1,4 +1,4 @@
-import { Briefcase, Users, Target, Package, Sparkles, CheckCircle2 } from "lucide-react";
+import { Briefcase, Sparkles } from "lucide-react";
 import { Button } from "../button";
 import { FormField } from "../form-field";
 import { Input } from "../input";
@@ -18,18 +18,24 @@ interface QualificationBlockProps {
   selectedTenant: string;
   setSelectedTenant: (v: string) => void;
   allTenantModules: Record<string, any>;
-  products: any[];
-  selectedProductIds: string[];
-  setSelectedProductIds: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
+/**
+ * Removido "Produtos de Interesse" (checkboxes marcadas aqui, na criação do
+ * lead) — bug real: `lead.productIds` era preenchido por isso E pela venda
+ * de verdade (AddProdutoLeadModal), sem distinção. 8 leads da Pluppex
+ * tinham os mesmos produtos "marcados como interesse" na qualificação e
+ * nunca fecharam negócio nenhum, mas apareciam com "Produto (catálogo):
+ * R$2.997" no Lead Details/card do Kanban como se fosse uma venda real (ver
+ * ProfileSection.tsx/LeadCard.tsx). Seleção de produto agora só existe
+ * dentro da criação de proposta de verdade (CriarPropostaModal.tsx já tem
+ * isso), nunca mais aqui.
+ */
 export function QualificationBlock({
   teamSize, setTeamSize, currentRole, setCurrentRole, linkedinLink, setLinkedinLink,
   tags, setTags, aiLoading, suggestTags, isMaster, selectedTenant, setSelectedTenant,
-  allTenantModules, products, selectedProductIds, setSelectedProductIds,
+  allTenantModules,
 }: QualificationBlockProps) {
-  const activeProducts = products.filter((p: any) => p.active !== false);
-
   return (
     <div className="space-y-4">
       <h4 className="text-xs font-black text-[var(--color-text-primary)] border-b border-[var(--color-border-subtle)] pb-2 flex items-center gap-2 uppercase tracking-wider">
@@ -96,44 +102,6 @@ export function QualificationBlock({
               ))}
             </select>
           </FormField>
-        </div>
-      )}
-
-      {activeProducts.length > 0 && (
-        <div className="space-y-2 pt-2 border-t border-[var(--color-border-subtle)]">
-          <label className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
-              <Package className="w-3.5 h-3.5 text-emerald-500" /> Produtos de Interesse
-            </span>
-            <span className="text-[10px] text-[var(--color-text-faint)] font-normal normal-case">Opcional</span>
-          </label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {activeProducts.map((p: any) => {
-              const isSelected = selectedProductIds.includes(p.id);
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setSelectedProductIds(prev => isSelected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                  className={`p-2.5 rounded-[var(--radius-control)] border text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
-                    isSelected
-                      ? "bg-emerald-500/10 border-emerald-500/40 text-[var(--color-text-primary)] font-bold shadow-sm"
-                      : "bg-[var(--color-surface-sunken)] border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold truncate">{p.name}</p>
-                    {p.price > 0 && (
-                      <p className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">
-                        R$ {Number(p.price).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                      </p>
-                    )}
-                  </div>
-                  {isSelected && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
-                </button>
-              );
-            })}
-          </div>
         </div>
       )}
 
