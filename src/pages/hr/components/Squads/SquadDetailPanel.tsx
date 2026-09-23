@@ -137,7 +137,10 @@ export function SquadDetailPanel({
                   <div key={idx} className="flex items-center justify-between p-3.5 bg-white/5 rounded-xl border border-white/5 group transition-all hover:border-white/10">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-white truncate">{cliente.name}</p>
-                      <p className="text-[10px] text-slate-500 truncate">{cliente.industry} · {cliente.city}, {cliente.state}</p>
+                      <p className="text-[10px] text-slate-500 truncate">
+                        {cliente.industry}
+                        {(cliente.city || cliente.state) && ` · ${cliente.city && cliente.state ? `${cliente.city}, ${cliente.state}` : (cliente.city || cliente.state)}`}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2 ml-2 shrink-0">
                       <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full border ${cliente.status === 'Ativo' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20' : 'bg-slate-700/50 text-slate-400 border-slate-600/30'}`}>

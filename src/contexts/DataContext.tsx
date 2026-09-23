@@ -1751,7 +1751,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (hasStatusOrStageChange) {
       setTimeout(() => { triggerScoreRecalculation(id, mergedLead ? [mergedLead] : undefined); }, 400);
     }
-    if (becameWon && mergedLead) {
+    // BUG real (visto em produção: "Wemerson Carvalho"/"Guruseg" duplicados
+    // na Base de Clientes, criados ~200ms um do outro): esta chamada nunca
+    // marcava `reconciledWonLeadIdsRef` antes de disparar
+    // createClientFromWonLead — só a reconciliação em lote (useEffect logo
+    // abaixo) marcava. Quando um lead vira "Fechado" ao vivo, o setLeads
+    // otimista aqui MUDA `leads`, o que dispara de novo aquele useEffect
+    // (dependência [leads, clienteBase]) antes desta chamada terminar (é
+    // assíncrona) — o efeito via o lead como "ainda pendente" (guard não
+    // marcada) e processava o MESMO lead de novo, em paralelo: duas
+    // consultas "cliente já existe" corriam antes de qualquer INSERT
+    // commitar, nenhuma via a outra, as duas inseriam. Marcar a guard AQUI
+    // (síncrono, antes do primeiro await) fecha a corrida pros dois lados.
+    if (becameWon && mergedLead && !reconciledWonLeadIdsRef.current.has(mergedLead.id)) {
+      reconciledWonLeadIdsRef.current.add(mergedLead.id);
       createClientFromWonLead(mergedLead);
     }
   };

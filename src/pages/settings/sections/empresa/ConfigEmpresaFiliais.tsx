@@ -78,7 +78,8 @@ export function ConfigEmpresaFiliais() {
                   <div className="text-xs text-[var(--color-text-muted)] mt-0.5 flex items-center gap-3 flex-wrap">
                     <span className="font-mono">CNPJ: {filial.cnpj}</span>
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3 text-[var(--color-text-faint)]" /> {filial.cidade} - {filial.estado}
+                      <MapPin className="w-3 h-3 text-[var(--color-text-faint)]" />
+                      {filial.cidade && filial.estado ? `${filial.cidade} - ${filial.estado}` : (filial.cidade || filial.estado || "Não informado")}
                     </span>
                   </div>
                 </div>

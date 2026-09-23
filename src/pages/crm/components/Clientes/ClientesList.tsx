@@ -12,9 +12,21 @@ import {
   TableHead,
   TableCell,
 } from "../../../../components/ui/table";
-import { Search, Building2, MapPin, Phone, Mail, Trash2, FileText, Users } from "lucide-react";
+import { Search, Building2, MapPin, Phone, Mail, Trash2, FileText, Users, Pencil } from "lucide-react";
 
 const PAGE_SIZE = 50;
+
+// `{city}, {state}` direto no JSX virava uma "," sozinha quando os dois eram
+// null (não tem mais fallback fixo tipo "São Paulo" — ver Empresas.tsx/
+// NovoClienteModal.tsx/DataContext.tsx createClientFromWonLead). Cliente sem
+// localização informada é um estado real e deve dizer isso, não mostrar um
+// separador vazio.
+function localizacaoLabel(city?: string | null, state?: string | null): string {
+  if (city && state) return `${city}, ${state}`;
+  if (city) return city;
+  if (state) return state;
+  return "Não informado";
+}
 
 interface Cliente {
   id: string;
@@ -37,6 +49,7 @@ interface ClientesListProps {
   statusFilter: string;
   onStatusChange: (v: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (cliente: Cliente) => void;
   onManageContatos: (clienteId: string) => void;
   onOpenDetalhes: (clienteId: string) => void;
 }
@@ -49,7 +62,7 @@ function statusBadgeVariant(status?: string): "success" | "warning" | "secondary
 
 export function ClientesList({
   clientes, searchQuery, onSearchChange,
-  sectorFilter, onSectorChange, statusFilter, onStatusChange, onDelete, onManageContatos, onOpenDetalhes,
+  sectorFilter, onSectorChange, statusFilter, onStatusChange, onDelete, onEdit, onManageContatos, onOpenDetalhes,
 }: ClientesListProps) {
   const filtered = useMemo(() => clientes.filter(c => {
     if (statusFilter !== "Todos as situações" && c.status !== statusFilter) return false;
@@ -159,7 +172,7 @@ export function ClientesList({
                   </TableCell>
                   <TableCell className="text-[var(--color-text-muted)] text-xs">
                     <div className="flex items-center gap-1.5">
-                      <MapPin className="w-3 h-3 text-[var(--color-text-faint)]" /> {c.city}, {c.state}
+                      <MapPin className="w-3 h-3 text-[var(--color-text-faint)]" /> {localizacaoLabel(c.city, c.state)}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -167,6 +180,13 @@ export function ClientesList({
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEdit(c); }}
+                        title="Editar Cliente"
+                        className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10 rounded-lg transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); onManageContatos(c.id); }}
                         title="Contatos e Decisores"
@@ -204,6 +224,12 @@ export function ClientesList({
               <div className="flex items-center gap-2 shrink-0">
                 <Badge variant={statusBadgeVariant(c.status)}>{c.status}</Badge>
                 <button
+                  onClick={(e) => { e.stopPropagation(); onEdit(c); }}
+                  className="p-1 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10 rounded transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
                   onClick={(e) => { e.stopPropagation(); onManageContatos(c.id); }}
                   className="p-1 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10 rounded transition-colors"
                 >
@@ -219,7 +245,7 @@ export function ClientesList({
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="bg-[var(--color-surface-sunken)] px-2 py-0.5 rounded text-[9px] uppercase font-bold text-[var(--color-text-muted)]">{c.industry}</span>
-              <span className="flex items-center gap-1 text-[10px] text-[var(--color-text-faint)]"><MapPin className="w-3 h-3" /> {c.city}, {c.state}</span>
+              <span className="flex items-center gap-1 text-[10px] text-[var(--color-text-faint)]"><MapPin className="w-3 h-3" /> {localizacaoLabel(c.city, c.state)}</span>
             </div>
             <div className="pt-2 border-t border-[var(--color-border-subtle)] flex flex-col gap-1.5 text-[11px] text-[var(--color-text-muted)]">
               <div className="flex items-center gap-1.5"><Mail className="w-3 h-3 text-[var(--color-text-faint)] shrink-0" /><span className="truncate">{c.email}</span></div>
