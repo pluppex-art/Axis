@@ -3,7 +3,7 @@ import { Card } from "../card";
 import { Button } from "../button";
 import { Badge } from "../badge";
 import { EmptyState } from "../empty-state";
-import { FileText, Plus, Edit3, Check, Package, Search } from "lucide-react";
+import { FileText, Plus, Edit3, Check, Package, Search, Tag, X, Info } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
 import { useLocalization } from "../../../contexts/LocalizationContext";
@@ -37,7 +37,7 @@ export function ProductsSection({
   companyName,
   leadId,
 }: ProductsSectionProps) {
-  const { updateProposal, proposals, proposalItems, appSettings } = useData();
+  const { updateProposal, proposals, proposalItems, appSettings, leads, updateLead } = useData();
   const empresaDadosBranding = appSettings?.empresa_dados || {};
   const { formatCurrency } = useLocalization();
 
@@ -46,6 +46,30 @@ export function ProductsSection({
   const [searchTerm, setSearchTerm] = useState("");
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
   const [currentProposalData, setCurrentProposalData] = useState<PropostaEditorData | null>(null);
+
+  // Produtos de Interesse: marcação leve ("essa é a tag, esse é o valor de
+  // referência"), SEM criar proposta nenhuma — pedido explícito do usuário
+  // depois do bug de "Produto (catálogo): R$2.997 que não existe" (a versão
+  // antiga confundia isso com venda real). Guardado à parte, em
+  // customFields.produtosInteresseIds — nunca em `productIds` (esse
+  // continua reservado só pra produtos de uma venda de verdade, via
+  // AddProdutoLeadModal) e nunca soma em Valor da Proposta/Produto
+  // (catálogo) (ProfileSection.tsx), que seguem vindo só de proposal_items
+  // reais.
+  const currentLead = useMemo(() => (leads || []).find((l: any) => l.id === leadId), [leads, leadId]);
+  const interesseIds: string[] = Array.isArray(currentLead?.customFields?.produtosInteresseIds)
+    ? currentLead.customFields.produtosInteresseIds
+    : [];
+  const toggleInteresse = (productId: string) => {
+    if (!leadId) return;
+    const next = interesseIds.includes(productId)
+      ? interesseIds.filter((id) => id !== productId)
+      : [...interesseIds, productId];
+    updateLead(leadId, { customFields: { ...(currentLead?.customFields || {}), produtosInteresseIds: next } });
+  };
+  const produtosInteresse = interesseIds
+    .map((id) => availableProducts.find((p) => p.id === id))
+    .filter(Boolean) as any[];
 
   const filteredProducts = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -216,6 +240,45 @@ export function ProductsSection({
         </Card>
       )}
 
+      <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-1.5">
+            <Tag className="w-3.5 h-3.5 text-amber-500" /> Produtos de Interesse
+          </span>
+          <span
+            className="text-[var(--color-text-faint)]"
+            title="Marcação rápida, sem criar proposta nenhuma — não entra no Valor da Proposta nem no financeiro. Quando a venda sair de verdade, use '+ Novo Produto' abaixo."
+          >
+            <Info className="w-3 h-3" />
+          </span>
+        </div>
+        {produtosInteresse.length === 0 ? (
+          <p className="text-[11px] text-[var(--color-text-faint)]">
+            Nenhum produto marcado ainda — clique no <Tag className="w-2.5 h-2.5 inline" /> de um item abaixo pra marcar, sem precisar fazer a proposta.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {produtosInteresse.map((prod) => (
+              <span
+                key={prod.id}
+                className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-[11px] font-bold text-amber-700 dark:text-amber-400"
+              >
+                {prod.name}
+                <span className="font-mono text-[10px] opacity-80">{formatCurrency(Number(prod.price) || 0)}</span>
+                <button
+                  type="button"
+                  onClick={() => toggleInteresse(prod.id)}
+                  className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-amber-500/20 transition-colors"
+                  title="Remover marcação"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </Card>
+
       <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm space-y-3">
         <div className="flex items-center justify-between gap-3">
           <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-2">
@@ -244,27 +307,49 @@ export function ProductsSection({
 
         {filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto scrollbar-thin pr-1">
-            {filteredProducts.map((prod) => (
-              <button
-                key={prod.id}
-                type="button"
-                onClick={() => openAddModal(prod.id)}
-                className="p-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)] hover:border-[var(--color-primary-blue)]/50 hover:bg-[var(--color-primary-blue)]/5 transition-all flex items-center justify-between gap-2 text-left cursor-pointer"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-[var(--color-text-primary)] truncate">{prod.name}</p>
-                  <span className="text-[9px] text-[var(--color-text-faint)] uppercase font-semibold">
-                    {prod.category} {prod.recurrence && "• Recorrente"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs font-mono font-black text-emerald-600">{formatCurrency(Number(prod.price) || 0)}</span>
-                  <div className="w-5 h-5 rounded flex items-center justify-center bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)]">
-                    <Plus className="w-3 h-3" />
+            {filteredProducts.map((prod) => {
+              const isMarked = interesseIds.includes(prod.id);
+              return (
+                <div
+                  key={prod.id}
+                  className="p-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)] hover:border-[var(--color-primary-blue)]/50 hover:bg-[var(--color-primary-blue)]/5 transition-all flex items-center justify-between gap-2"
+                >
+                  <button
+                    type="button"
+                    onClick={() => openAddModal(prod.id)}
+                    className="min-w-0 flex-1 text-left cursor-pointer"
+                    title="Vender este produto agora (cria proposta real)"
+                  >
+                    <p className="text-xs font-bold text-[var(--color-text-primary)] truncate">{prod.name}</p>
+                    <span className="text-[9px] text-[var(--color-text-faint)] uppercase font-semibold">
+                      {prod.category} {prod.recurrence && "• Recorrente"}
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs font-mono font-black text-emerald-600">{formatCurrency(Number(prod.price) || 0)}</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleInteresse(prod.id)}
+                      title={isMarked ? "Remover marcação de interesse" : "Marcar como produto de interesse (sem criar proposta)"}
+                      className={cn(
+                        "w-5 h-5 rounded flex items-center justify-center transition-colors cursor-pointer",
+                        isMarked ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" : "bg-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-amber-500"
+                      )}
+                    >
+                      <Tag className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openAddModal(prod.id)}
+                      title="Vender este produto agora (cria proposta real)"
+                      className="w-5 h-5 rounded flex items-center justify-center bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/20 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
-              </button>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <EmptyState

@@ -3322,6 +3322,18 @@ const AURORA_TOOLS = [
       required: ["termo"],
     },
   },
+  {
+    name: "marcar_produto_interesse",
+    description: "Marca um produto do catálogo como 'produto de interesse' num lead específico — uma tag leve, visível no Lead Details, SEM criar proposta/venda nenhuma e sem lançar nada no financeiro (equivalente a clicar na tag de um produto na aba Produtos do lead). Use quando o usuário disser algo como 'marca esse produto pro lead X' ou 'a Aurora seleciona o produto' — nunca use isso como se fosse fechar uma venda; pra vender de verdade, o usuário precisa usar o fluxo normal de proposta.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        lead_nome: { type: Type.STRING, description: "Nome do lead ou da empresa, como aparece no CRM (busca aproximada)" },
+        produto_nome: { type: Type.STRING, description: "Nome ou palavra-chave do produto do catálogo" },
+      },
+      required: ["lead_nome", "produto_nome"],
+    },
+  },
 ];
 
 // `tenantId` é opcional pro caminho autenticado (req.supabase já escopa por
@@ -3465,6 +3477,63 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any, tenan
         taxa_implantacao: Number(p.implementation_fee) || 0,
         descricao: p.description || null,
       })),
+    };
+  }
+
+  if (name === "marcar_produto_interesse") {
+    const leadNome = String(args?.lead_nome || "").trim();
+    const produtoNome = String(args?.produto_nome || "").trim();
+    if (!leadNome || !produtoNome) return { error: "Informe o nome do lead e o nome do produto." };
+
+    const { data: leadMatches, error: leadErr } = await scoped(
+      supabaseClient.from("leads").select('id, name, company, "customFields"').is("deleted_at", null)
+        .or(`name.ilike.%${leadNome}%,company.ilike.%${leadNome}%`)
+    ).limit(5);
+    if (leadErr) return { error: leadErr.message };
+    if (!leadMatches || leadMatches.length === 0) {
+      return { sucesso: false, mensagem: `Nenhum lead encontrado com o nome/empresa "${leadNome}".` };
+    }
+    if (leadMatches.length > 1) {
+      return {
+        sucesso: false,
+        mensagem: `Mais de um lead bate com "${leadNome}" — pergunte ao usuário qual é o certo antes de marcar.`,
+        candidatos: leadMatches.map((l: any) => ({ nome: l.name, empresa: l.company })),
+      };
+    }
+    const lead = leadMatches[0] as any;
+
+    const { data: productMatches, error: prodErr } = await scoped(
+      supabaseClient.from("products").select("id, name, price").eq("active", true).ilike("name", `%${produtoNome}%`)
+    ).limit(5);
+    if (prodErr) return { error: prodErr.message };
+    if (!productMatches || productMatches.length === 0) {
+      return { sucesso: false, mensagem: `Nenhum produto ativo do catálogo bate com "${produtoNome}".` };
+    }
+    if (productMatches.length > 1) {
+      return {
+        sucesso: false,
+        mensagem: `Mais de um produto bate com "${produtoNome}" — pergunte ao usuário qual é o certo antes de marcar.`,
+        candidatos: productMatches.map((p: any) => ({ nome: p.name, preco: Number(p.price) || 0 })),
+      };
+    }
+    const produto = productMatches[0] as any;
+
+    const customFields = lead.customFields || {};
+    const atuais: string[] = Array.isArray(customFields.produtosInteresseIds) ? customFields.produtosInteresseIds : [];
+    if (atuais.includes(produto.id)) {
+      return { sucesso: true, ja_marcado: true, lead: lead.name, produto: produto.name, mensagem: `${produto.name} já estava marcado como interesse pra ${lead.name}.` };
+    }
+    const { error: updateErr } = await scoped(
+      supabaseClient.from("leads").update({ customFields: { ...customFields, produtosInteresseIds: [...atuais, produto.id] } }).eq("id", lead.id)
+    );
+    if (updateErr) return { error: updateErr.message };
+
+    return {
+      sucesso: true,
+      lead: lead.name,
+      produto: produto.name,
+      preco: Number(produto.price) || 0,
+      mensagem: `Marquei "${produto.name}" (${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(produto.price) || 0)}) como produto de interesse pra ${lead.name} — visível na aba Produtos do lead, sem criar proposta nenhuma.`,
     };
   }
 
