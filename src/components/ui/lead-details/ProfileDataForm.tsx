@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  Mail, Phone, Building2, User, FileCheck, Briefcase, DollarSign, Lock, Edit, Search,
+  Mail, Phone, Building2, User, FileCheck, Briefcase, DollarSign, Lock, Edit, Search, Package,
 } from "lucide-react";
 import { formatCNPJ } from "../../../lib/utils";
 
@@ -22,6 +22,9 @@ interface ProfileDataFormProps {
   value: string;
   setValue: (val: string) => void;
   displayValue: string;
+  /** Referência de catálogo dos produtos vinculados (null quando nenhum) —
+   * exibida ao lado do valor da proposta, mas sem ser o número principal. */
+  productValue: string | null;
   seller: string;
   setSeller: (val: string) => void;
   priority: "Alta" | "Média" | "Baixa";
@@ -58,6 +61,7 @@ export function ProfileDataForm({
   title, setTitle,
   value, setValue,
   displayValue,
+  productValue,
   seller, setSeller,
   priority, setPriority,
   sellerOptions,
@@ -203,17 +207,21 @@ export function ProfileDataForm({
             />
           </div>
           <div className="p-3">
-            <div className="text-[10px] font-bold text-[var(--color-text-faint)] mb-1 uppercase tracking-wider flex items-center gap-1">
-              <DollarSign className="w-3 h-3 text-[var(--color-text-muted)]" /> Valor Negociado
+            <div
+              className="text-[10px] font-bold text-[var(--color-text-faint)] mb-1 uppercase tracking-wider flex items-center gap-1"
+              title="Editável só pela proposta vinculada — evita que o valor real do negócio (usado no financeiro) divirja do que foi de fato proposto ao cliente."
+            >
+              <DollarSign className="w-3 h-3 text-[var(--color-text-muted)]" /> Valor da Proposta
+              <Lock className="w-2.5 h-2.5 text-[var(--color-text-faint)]" />
             </div>
-            <input
-              type="text"
-              value={isEditingInline ? value : displayValue}
-              placeholder="R$ 0,00"
-              onFocus={() => setIsEditingInline(true)}
-              onChange={(e) => setValue(e.target.value)}
-              className={isEditingInline ? inputActiveClass : viewCls("text-emerald-600 dark:text-emerald-400 font-bold font-mono")}
-            />
+            <span className="block text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400">
+              {displayValue}
+            </span>
+            {productValue && (
+              <span className="flex items-center gap-1 text-[10px] font-mono text-[var(--color-text-faint)] mt-0.5">
+                <Package className="w-2.5 h-2.5" /> Produto (catálogo): {productValue}
+              </span>
+            )}
           </div>
         </div>
 

@@ -708,12 +708,29 @@ export function PropostaEditorWordModal({
                   <tr>
                     <td colSpan={3} className="py-3 px-4 text-right uppercase text-[11px] text-slate-600">
                       Investimento Total da Proposta:
+                      {mode === "edit" && (
+                        <span className="block normal-case font-normal text-[10px] text-slate-400 mt-0.5">
+                          Editar aqui atualiza automaticamente o valor no pipeline, no card do lead e nos detalhes.
+                        </span>
+                      )}
                     </td>
-                    <td
-                      className="py-3 px-4 text-right font-mono text-base font-black"
-                      style={{ color: brandColor }}
-                    >
-                      R$ {valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    <td className="py-3 px-4 text-right font-mono text-base font-black" style={{ color: brandColor }}>
+                      {mode === "edit" ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-sm">R$</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={valor}
+                            onChange={(e) => setValor(Math.max(0, parseFloat(e.target.value) || 0))}
+                            className="w-32 bg-white border border-slate-300 rounded px-2 py-1 text-right font-mono text-base font-black focus:outline-none focus:border-blue-600 shadow-xs"
+                            style={{ color: brandColor }}
+                          />
+                        </div>
+                      ) : (
+                        <>R$ {valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</>
+                      )}
                     </td>
                   </tr>
                 </tfoot>

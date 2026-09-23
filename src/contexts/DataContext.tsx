@@ -754,6 +754,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const proposals = useMemo(() => filterByFilial(proposalsRaw), [proposalsRaw, activeFilialId]);
   const colaboradores = useMemo(() => filterByFilial(colaboradoresRaw), [colaboradoresRaw, activeFilialId]);
 
+  // Espelho síncrono de `proposalsRaw` (sem filtro de filial — soma de valor de um
+  // lead precisa contar TODAS as propostas dele, independente da visão de filial
+  // ativa) — lido dentro de createProposalWithItems/deleteProposal/updateProposal
+  // logo depois de chamar proposalCrud.add/del/update, cujo setState é assíncrono
+  // e ainda não refletiu no próximo render nesse ponto do código.
+  const proposalsRef = React.useRef(proposalsRaw);
+  proposalsRef.current = proposalsRaw;
+
+  // Única fonte de verdade pro valor de um lead: soma de `valor` de todas as
+  // propostas vinculadas a ele. Substitui os 3 caminhos antigos que ora somavam,
+  // ora sobrescreviam `lead.value` de formas inconsistentes (ver comentários em
+  // createProposalWithItems/deleteProposal/syncAcceptedProposal) — somar sempre
+  // a partir do zero é idempotente por natureza, então roda quantas vezes for
+  // preciso sem risco de duplicar ou "esquecer" de subtrair valor.
+  const sumProposalsValueForLead = (leadId: string, snapshot: any[]) =>
+    snapshot
+      .filter((p: any) => p.lead_id === leadId)
+      .reduce((sum: number, p: any) => sum + (Number(p.valor) || 0), 0);
+
   const addStudent = async (student: any) => {
     const newStudent = { ...student, id: crypto.randomUUID(), ...(tenantId ? { tenant_id: tenantId } : {}) };
     setStudents(prev => [...prev, newStudent]);
@@ -980,7 +999,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setNichos([]);
     nicheModulesRef.current = { tenantId: null, started: false };
     reconciledProposalIdsRef.current.clear();
-    leadValueAppliedProposalIdsRef.current.clear();
     reconciledWonLeadIdsRef.current.clear();
     setFinanceCategories([]);
     setFinanceBankAccounts([]);
@@ -1575,13 +1593,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => { triggerScoreRecalculation(newLead.id, [newLead]); }, 400);
   };
 
-  // Trava contra a mesma corrida documentada em leadValueAppliedProposalIdsRef
-  // abaixo: `!lead.clientId` (usado tanto aqui quanto na reconciliação logo
-  // após updateLead) depende do estado local `leads`, que fica defasado
-  // enquanto o `updateLead(lead.id, { clientId })` de createClientFromWonLead
-  // ainda está em voo (é assíncrono) — sem essa trava por id, a reconciliação
-  // podia rodar de novo nesse meio-tempo e criar um cliente duplicado pro
-  // mesmo lead.
+  // Trava contra corrida assíncrona: `!lead.clientId` (usado tanto aqui quanto
+  // na reconciliação logo após updateLead) depende do estado local `leads`,
+  // que fica defasado enquanto o `updateLead(lead.id, { clientId })` de
+  // createClientFromWonLead ainda está em voo (é assíncrono) — sem essa trava
+  // por id, a reconciliação podia rodar de novo nesse meio-tempo e criar um
+  // cliente duplicado pro mesmo lead.
   const reconciledWonLeadIdsRef = React.useRef<Set<string>>(new Set());
 
   // Ao ganhar um lead (status -> "Fechado"), cria (ou vincula, se já existir por
@@ -2230,7 +2247,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null; frequency?: string | null }>;
   }) => {
     const proposalId = crypto.randomUUID();
-    await proposalCrud.add({
+    const stampedProposal = await proposalCrud.add({
       id: proposalId,
       titulo: payload.titulo,
       cliente: payload.cliente,
@@ -2266,41 +2283,92 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // Sincroniza valor/produtos de volta no lead vinculado — sem isso, o card
     // do Kanban e o cabeçalho do lead ficam com valor zerado mesmo com uma
     // proposta real (e aceita) vinculada, porque eles leem `leads.value` /
-    // `leads.productIds` diretamente, não a tabela `proposals`.
+    // `leads.productIds` diretamente, não a tabela `proposals`. `value` é
+    // recalculado como a SOMA de todas as propostas do lead (não só esta) —
+    // gravar só `payload.valor` aqui sobrescrevia (em vez de somar) o valor de
+    // qualquer proposta anterior já vinculada ao mesmo lead.
     if (payload.leadId) {
       const productIds = (payload.itens || [])
         .map(item => item.productId)
         .filter((id): id is string => !!id);
+      const currentLead = (leads || []).find((l: any) => l.id === payload.leadId);
+      const mergedProductIds = [...new Set([...(currentLead?.productIds || []), ...productIds])];
+      const snapshot = [...proposalsRef.current.filter((p: any) => p.id !== proposalId), stampedProposal];
+      const totalValue = sumProposalsValueForLead(payload.leadId, snapshot);
       await updateLead(payload.leadId, {
-        value: payload.valor,
-        ...(productIds.length > 0 ? { productIds } : {}),
+        value: totalValue,
+        ...(mergedProductIds.length > 0 ? { productIds: mergedProductIds } : {}),
       });
     }
     return proposalId;
   };
 
-  // Excluir uma proposta não tirava o valor dela de volta do lead — como
-  // `updateLead` só SOMA (createProposalWithItems/AddProdutoLeadModal/
-  // syncAcceptedProposal todos acumulam `prop.valor` em cima do valor já
-  // existente, nunca substituem), apagar a proposta deixava o valor "preso"
-  // no lead pra sempre. Achado real: lead do Murilo (Geplan Contabilidade)
-  // mostrando R$22.729 mesmo sem nenhuma proposta restante depois de
-  // excluir as de teste. proposal_items é FK ON DELETE CASCADE no banco
-  // (já limpa sozinho); só o estado local precisa do mesmo tratamento.
+  // Excluir uma proposta precisa limpar TUDO que só existe por causa dela —
+  // senão fica resíduo: valor "preso" no lead (achado real: lead do Murilo/
+  // Geplan Contabilidade mostrando R$22.729 sem nenhuma proposta restante),
+  // cobranças a receber órfãs no financeiro (geradas pelo AddProdutoLeadModal
+  // ou pelo aceite da proposta em syncAcceptedProposal) e o contrato
+  // auto-gerado ao aceitar. proposal_items é FK ON DELETE CASCADE no banco
+  // (já limpa sozinho); o resto precisa de limpeza explícita aqui.
   const deleteProposal = async (id: string) => {
     const prop = (proposals || []).find((p: any) => p.id === id);
     const ok = await proposalCrud.del(id);
     if (ok) {
       setProposalItems(prev => prev.filter((pi: any) => pi.proposal_id !== id));
-      if (prop?.lead_id) {
-        const lead = (leads || []).find((l: any) => l.id === prop.lead_id);
-        if (lead) {
-          const newValue = Math.max(0, (Number(lead.value) || 0) - (Number(prop.valor) || 0));
-          updateLead(prop.lead_id, { value: newValue });
+
+      // Lançamentos financeiros gerados a partir desta proposta (recorrência/
+      // parcelamento do AddProdutoLeadModal, contrato/implantação do aceite) —
+      // sem proposal_id não dava pra saber quais eram, então ficavam "receita
+      // fantasma" a receber por um negócio que não existe mais.
+      const linkedEntryIds = (financeEntries as any[])
+        .filter((f: any) => f.proposal_id === id)
+        .map((f: any) => f.id);
+      if (linkedEntryIds.length > 0) {
+        setFinanceEntries(prev => prev.filter((f: any) => !linkedEntryIds.includes(f.id)));
+        if (supabase) {
+          const { error } = await supabase.from('finance_entries').delete().in('id', linkedEntryIds);
+          if (error) console.error('[Supabase] delete finance_entries by proposal_id error:', error.message);
         }
+      }
+
+      // Contrato auto-gerado ao aceitar esta proposta (syncAcceptedProposal) —
+      // só existe por causa dela, então some junto.
+      const linkedContractIds = (contracts as any[])
+        .filter((c: any) => c.proposalId === id)
+        .map((c: any) => c.id);
+      if (linkedContractIds.length > 0) {
+        setContracts(prev => prev.filter((c: any) => !linkedContractIds.includes(c.id)));
+        if (supabase) {
+          const { error } = await supabase.from('contracts').delete().in('id', linkedContractIds);
+          if (error) console.error('[Supabase] delete contracts by proposal_id error:', error.message);
+        }
+      }
+
+      if (prop?.lead_id) {
+        const snapshot = proposalsRef.current.filter((p: any) => p.id !== id);
+        const totalValue = sumProposalsValueForLead(prop.lead_id, snapshot);
+        await updateLead(prop.lead_id, { value: totalValue });
       }
     }
     return ok;
+  };
+
+  // Wrapper sobre proposalCrud.update: quando `valor` é editado manualmente
+  // (Editor de Contrato — "Editar Proposta"), precisa recalcular o valor do
+  // lead vinculado (soma de todas as propostas dele) na hora — senão o card
+  // do Kanban e o cabeçalho do lead ficam mostrando o valor antigo até o
+  // usuário mexer em outra coisa que dispare uma re-sincronização.
+  const updateProposal = async (id: string, updates: any) => {
+    await proposalCrud.update(id, updates);
+    if (updates.valor !== undefined) {
+      const prop = proposalsRef.current.find((p: any) => p.id === id);
+      const leadId = prop?.lead_id;
+      if (leadId) {
+        const snapshot = proposalsRef.current.map((p: any) => p.id === id ? { ...p, valor: updates.valor } : p);
+        const totalValue = sumProposalsValueForLead(leadId, snapshot);
+        await updateLead(leadId, { value: totalValue });
+      }
+    }
   };
 
   const turmaCrud = createCrudHelper('turmas', setTurmas);
@@ -2417,14 +2485,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Trava contra loop de feedback da reconciliação — ver comentário no uso
   // abaixo (dentro do bloco `jaExiste`).
   const reconciledProposalIdsRef = React.useRef<Set<string>>(new Set());
-  // Guarda separada da de contracts acima: `!jaExiste` (linha ~2344) depende do
-  // estado local `contracts`, que fica defasado durante uma rajada de re-execuções
-  // desse efeito (mesma causa raiz do bug documentado abaixo em "PATCH em milhares
-  // de contratos") — sem isso, cada re-execução que ainda não via o contrato já
-  // criado somava `prop.valor` de novo no lead. Achado em produção: leads da
-  // Fabiano Fagundes/To Na Pista Boliche e Hermando/Casa Sao Paulo com o valor real
-  // (proposals.valor) somado 5x (ex.: 3988 -> 19940, 11964 -> 59820).
-  const leadValueAppliedProposalIdsRef = React.useRef<Set<string>>(new Set());
 
   const syncAcceptedProposal = (prop: any, { silent = false }: { silent?: boolean } = {}) => {
     // BUG real (visto em produção: contrato/lançamento de "Casa Sao Paulo" e
@@ -2455,19 +2515,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     );
     const jaExiste = !!existingContract;
 
-    // Soma com o valor já existente no lead (de uma proposta anterior já
-    // realizada/aceita) em vez de sobrescrever — mas só na primeira vez que
-    // esta proposta específica é processada (`!jaExiste`), senão a
-    // reconciliação (que roda de novo a cada mudança de propostas/contracts)
-    // somaria o mesmo valor repetidas vezes.
-    if (!jaExiste && prop.lead_id && !leadValueAppliedProposalIdsRef.current.has(prop.id)) {
-      leadValueAppliedProposalIdsRef.current.add(prop.id);
+    // Recalcula o valor do lead como soma de TODAS as propostas dele (mesma
+    // função usada em createProposalWithItems/deleteProposal/updateProposal) —
+    // idempotente por natureza, então roda em toda re-execução da reconciliação
+    // sem precisar de uma trava separada pra evitar somar o mesmo valor várias
+    // vezes (bug antigo: leads da Fabiano Fagundes/To Na Pista Boliche e
+    // Hermando/Casa Sao Paulo com o valor real somado 5x por causa de uma
+    // trava que dependia de `contracts`, que ficava defasado durante rajadas
+    // de re-execução do efeito).
+    if (!jaExiste && prop.lead_id) {
       const productIds = linkedItems.map((pi: any) => pi.product_id).filter(Boolean);
       const lead = (leads || []).find((l: any) => l.id === prop.lead_id);
-      const newValue = (lead ? Number(lead.value) || 0 : 0) + (prop.valor || 0);
+      const totalValue = sumProposalsValueForLead(prop.lead_id, proposalsRef.current);
       const newProductIds = [...new Set([...(lead?.productIds || []), ...productIds])];
       updateLead(prop.lead_id, {
-        value: newValue,
+        value: totalValue,
         ...(newProductIds.length > 0 ? { productIds: newProductIds } : {}),
       });
     }
@@ -2600,6 +2662,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       type: "Receber",
       date: new Date().toISOString().slice(0, 10),
       status: "A Vencer",
+      // Vincula à proposta que gerou esta cobrança — sem isso, excluir a
+      // proposta não tinha como encontrar (e limpar) este lançamento.
+      proposal_id: prop.id,
     }, { silent });
 
     // Implantação/setup é receita única — lançamento à parte, não recorrente,
@@ -2612,6 +2677,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         type: "Receber",
         date: new Date().toISOString().slice(0, 10),
         status: "A Vencer",
+        proposal_id: prop.id,
       }, { silent });
     }
 
@@ -2839,7 +2905,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       proposals,
       setProposals,
       addProposal: proposalCrud.add,
-      updateProposal: proposalCrud.update,
+      updateProposal,
       deleteProposal,
       proposalItems,
       createProposalWithItems,

@@ -8,6 +8,7 @@ import { Button } from "../button";
 import { Badge } from "../badge";
 import { useData } from "../../../contexts/DataContext";
 import { useLocalization } from "../../../contexts/LocalizationContext";
+import { parseCurrencyBR } from "../../../lib/utils";
 import { toast } from "sonner";
 import { ProfileDataForm } from "./ProfileDataForm";
 
@@ -87,25 +88,30 @@ export function ProfileSection({
     return [...new Set((allLeads as any[]).map((l: any) => l.seller).filter(Boolean))] as string[];
   }, [colaboradores, allLeads]);
 
-  const displayValue = useMemo(() => {
+  // Valor da Proposta: `lead.value` já é a soma de todas as propostas reais
+  // vinculadas a este lead (única fonte de verdade, recalculada em
+  // DataContext.tsx a cada proposta criada/editada/excluída) — nunca mais um
+  // texto livre digitado aqui. `parseCurrencyBR` cobre os dois formatos que
+  // `lead.value` pode ter historicamente: número puro (nosso cálculo) ou
+  // string formatada "R$ X,XX" (leads criados pelo NewLeadModal).
+  const displayValue = useMemo(
+    () => formatCurrency(parseCurrencyBR(lead?.value)),
+    [lead?.value, formatCurrency]
+  );
+
+  // Valor do Produto: referência de catálogo (preço cheio, sem desconto) dos
+  // produtos vinculados ao lead — um número DIFERENTE do valor da proposta
+  // (que já reflete o negociado/descontado), mostrado ao lado pra dar
+  // contexto de quanto do preço de tabela essa venda representa.
+  const productValue = useMemo(() => {
     const ids: string[] = Array.isArray(lead?.productIds) ? lead.productIds : [];
-    if (ids.length > 0) {
-      const total = (products as any[]).reduce(
-        (s: number, p: any) => ids.includes(p.id) ? s + (Number(p.price) || 0) : s,
-        0
-      );
-      if (total > 0) {
-        return formatCurrency(total);
-      }
-    }
-    if (!value) return formatCurrency(0);
-    const cleaned = String(value).replace(/[^\d,.]/g, "");
-    if (!cleaned) return formatCurrency(0);
-    const normalized = cleaned.replace(/\./g, "").replace(",", ".");
-    const num = parseFloat(normalized);
-    if (isNaN(num) || num === 0) return formatCurrency(0);
-    return formatCurrency(num);
-  }, [lead?.productIds, products, value, formatCurrency]);
+    if (ids.length === 0) return null;
+    const total = (products as any[]).reduce(
+      (s: number, p: any) => ids.includes(p.id) ? s + (Number(p.price) || 0) : s,
+      0
+    );
+    return total > 0 ? formatCurrency(total) : null;
+  }, [lead?.productIds, products, formatCurrency]);
 
   const fetchCnpjData = async () => {
     const digits = (cnpj || lead.cnpj || "").replace(/\D/g, "");
@@ -214,6 +220,7 @@ export function ProfileSection({
         title={title} setTitle={setTitle}
         value={value} setValue={setValue}
         displayValue={displayValue}
+        productValue={productValue}
         seller={seller} setSeller={setSeller}
         priority={priority} setPriority={setPriority}
         sellerOptions={sellerOptions}

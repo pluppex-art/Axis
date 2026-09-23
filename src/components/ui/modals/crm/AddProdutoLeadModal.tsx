@@ -234,7 +234,7 @@ export function AddProdutoLeadModal({
         });
       }
 
-      await createProposalWithItems({
+      const proposalId = await createProposalWithItems({
         titulo: `Proposta Comercial — ${clientName}`,
         cliente: clientName,
         valor: sale.totalProjectedAmount,
@@ -271,7 +271,8 @@ export function AddProdutoLeadModal({
             notes: sale.isOpenEnded
               ? "Recorrência contínua (sem prazo definido) — lote inicial de ciclos gerado agora; os próximos ciclos precisam ser gerados manualmente ou por uma automação futura."
               : (detalhesPagamento || null),
-          } as any, { silent: !isFirst });
+            proposal_id: proposalId,
+          }, { silent: !isFirst });
         }
       } else {
         // Cobrança única (com ou sem parcelamento): divide o MESMO total em N parcelas —
@@ -290,20 +291,19 @@ export function AddProdutoLeadModal({
             ...(sale.numberOfCycles > 1 ? { installment_group_id: groupId, installment_number: cycle.cycleNumber, installment_total: sale.numberOfCycles } : {}),
             payment_method: formaPagamento,
             notes: detalhesPagamento || null,
-          } as any, { silent: !isFirst });
+            proposal_id: proposalId,
+          }, { silent: !isFirst });
         }
       }
 
-      // Soma com o valor já existente no lead (uma venda anterior pra esse mesmo cliente)
-      // em vez de sobrescrever — mesma regra do Mini PDV que isso substitui. Acumula o
-      // TOTAL PROJETADO (métrica de "valor do negócio"), nunca o valor de uma cobrança
-      // isolada.
+      // `value` NÃO é setado aqui — createProposalWithItems (acima) já recalculou
+      // o valor do lead como soma de TODAS as propostas dele (única fonte de
+      // verdade, ver DataContext.tsx); sobrescrever de novo aqui reintroduziria a
+      // mesma inconsistência que motivou centralizar esse cálculo.
       if (leadId) {
         const currentLead = (leads || []).find((l: any) => l.id === leadId);
-        const accumulatedValue = (currentLead ? Number(currentLead.value) || 0 : 0) + sale.totalProjectedAmount;
         const accumulatedProductIds = [...new Set([...(currentLead?.productIds || []), product.id])];
         await updateLead(leadId, {
-          value: accumulatedValue,
           productIds: accumulatedProductIds,
           status: "Fechado",
           scoreIA: 100,

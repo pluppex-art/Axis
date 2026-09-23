@@ -327,8 +327,12 @@ export function useLeadDetails(lead: any, onClose: () => void) {
   };
 
   const handleSaveAll = () => {
+    // `value` NÃO entra aqui de propósito: o valor do lead é derivado (soma das
+    // propostas vinculadas, recalculado em DataContext.tsx) e só pode ser
+    // alterado editando a proposta em si — ver ProfileDataForm ("Valor da
+    // Proposta", campo trancado).
     updateLead(lead.id, {
-      name: leadName, company: companyName, cnpj, phone, email, title, value, seller, priority,
+      name: leadName, company: companyName, cnpj, phone, email, title, seller, priority,
       customFields: customFieldsState, productIds: linkedProductIds,
     });
     setAlterationLogs(prev => [

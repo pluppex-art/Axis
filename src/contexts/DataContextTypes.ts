@@ -49,6 +49,10 @@ export interface FinanceEntry {
   /** Liga todas as ocorrências geradas pela mesma recorrência — útil pra
    * identificar/gerenciar o grupo depois (ex.: cancelar as futuras). */
   recurring_group_id?: string | null;
+  /** Liga este lançamento à proposta que o gerou (AddProdutoLeadModal ou
+   * aceite de proposta em syncAcceptedProposal) — permite limpar as cobranças
+   * a receber quando a proposta é excluída, sem depender de casar por texto. */
+  proposal_id?: string | null;
   /** Vínculo real com finance_categories — `category` (nome) continua
    * gravado por compatibilidade/exibição, mas quem define a linha do DRE é
    * este id. */
