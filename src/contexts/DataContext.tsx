@@ -24,6 +24,7 @@ import { isDateLocked } from "../pages/finance/lib/financeEngine";
 import { parseCurrencyBR } from "../lib/utils";
 import { useLocalization } from "./LocalizationContext";
 import { friendlyError } from "../lib/friendlyError";
+import { OPEN_ENDED_BATCH_CYCLES } from "../lib/saleCalculator";
 
 export { useData };
 export type { DataContextType, LeadActivity, Notification, Appointment, GlobalWebhook, FinanceEntry, Reuniao };
@@ -223,6 +224,13 @@ function applyRealtimeUpsert<T extends { id: string }>(
     return next;
   });
 }
+
+// A RPC finalizar_venda (varejo) grava type 'Receita'/status 'Recebido'; o app usa 'Receber'/'Pago'.
+const normalizeFinanceEntry = (r: any): FinanceEntry => ({
+  ...r,
+  type: r.type === 'Receita' ? 'Receber' : r.type === 'Despesa' ? 'Pagar' : r.type,
+  status: r.status === 'Recebido' ? 'Pago' : r.status,
+});
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const { user, authLoading, updatePreferences, activeTenantId, activeFilialId } = useAuth();
@@ -777,35 +785,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       .filter((p: any) => p.lead_id === leadId)
       .reduce((sum: number, p: any) => sum + (Number(p.valor) || 0), 0);
 
-  const addStudent = async (student: any) => {
-    const newStudent = { ...student, id: crypto.randomUUID(), ...(tenantId ? { tenant_id: tenantId } : {}) };
-    setStudents(prev => [...prev, newStudent]);
-    if (supabase) {
-      const { error } = await supabase.from('students').insert(newStudent);
-      if (error) {
-        console.error("Supabase add student failed:", error.message);
-        toast.error(`Erro ao matricular aluno: ${friendlyError(error)}`);
-      }
-    }
-    return newStudent;
-  };
-
-  const updateStudent = async (id: string, updates: any) => {
-    setStudents(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-    if (supabase) {
-      const { error } = await supabase.from('students').update(updates).eq('id', id);
-      if (error) {
-        console.error("Supabase update student failed:", error.message);
-        toast.error(`Erro ao atualizar aluno: ${friendlyError(error)}`);
-      }
-    }
-  };
-
-  const deleteStudent = async (id: string) => {
-    setStudents(prev => prev.filter(s => s.id !== id));
-    if (supabase) await supabase.from('students').delete().eq('id', id);
-  };
-
   // Persistence & Supabase Synchronization
   //
   // Filtra por tenantId explicitamente aqui, além do que a RLS já garante —
@@ -865,7 +844,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         // /contracts, ERR_INSUFFICIENT_RESOURCES no navegador). O debounce
         // de 1.5s do refetch completo é o que segura esse loop — mantém.
         .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => debouncedRefetch('contracts', fetchContracts))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_entries' }, (payload) => applyRealtimeUpsert(setFinanceEntries, payload, (r) => r as FinanceEntry, tenantId))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_entries' }, (payload) => applyRealtimeUpsert(setFinanceEntries, payload, (r) => normalizeFinanceEntry(r), tenantId))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'squads' }, () => debouncedRefetch('squads', fetchSquads))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => debouncedRefetch('appointments', fetchAppointments))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => debouncedRefetch('products', fetchProducts))
@@ -1071,7 +1050,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           // + disparar notificação de novo contrato a cada entrada na tela.
           { name: 'contracts', promise: fetchAllRowsForTenant('contracts', tenantId), apply: (res) => { if (res.data) setContracts(res.data.map(rowToContract)); setContractsLoaded(true); } },
           { name: 'lead_activities', promise: fetchAllRowsForTenant('lead_activities', tenantId), apply: (res) => { if (res.data) setLeadActivities(res.data as LeadActivity[]); } },
-          { name: 'finance_entries', promise: fetchAllRowsForTenant('finance_entries', tenantId), apply: (res) => { if (res.data) setFinanceEntries(res.data as FinanceEntry[]); financeEntriesAuthoritativeLoadedRef.current = true; } },
+          { name: 'finance_entries', promise: fetchAllRowsForTenant('finance_entries', tenantId), apply: (res) => { if (res.data) setFinanceEntries((res.data as any[]).map(normalizeFinanceEntry)); financeEntriesAuthoritativeLoadedRef.current = true; } },
           { name: 'appointments', promise: fetchAllRowsForTenant('appointments', tenantId), apply: (res) => { if (res.data) setAppointments(res.data.map(mapAppointmentRow)); } },
           { name: 'squads', promise: cachedFetchAllRowsForTenant('squads', tenantId, true), apply: (res) => { if (res.data) setSquads(res.data.map(mapSquadRow)); } },
           { name: 'notifications', promise: fetchAllRowsForTenant('notifications', tenantId), apply: (res) => { if (res.data) setNotifications(res.data as Notification[]); } },
@@ -1181,7 +1160,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           .then((res) => (res.ok ? res.json() : null))
           .then((json) => {
             if (cancelled || financeEntriesAuthoritativeLoadedRef.current || !json?.data) return;
-            setFinanceEntries(json.data as FinanceEntry[]);
+            setFinanceEntries((json.data as any[]).map(normalizeFinanceEntry));
           })
           .catch(() => { /* silencioso — a busca autoritativa (job 'finance_entries' acima) segue normalmente */ });
 
@@ -1810,15 +1789,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [leads, clienteBase]);
 
   const deleteLead = async (id: string) => {
+    const removed = leads.find(l => l.id === id);
     setLeads(prev => prev.filter(l => l.id !== id));
-    toast.info('Lead removido.');
     if (supabase) {
-      try {
-        await supabase.from('leads').delete().eq('id', id);
-      } catch (err) {
-        console.error("Supabase delete lead failed:", err);
+      const { data, error } = await supabase.from('leads').delete().eq('id', id).select('id');
+      if (error || !data || data.length === 0) {
+        console.error("Supabase delete lead failed:", error?.message ?? 'nenhuma linha afetada');
+        toast.error(error ? `Erro ao remover lead: ${friendlyError(error)}` : 'Não foi possível remover o lead — sem permissão ou registro não encontrado.');
+        if (removed) setLeads(prev => prev.some(l => l.id === id) ? prev : [removed, ...prev]);
+        return;
       }
     }
+    toast.info('Lead removido.');
   };
 
   const moveLead = async (leadId: string, destStageId: string, index: number) => {
@@ -2183,13 +2165,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           if (error) {
             console.error(`[Supabase] insert ${tableName} error:`, error.message, error.details);
             toast.error(`Erro ao salvar: ${friendlyError(error)}`);
+            stateSetter(prev => prev.filter(x => x.id !== stamped.id));
           }
         }
         return stamped;
       },
       update: async (id: string, updates: any) => {
         // Atualiza estado local imediatamente (optimistic update)
-        stateSetter(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+        let previousItem: any;
+        stateSetter(prev => { previousItem = prev.find(item => item.id === id); return prev.map(item => item.id === id ? { ...item, ...updates } : item); });
         if (supabase) {
           // Remove campos que podem causar conflito com triggers do banco
           let safeUpdates = { ...updates };
@@ -2224,6 +2208,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               console.warn(`[Supabase] Trigger issue on ${tableName} — execute a migration 20260827_fix_colaboradores_updated_at.sql no Supabase SQL Editor`);
             }
             toast.error(`Erro ao salvar alterações: ${friendlyError(error)}`);
+            if (previousItem) stateSetter(prev => prev.map(item => item.id === id ? previousItem : item));
           }
         }
       },
@@ -2686,7 +2671,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // do contrato, o card de MRR mostrava o valor total do contrato inteiro
     // como se fosse a mensalidade (ex.: contrato anual de R$11.964
     // aparecendo como "MRR: R$11.964", quando a mensalidade real era ~R$997).
-    const monthlyMrr = contractMonths && contractMonths > 0 ? recurringTotalFinal / contractMonths : recurringTotalFinal;
+    // Sem prazo (contractMonths nulo) o item grava um lote inicial de OPEN_ENDED_BATCH_CYCLES ciclos, então divide por isso e não superestima o MRR.
+    const monthlyMrr = contractMonths && contractMonths > 0
+      ? recurringTotalFinal / contractMonths
+      : linkedItems.length > 0 ? recurringTotalFinal / OPEN_ENDED_BATCH_CYCLES : recurringTotalFinal;
 
     if (jaExiste) {
       // Backfill: contratos criados ANTES das correções de plano/data de

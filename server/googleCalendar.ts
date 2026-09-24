@@ -158,25 +158,22 @@ async function resolveTenantId(req: any): Promise<{ tenantId: string } | { error
     }
 
     if (requested) {
-      if (!ownTenantId || requested === ownTenantId) return { tenantId: requested };
+      if (requested === ownTenantId) return { tenantId: requested };
+      if (!ownTenantId) return { error: "Tenant não resolvido para o usuário.", status: 403 };
       if (req.supabase?.rpc) {
         try {
           const { data: allowed, error: accessErr } = await req.supabase.rpc("has_tenant_access", { target_tenant_id: requested });
-          if (!accessErr && allowed) return { tenantId: requested };
+          if (!accessErr && allowed === true) return { tenantId: requested };
         } catch {}
       }
-      if (req.user?.app_metadata?.is_super_admin || req.user?.user_metadata?.is_super_admin) {
-        return { tenantId: requested };
-      }
-      return { tenantId: requested };
+      return { error: "Sem acesso ao tenant solicitado.", status: 403 };
     }
 
     if (ownTenantId) return { tenantId: ownTenantId };
     return { tenantId: "default" };
   } catch (err: any) {
     console.warn("[google-calendar] resolveTenantId fallback:", err?.message);
-    const requested = (req.header("x-active-tenant-id") || "").trim();
-    return { tenantId: requested || "default" };
+    return { error: "Não foi possível resolver o tenant.", status: 500 };
   }
 }
 
@@ -332,7 +329,8 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
     try {
       if (!requireService(res) || !requireGoogleEnv(res)) return;
       const tenantResult = await resolveTenantId(req);
-      const tenantId = "tenantId" in tenantResult ? tenantResult.tenantId : "default";
+      if ("error" in tenantResult) return res.status(tenantResult.status).json({ error: tenantResult.error });
+      const tenantId = tenantResult.tenantId;
 
       const redirectUri = getRedirectUri();
 
@@ -474,7 +472,8 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
         return res.json({ connected: false, email: null, status: "disconnected", lastSyncAt: null, calendarId: null });
       }
       const tenantResult = await resolveTenantId(req);
-      const tenantId = "tenantId" in tenantResult ? tenantResult.tenantId : "default";
+      if ("error" in tenantResult) return res.status(tenantResult.status).json({ error: tenantResult.error });
+      const tenantId = tenantResult.tenantId;
 
       const connection = await getConnection(supabaseService, tenantId, req.user?.id || "");
       if (!connection || connection.status === "disconnected") {
@@ -497,7 +496,8 @@ export function createGoogleCalendarRouter({ requireUser, supabaseService }: Goo
     try {
       if (!supabaseService) return res.json({ success: true });
       const tenantResult = await resolveTenantId(req);
-      const tenantId = "tenantId" in tenantResult ? tenantResult.tenantId : "default";
+      if ("error" in tenantResult) return res.status(tenantResult.status).json({ error: tenantResult.error });
+      const tenantId = tenantResult.tenantId;
 
       const connection = await getConnection(supabaseService, tenantId, req.user?.id || "");
       if (connection?.access_token) {

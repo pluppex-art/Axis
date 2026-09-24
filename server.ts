@@ -7,11 +7,12 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
-import { randomUUID } from "crypto";
+import { randomUUID, timingSafeEqual } from "crypto";
 import axios from "axios";
 import { createGoogleCalendarRouter } from "./server/googleCalendar.js";
 import { getWhatsAppProvider, getActiveProviderName, isWahaConfigured } from "./server/whatsappProvider.js";
 import { cacheGet, cacheSet, redisHealthCheck } from "./server/redisClient.js";
+import { assertSafeHttpUrl, assertSafeSmtpTarget } from "./server/ssrfGuard.js";
 import nodemailer from "nodemailer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -203,6 +204,18 @@ function extractJSON(raw: string): any {
 // ── Express App ────────────────────────────────────────────────────────────
 
 const app = express();
+
+// Express 4 não captura rejeição de handler async: repassa ao handler global de erro.
+for (const m of ["get", "post", "put", "patch", "delete"] as const) {
+  const orig = (app as any)[m].bind(app);
+  (app as any)[m] = (path: any, ...handlers: any[]) => {
+    if (m === "get" && handlers.length === 0) return orig(path); // app.get(setting)
+    return orig(path, ...handlers.map((h) =>
+      typeof h === "function" && h.length < 4
+        ? (req: any, res: any, next: any) => Promise.resolve(h(req, res, next)).catch(next)
+        : h));
+  };
+}
 app.set("trust proxy", 1);
 
 // Vercel pre-parses the body before passing to Express — skip json() if already parsed
@@ -251,6 +264,11 @@ const googleCalendarLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardH
 // Mais restritivo que os demais — endpoint sem autenticação nenhuma (formulário
 // público do site de marketing), maior risco de abuso/spam automatizado.
 const publicLeadLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
+// Endpoints públicos sem auth: enumeração de tenant e aceite de proposta.
+const publicProposalLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
+const tenantThemeLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+app.use("/api/public-proposal", publicProposalLimiter);
+app.use("/api/auth/tenant-theme", tenantThemeLimiter);
 app.use("/api/v1/leads", apiKeyLimiter);
 app.use("/api/v1/lead-activities", apiKeyLimiter);
 app.use("/api/v1/finance-entries", apiKeyLimiter);
@@ -1466,7 +1484,7 @@ app.get("/api/clinica/estatisticas-summary", requireUser, async (req: any, res) 
   try {
     const tenantId = await resolveRequestedTenantId(req, res);
     if (!tenantId) return;
-    const cacheKey = `clinica-estatisticas:tenant:${tenantId}:summary`;
+    const cacheKey = `clinica-estatisticas:tenant:${tenantId}:user:${req.user.id}:summary`;
 
     const cached = await cacheGet<Record<string, unknown>>(cacheKey);
     if (cached) {
@@ -1515,7 +1533,7 @@ app.get("/api/clinica/faturamento-summary", requireUser, async (req: any, res) =
   try {
     const tenantId = await resolveRequestedTenantId(req, res);
     if (!tenantId) return;
-    const cacheKey = `clinica-faturamento:tenant:${tenantId}:summary`;
+    const cacheKey = `clinica-faturamento:tenant:${tenantId}:user:${req.user.id}:summary`;
 
     const cached = await cacheGet<Record<string, unknown>>(cacheKey);
     if (cached) {
@@ -1584,7 +1602,7 @@ app.get("/api/clinica/painel-geral-summary", requireUser, async (req: any, res) 
   try {
     const tenantId = await resolveRequestedTenantId(req, res);
     if (!tenantId) return;
-    const cacheKey = `clinica-painel-geral:tenant:${tenantId}:summary`;
+    const cacheKey = `clinica-painel-geral:tenant:${tenantId}:user:${req.user.id}:summary`;
 
     const cached = await cacheGet<Record<string, unknown>>(cacheKey);
     if (cached) {
@@ -1646,7 +1664,7 @@ app.get("/api/education/mensalidades-summary", requireUser, async (req: any, res
   try {
     const tenantId = await resolveRequestedTenantId(req, res);
     if (!tenantId) return;
-    const cacheKey = `education-mensalidades:tenant:${tenantId}:summary`;
+    const cacheKey = `education-mensalidades:tenant:${tenantId}:user:${req.user.id}:summary`;
 
     const cached = await cacheGet<Record<string, unknown>>(cacheKey);
     if (cached) {
@@ -1984,7 +2002,7 @@ app.get("/api/data/table-preview", requireUser, async (req: any, res) => {
     }
     const tenantId = await resolveRequestedTenantId(req, res);
     if (!tenantId) return;
-    const cacheKey = `data-preview:tenant:${tenantId}:${table}`;
+    const cacheKey = `data-preview:tenant:${tenantId}:${table === "students" || table === "turmas" ? `user:${req.user.id}:` : ""}${table}`;
 
     const cached = await cacheGet<any[]>(cacheKey);
     if (cached) {
@@ -2360,51 +2378,8 @@ app.get("/api/auth/tenant-theme", async (req, res) => {
   }
 
   try {
-    // 1. Se informou e-mail, busca primeiro na tabela users
-    if (email && email.trim()) {
-      const cleanEmail = email.trim().toLowerCase();
-      const { data: user } = await client
-        .from("users")
-        .select("tenant_id, tenants(id, name, primary_color, status)")
-        .eq("email", cleanEmail)
-        .maybeSingle();
-
-      if (user?.tenants && (user.tenants as any).status !== "Inactive") {
-        const t = user.tenants as any;
-        return res.json({
-          primaryColor: t.primary_color || null,
-          tenantName: t.name || "",
-          tenantId: t.id || "",
-          matchedBy: "email_exact",
-        });
-      }
-
-      // Se não achou na tabela users, analisa partes do e-mail
-      const parts = cleanEmail.split("@");
-      const userPrefix = parts[0]?.replace(/[^a-zA-Z0-9]/g, " ").trim();
-      const domainPart = parts[1]?.split(".")[0]?.trim();
-      const tokens = [userPrefix, domainPart].filter(
-        (t) => t && t.length > 2 && !["gmail", "hotmail", "outlook", "yahoo"].includes(t.toLowerCase())
-      );
-
-      for (const token of tokens) {
-        const { data: matchedTenant } = await client
-          .from("tenants")
-          .select("id, name, primary_color")
-          .ilike("name", `%${token}%`)
-          .eq("status", "Active")
-          .maybeSingle();
-
-        if (matchedTenant) {
-          return res.json({
-            primaryColor: matchedTenant.primary_color || null,
-            tenantName: matchedTenant.name || "",
-            tenantId: matchedTenant.id || "",
-            matchedBy: "email_token",
-          });
-        }
-      }
-    }
+    // E-mail é ignorado de propósito: qualquer resposta diferente revelaria se a conta existe.
+    void email;
 
     // 2. Se informou host ou tenant específico
     const searchTarget = tenant || host || "";
@@ -2423,7 +2398,8 @@ app.get("/api/auth/tenant-theme", async (req, res) => {
       if (activeTenants && activeTenants.length > 0) {
         for (const t of activeTenants) {
           const tName = t.name.toLowerCase();
-          if (hostParts.some((hp) => tName.includes(hp)) || tName.includes(cleanTarget)) {
+          // Igualdade exata (não substring) para não permitir enumerar tenants por prefixo.
+          if (hostParts.some((hp) => tName === hp) || tName === cleanTarget) {
             return res.json({
               primaryColor: t.primary_color || null,
               tenantName: t.name,
@@ -2471,6 +2447,7 @@ app.get("/api/public-proposal/:token", async (req, res) => {
     }
 
     // 2. Incrementa contador de visualização e timestamp de auditoria
+    // TODO: view_count ler-e-somar não é atômico; exige RPC/migration para incremento atômico.
     await client
       .from("proposals")
       .update({
@@ -2569,7 +2546,7 @@ app.post("/api/public-proposal/:token/accept", async (req, res) => {
 
     const { data: proposal, error: propErr } = await client
       .from("proposals")
-      .select("id, status, tenant_id, titulo, cliente")
+      .select("id, status, tenant_id, titulo, cliente, validade")
       .eq("view_token", token)
       .maybeSingle();
 
@@ -2577,6 +2554,20 @@ app.post("/api/public-proposal/:token/accept", async (req, res) => {
       return res.status(404).json({ error: "Proposta não encontrada." });
     }
 
+    if (!["Enviada", "Aberta"].includes(proposal.status)) {
+      return res.status(409).json({ error: `Proposta não pode ser aceita (status atual: ${proposal.status}).` });
+    }
+    if (proposal.validade) {
+      const limite = new Date(proposal.validade);
+      if (!isNaN(limite.getTime())) {
+        limite.setUTCHours(23, 59, 59, 999); // vale até o fim do dia de validade
+        if (limite.getTime() < Date.now()) {
+          return res.status(410).json({ error: "Proposta vencida." });
+        }
+      }
+    }
+
+    // Guarda de status no UPDATE evita aceite duplo/concorrente; sem coluna de "quem aceitou" (sem migration).
     const { data: updated, error: updateErr } = await client
       .from("proposals")
       .update({
@@ -2584,9 +2575,13 @@ app.post("/api/public-proposal/:token/accept", async (req, res) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", proposal.id)
+      .in("status", ["Enviada", "Aberta"])
       .select()
-      .single();
+      .maybeSingle();
 
+    if (!updateErr && !updated) {
+      return res.status(409).json({ error: "Proposta já foi processada." });
+    }
     if (updateErr) {
       console.error("[public-proposal] Erro ao registrar aceite:", updateErr);
       return res.status(500).json({ error: "Erro ao registrar aceite no banco de dados." });
@@ -3788,6 +3783,13 @@ Gere um relatório executivo em markdown com:
  * Supabase Auth exige a Admin API (auth.admin.*), que só funciona com a
  * SUPABASE_SERVICE_ROLE_KEY — uma chave que nunca pode ir para o browser.
  */
+// Comparação em tempo constante (evita timing attack em segredos).
+function safeEqual(a: unknown, b: unknown): boolean {
+  const ba = Buffer.from(String(a ?? ""));
+  const bb = Buffer.from(String(b ?? ""));
+  return ba.length === bb.length && timingSafeEqual(ba, bb);
+}
+
 async function requireMaster(req: any, res: express.Response, next: express.NextFunction) {
   try {
     const { data: caller, error } = await req.supabase.from("users").select("is_master").eq("id", req.user.id).maybeSingle();
@@ -3803,9 +3805,8 @@ async function requireMaster(req: any, res: express.Response, next: express.Next
 
 // Fase 3 (modo de log) do plano de permissões — expõe o que os triggers de
 // permission_check_log já registraram (nunca bloqueia nada, só audita).
-// RLS (has_tenant_access) já garante que cada tenant só vê seu próprio log,
-// por isso não exige requireMaster — qualquer usuário autenticado do tenant.
-app.get("/api/admin/permission-check-log", requireUser, async (req: any, res) => {
+// Restrito a master: o log expõe atividade de todos os usuários do tenant.
+app.get("/api/admin/permission-check-log", requireUser, requireMaster, async (req: any, res) => {
   const { data, error } = await req.supabase
     .from("permission_check_log")
     .select("*")
@@ -3932,6 +3933,7 @@ app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) 
       email: adminEmail.trim(),
       role: "Admin",
       is_master: false,
+      is_tenant_admin: true,
       active: true,
     });
     if (profileError) {
@@ -4136,7 +4138,11 @@ app.put("/api/whatsapp/instances/:id", requireUser, async (req: any, res) => {
  */
 app.post("/api/whatsapp/webhook/:instanceId", async (req: any, res) => {
   const { instanceId } = req.params;
-  const secret = typeof req.query.secret === "string" ? req.query.secret : "";
+  // Aceita header (preferido) ou ?secret= (único formato que o WAHA suporta).
+  const headerSecret = req.headers["x-webhook-secret"];
+  const secret = typeof headerSecret === "string" && headerSecret
+    ? headerSecret
+    : (typeof req.query.secret === "string" ? req.query.secret : "");
 
   if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada." });
 
@@ -4146,7 +4152,7 @@ app.post("/api/whatsapp/webhook/:instanceId", async (req: any, res) => {
       .select("id, tenant_id, webhook_secret")
       .eq("id", instanceId)
       .maybeSingle();
-    if (!inst || !secret || secret !== inst.webhook_secret) {
+    if (!inst || !secret || !safeEqual(secret, inst.webhook_secret)) {
       return res.status(403).json({ error: "Token de webhook inválido." });
     }
 
@@ -4358,11 +4364,14 @@ app.post("/api/integrations/webhook-test", requireUser, async (req: any, res) =>
   const { url, event, payload } = req.body ?? {};
   if (!url) return res.status(400).json({ error: "URL do webhook é obrigatória." });
   try {
+    const safeUrl = await assertSafeHttpUrl(url).catch((e: any) => { res.status(400).json({ ok: false, error: e?.message || "URL inválida." }); return null; });
+    if (!safeUrl) return;
     const started = Date.now();
+    // Sem redirects: um 302 poderia apontar para host interno (SSRF).
     const response = await axios.post(
-      url,
+      safeUrl.toString(),
       payload ?? { event: event || "test_ping", test: true, timestamp: new Date().toISOString() },
-      { timeout: 8000, validateStatus: () => true }
+      { timeout: 8000, validateStatus: () => true, maxRedirects: 0, maxContentLength: 1_000_000 }
     );
     const ok = response.status >= 200 && response.status < 300;
     res.json({ ok, status: response.status, latencyMs: Date.now() - started });
@@ -4521,12 +4530,16 @@ app.post("/api/integrations/smtp-test", requireUser, async (req: any, res) => {
     return res.status(400).json({ error: "Preencha host, porta, usuário e senha antes de testar." });
   }
   try {
+    // Só portas SMTP padrão e host público (evita port-scan/SSRF interno).
+    await assertSafeSmtpTarget(smtpServer, smtpPort);
     const transporter = nodemailer.createTransport({
       host: smtpServer,
       port: Number(smtpPort),
       secure: encryption === "SSL/TLS", // true = TLS implícito (465); StartTLS/Nenhuma negociam na porta 587/25
       auth: { user: smtpUser, pass: smtpPass },
       connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 10000,
     });
     await transporter.verify();
     res.json({ ok: true });

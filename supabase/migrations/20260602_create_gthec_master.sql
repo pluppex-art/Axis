@@ -36,7 +36,7 @@ BEGIN
   END IF;
 
   -- 2. Cria o usuário master admin@gthec.com se não existir
-  --    Senha: gthec@2025  (hash = btoa("gthec@2025") = "Z3RoZWNAMjAyNQ==")
+  --    Senha: gerenciada no Supabase Auth (valor removido do repositório; `password_hash` é legado e não é usado para login)
   SELECT EXISTS(SELECT 1 FROM users WHERE email = 'admin@gthec.com') INTO v_user_exists;
 
   IF NOT v_user_exists THEN
@@ -45,7 +45,7 @@ BEGIN
       v_tenant_id,
       'G-Tech Administrador',
       'admin@gthec.com',
-      'Z3RoZWNAMjAyNQ==',
+      'REDACTED-use-Supabase-Auth',
       'Super Admin',
       true,
       true
@@ -57,7 +57,7 @@ BEGIN
       active        = true,
       role          = 'Super Admin',
       name          = 'G-Tech Administrador',
-      password_hash = 'Z3RoZWNAMjAyNQ=='
+      password_hash = 'REDACTED-use-Supabase-Auth'
     WHERE email = 'admin@gthec.com';
     RAISE NOTICE 'Usuário master admin@gthec.com já existe, permissões atualizadas';
   END IF;

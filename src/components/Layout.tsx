@@ -8,6 +8,7 @@ import { MobileNav } from "./layout/MobileNav";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { AuroraWidget } from "./ui/AuroraWidget";
 import { OnboardingWizard } from "./OnboardingWizard";
+import { SDRWebhookModal } from "./ui/modals/crm/SDRWebhookModal";
 import { useData } from "../contexts/DataContextTypes";
 
 export default function Layout() {
@@ -20,10 +21,6 @@ export default function Layout() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isSDRWebhookOpen, setIsSDRWebhookOpen] = useState(false);
-
-  useEffect(() => {
-    if (!user) navigate("/login");
-  }, [user, navigate]);
 
   useEffect(() => {
     if (!user) navigate("/login");
@@ -58,7 +55,9 @@ export default function Layout() {
       <MobileNav
         isMobileMoreOpen={isMobileMoreOpen}
         setIsMobileMoreOpen={setIsMobileMoreOpen}
+        setIsSDRWebhookOpen={setIsSDRWebhookOpen}
       />
+      <SDRWebhookModal isOpen={isSDRWebhookOpen} onClose={() => setIsSDRWebhookOpen(false)} />
 
       {/* Aurora era restrita a usuários master (G-TECH) porque as ferramentas de escrita
           (calendário/WhatsApp) estavam hardcoded pro tenant da G-TECH. Liberada aqui pra

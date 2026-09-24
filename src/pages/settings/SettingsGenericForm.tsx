@@ -2,7 +2,6 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Save } from "lucide-react";
 import { useLocation } from "react-router-dom";
-import { toast } from "sonner";
 
 export default function SettingsGenericForm() {
   const location = useLocation();
@@ -30,7 +29,7 @@ export default function SettingsGenericForm() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-          <p className="text-sm text-slate-400">Personalize e gerencie esta funcionalidade.</p>
+          <p className="text-sm text-slate-400">Esta configuração ainda está em desenvolvimento.</p>
         </div>
       </div>
 
@@ -42,6 +41,7 @@ export default function SettingsGenericForm() {
             </label>
             <input 
               type="text" 
+              disabled 
               className="w-full bg-[var(--color-surface)] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-colors"
               placeholder="Configuração padrão auto-preenchida"
             />
@@ -52,15 +52,15 @@ export default function SettingsGenericForm() {
               Habilitar Recurso
             </label>
             <div className="flex items-center gap-3">
-              <input type="checkbox" className="w-4 h-4 rounded border-white/10 bg-[var(--color-surface)] text-[#2563EB] focus:ring-0" />
+              <input type="checkbox" disabled className="w-4 h-4 rounded border-white/10 bg-[var(--color-surface)] text-[#2563EB] focus:ring-0" />
               <span className="text-sm text-slate-300">Ativar processamento automático para este módulo</span>
             </div>
           </div>
         </div>
 
         <div className="mt-8 pt-6 border-t border-white/10 flex justify-end">
-          <Button onClick={() => toast.success('Alterações salvas com sucesso!')} className="px-6 py-2 bg-[#2563EB] hover:bg-blue-600 rounded-lg font-bold shadow-lg shadow-blue-500/20 gap-2">
-            <Save className="w-4 h-4" /> Salvar Alterações
+          <Button disabled title="Em breve: esta configuração ainda não pode ser salva" className="px-6 py-2 bg-[#2563EB] hover:bg-blue-600 rounded-lg font-bold shadow-lg shadow-blue-500/20 gap-2">
+            <Save className="w-4 h-4" /> Salvar (em breve)
           </Button>
         </div>
       </Card>

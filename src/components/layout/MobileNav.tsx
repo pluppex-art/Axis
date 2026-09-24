@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
@@ -11,19 +10,18 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { navSections, conditionCheckers, type NavReqCondition } from "./navData";
-import { SDRWebhookModal } from "../ui/modals/crm/SDRWebhookModal";
 
 interface MobileNavProps {
   isMobileMoreOpen: boolean;
   setIsMobileMoreOpen: (val: boolean) => void;
+  setIsSDRWebhookOpen: (val: boolean) => void;
 }
 
-export function MobileNav({ isMobileMoreOpen, setIsMobileMoreOpen }: MobileNavProps) {
+export function MobileNav({ isMobileMoreOpen, setIsMobileMoreOpen, setIsSDRWebhookOpen }: MobileNavProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user, isModuleEnabled } = useAuth();
   const { cargos } = useData();
-  const [isSDRWebhookOpen, setIsSDRWebhookOpen] = useState(false);
 
   const userCargo = cargos.find((c: any) => c.nome === user?.role);
   const cargoModulos: string[] | null = userCargo && Array.isArray(userCargo.modulos) && userCargo.modulos.length > 0
@@ -51,8 +49,8 @@ export function MobileNav({ isMobileMoreOpen, setIsMobileMoreOpen }: MobileNavPr
       <nav className="sm:hidden fixed bottom-0 left-0 right-0 h-16 bg-[var(--color-surface-elevated)]/95 backdrop-blur-lg border-t border-[var(--color-border-default)] flex items-center justify-around px-2 z-40 pb-safe shadow-[var(--shadow-panel)]">
         {[
           { name: "Painel", path: "/app/dashboard", icon: LayoutDashboard },
-          { name: "Leads", path: "/app/pipeline", icon: Columns3 },
-          { name: "Clientes", path: "/app/clientes", icon: Users },
+          { name: "Leads", path: "/app/crm/pipeline", icon: Columns3 },
+          { name: "Clientes", path: "/app/crm/clientes", icon: Users },
         ].map((tab) => {
           const isActive = location.pathname.startsWith(tab.path);
           const TabIcon = tab.icon;
@@ -167,8 +165,6 @@ export function MobileNav({ isMobileMoreOpen, setIsMobileMoreOpen }: MobileNavPr
           </div>
         </>
       )}
-
-      <SDRWebhookModal isOpen={isSDRWebhookOpen} onClose={() => setIsSDRWebhookOpen(false)} />
     </>
   );
 }

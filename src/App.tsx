@@ -1,5 +1,5 @@
 import { useEffect, lazy, Suspense } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { requestNotificationPermission } from "./lib/notifications";
 import LandingPage from "./pages/landing/LandingPage";
 // Lazy: página de marketing pública, sem nenhuma dependência do app autenticado — fica no
@@ -275,7 +275,7 @@ function AppContent() {
           {/* Comunicação & Marketing */}
           <Route path="mensageria" element={<Messaging />} />
           <Route path="automacoes" element={<MarketingAutomacoes />} />
-          <Route path="marketing">
+          <Route path="marketing" element={<ProtectedRoute requireModule="marketing"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="conteudo" replace />} />
             <Route path="conteudo" element={<MarketingConteudo />} />
             <Route path="campanhas" element={<MarketingCampanhas />} />
@@ -287,7 +287,7 @@ function AppContent() {
           </Route>
 
           {/* Módulo Financeiro */}
-          <Route path="financeiro" element={<FinanceiroLayout />}>
+          <Route path="financeiro" element={<ProtectedRoute requireModule="financeiro"><FinanceiroLayout /></ProtectedRoute>}>
             <Route index element={<FinanceiroVisaoGeral />} />
             <Route path="dashboard" element={<FinanceiroVisaoGeral />} />
             <Route path="painel" element={<FinanceiroVisaoGeral />} />
@@ -328,7 +328,7 @@ function AppContent() {
           </Route>
 
           {/* Verticais de Nicho: Imobiliário */}
-          <Route path="imobiliario">
+          <Route path="imobiliario" element={<ProtectedRoute requireModule="imobiliaria"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<ImobiliarioPainel />} />
             <Route path="painel" element={<ImobiliarioPainel />} />
@@ -345,7 +345,7 @@ function AppContent() {
           </Route>
 
           {/* Verticais de Nicho: Energia Solar */}
-          <Route path="energia-solar">
+          <Route path="energia-solar" element={<ProtectedRoute requireModule="solar"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<PainelSolar />} />
             <Route path="painel" element={<PainelSolar />} />
@@ -358,7 +358,7 @@ function AppContent() {
             <Route path="manutencoes" element={<ManutencoesSolar />} />
           </Route>
           {/* Alias legado /solar */}
-          <Route path="solar">
+          <Route path="solar" element={<ProtectedRoute requireModule="solar"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="/app/energia-solar/dashboard" replace />} />
             <Route path="dashboard" element={<PainelSolar />} />
             <Route path="painel" element={<PainelSolar />} />
@@ -372,7 +372,7 @@ function AppContent() {
           </Route>
 
           {/* Verticais de Nicho: Automotivo */}
-          <Route path="automotivo">
+          <Route path="automotivo" element={<ProtectedRoute requireModule="automotivo"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<PainelAutomotivo />} />
             <Route path="painel" element={<PainelAutomotivo />} />
@@ -386,7 +386,7 @@ function AppContent() {
             <Route path="visitas" element={<ImobiliariosVisitas />} />
           </Route>
           {/* Alias legado /concessionaria */}
-          <Route path="concessionaria">
+          <Route path="concessionaria" element={<ProtectedRoute requireModule="automotivo"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="/app/automotivo/dashboard" replace />} />
             <Route path="dashboard" element={<PainelAutomotivo />} />
             <Route path="painel" element={<PainelAutomotivo />} />
@@ -401,7 +401,7 @@ function AppContent() {
           </Route>
 
           {/* Verticais de Nicho: Varejo */}
-          <Route path="varejo">
+          <Route path="varejo" element={<ProtectedRoute requireModule="varejo"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<PainelVarejo />} />
             <Route path="painel" element={<PainelVarejo />} />
@@ -413,7 +413,7 @@ function AppContent() {
           </Route>
 
           {/* Verticais de Nicho: Clínicas */}
-          <Route path="clinicas">
+          <Route path="clinicas" element={<ProtectedRoute requireModule="clinica"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<PainelGeral />} />
             <Route path="painel" element={<PainelGeral />} />
@@ -430,7 +430,7 @@ function AppContent() {
             <Route path="bi" element={<EstatisticasClinicas />} />
           </Route>
           {/* Alias legado /clinica */}
-          <Route path="clinica">
+          <Route path="clinica" element={<ProtectedRoute requireModule="clinica"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="/app/clinicas/dashboard" replace />} />
             <Route path="dashboard" element={<PainelGeral />} />
             <Route path="painel" element={<PainelGeral />} />
@@ -448,7 +448,7 @@ function AppContent() {
           </Route>
 
           {/* Verticais de Nicho: Educação */}
-          <Route path="educacao">
+          <Route path="educacao" element={<ProtectedRoute requireModule="educacao"><Outlet /></ProtectedRoute>}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<PainelGeralEdu />} />
             <Route path="painel" element={<PainelGeralEdu />} />

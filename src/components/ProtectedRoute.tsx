@@ -1,7 +1,24 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { toast } from "sonner";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../contexts/DataContext";
+
+// Mesmos aliases do Sidebar/MobileNav para chaves de módulo equivalentes.
+const MODULE_ALIASES: Record<string, string[]> = {
+  automotivo: ["automotivo", "concessionaria"],
+  concessionaria: ["automotivo", "concessionaria"],
+  solar: ["solar", "energia-solar"],
+  "energia-solar": ["solar", "energia-solar"],
+  clinica: ["clinica", "clinicas"],
+};
+
+function ModuleDisabledRedirect() {
+  useEffect(() => {
+    toast.info("Este módulo não está habilitado para a sua empresa.");
+  }, []);
+  return <Navigate to="/app" replace />;
+}
 
 export function ProtectedRoute({
   children,
@@ -24,7 +41,7 @@ export function ProtectedRoute({
    * do menu", mas acessível digitando a URL). */
   requireModule?: string;
 }) {
-  const { user, authLoading } = useAuth();
+  const { user, authLoading, allTenantModules, activeTenantName } = useAuth();
   const { cargos } = useData();
   const location = useLocation();
 
@@ -67,13 +84,26 @@ export function ProtectedRoute({
     return <Navigate to="/app" replace />;
   }
 
+  if (requireModule && !user.isMaster && !user.partnerId) {
+    // Só bloqueia quando o tenant já foi carregado — evita falso bloqueio no refresh
+    // enquanto fetchTenants ainda não respondeu.
+    const tenantName = (activeTenantName || user.tenantName || "").toLowerCase();
+    const key = Object.keys(allTenantModules).find((k) => k.toLowerCase() === tenantName);
+    if (key) {
+      const mods = allTenantModules[key] || {};
+      const aliases = MODULE_ALIASES[requireModule] || [requireModule];
+      if (!aliases.some((a) => !!mods[a])) return <ModuleDisabledRedirect />;
+    }
+  }
+
   if (requireModule && !user.isMaster) {
     const userCargo = cargos.find((c) => c.nome === user.role);
     const cargoModulos: string[] | null =
       userCargo && Array.isArray(userCargo.modulos) && userCargo.modulos.length > 0
         ? userCargo.modulos
         : null;
-    if (cargoModulos && !cargoModulos.includes(requireModule)) {
+    const aliasesCargo = MODULE_ALIASES[requireModule] || [requireModule];
+    if (cargoModulos && !cargoModulos.some((m) => aliasesCargo.includes(m))) {
       return <Navigate to="/app" replace />;
     }
   }

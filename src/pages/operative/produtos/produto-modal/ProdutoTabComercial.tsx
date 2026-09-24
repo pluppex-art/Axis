@@ -117,10 +117,13 @@ export function ProdutoTabComercial({
         {/* Toggles de Recorrência e Implantação */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {/* Toggle Recorrente */}
-          <div
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!formIsRecurring}
             onClick={() => setFormIsRecurring && setFormIsRecurring(!formIsRecurring)}
             className={cn(
-              "p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
+              "w-full text-left p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
               formIsRecurring
                 ? "bg-violet-500/10 border-violet-500/50 text-[var(--color-text-primary)] shadow-sm"
                 : "bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-default)] hover:text-[var(--color-text-primary)]"
@@ -140,13 +143,16 @@ export function ProdutoTabComercial({
                 Mensalidade periódica (Assinatura, SaaS, Manutenção)
               </p>
             </div>
-          </div>
+          </button>
 
           {/* Toggle Implantação */}
-          <div
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!formHasImplementation}
             onClick={() => setFormHasImplementation && setFormHasImplementation(!formHasImplementation)}
             className={cn(
-              "p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
+              "w-full text-left p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3",
               formHasImplementation
                 ? "bg-fuchsia-500/10 border-fuchsia-500/50 text-[var(--color-text-primary)] shadow-sm"
                 : "bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-default)] hover:text-[var(--color-text-primary)]"
@@ -166,7 +172,7 @@ export function ProdutoTabComercial({
                 Onboarding, parametrização técnica inicial ou treinamento
               </p>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Campos Condicionais de Recorrência (Meses e Ciclo) */}
@@ -227,10 +233,14 @@ export function ProdutoTabComercial({
             Sempre visível (mesmo desativado quando o produto não é recorrente)
             — escondê-la por completo fazia parecer que a opção nem existia. */}
         <div className="pt-3 border-t border-violet-500/15 space-y-3">
-          <div
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!(formIsRecurring && formHasLoyalty)}
+            disabled={!formIsRecurring}
             onClick={() => formIsRecurring && setFormHasLoyalty && setFormHasLoyalty(!formHasLoyalty)}
             className={cn(
-              "p-3.5 rounded-xl border transition-all flex items-start gap-3",
+              "w-full text-left p-3.5 rounded-xl border transition-all flex items-start gap-3",
               !formIsRecurring
                 ? "opacity-50 cursor-not-allowed bg-[var(--color-surface-sunken)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]"
                 : formHasLoyalty
@@ -254,7 +264,7 @@ export function ProdutoTabComercial({
                   : "Disponível só para produtos com Cobrança Recorrente ativada acima"}
               </p>
             </div>
-          </div>
+          </button>
 
           {formIsRecurring && formHasLoyalty && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-1 animate-in fade-in slide-in-from-top-1">

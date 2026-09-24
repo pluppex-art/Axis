@@ -251,6 +251,7 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
                             setIsWordModalOpen(true);
                           }}
                           title="Visualizar / Editar no Modo Word (Diretrizes e Contrato)"
+                          aria-label="Visualizar / Editar no Modo Word (Diretrizes e Contrato)"
                           className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
                         >
                           <Edit3 className="w-4 h-4" />
@@ -273,6 +274,7 @@ export function PropostasTable({ propostas, proposalItems, search, onSearchChang
                             })) onDelete(item.id);
                           }}
                           title="Deletar Proposta"
+                          aria-label="Deletar Proposta"
                           className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)] hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
                         >
 

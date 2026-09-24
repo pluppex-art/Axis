@@ -142,7 +142,7 @@ export default function Alunos() {
         onClose={() => setIsModalOpen(false)}
         onSubmit={async (data) => {
           const { curso, valorMensalidade, diaVencimento, quantidadeParcelas, ...rest } = data as any;
-          const studentId = Date.now().toString();
+          const studentId = crypto.randomUUID();
           await addStudent({
             ...rest,
             turma_id: curso || null,

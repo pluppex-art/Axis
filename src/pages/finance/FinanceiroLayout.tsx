@@ -126,7 +126,8 @@ export default function FinanceiroLayout() {
   useEffect(() => { ensureNicheModulesLoaded(); }, [ensureNicheModulesLoaded]);
 
   const mostrarFab = !PAGINAS_COM_BOTAO_PROPRIO.some(p => location.pathname.startsWith(p));
-  const tipoPadrao = location.pathname.includes("recebimento") ? "Receber" : "Pagar";
+  // Antes buscava "recebimento" (rota inexistente), então sempre caía em "Pagar".
+  const tipoPadrao = /receb|receita|cobranca|inadimpl|mrr/.test(location.pathname) ? "Receber" : "Pagar";
 
   return (
     <SectionSidebar heading="Financeiro" subheading="Gestão Financeira" groups={groups}>

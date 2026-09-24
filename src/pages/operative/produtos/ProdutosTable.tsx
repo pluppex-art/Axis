@@ -117,6 +117,7 @@ export function ProdutosTable({
                         onClick={(e) => handleVender(p, e)}
                         className="p-1 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-400 rounded transition-colors"
                         title="Vender"
+                        aria-label="Vender"
                       >
                         <ShoppingCart className="w-3.5 h-3.5" />
                       </button>
@@ -124,6 +125,7 @@ export function ProdutosTable({
                         onClick={(e) => handleOpenEditModal(p, e)}
                         className="p-1 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded transition-colors"
                         title="Editar"
+                        aria-label="Editar"
                       >
                         <Edit className="w-3.5 h-3.5" />
                       </button>
@@ -131,6 +133,7 @@ export function ProdutosTable({
                         onClick={(e) => duplicateProduct(p, e)}
                         className="p-1 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded transition-colors"
                         title="Duplicar"
+                        aria-label="Duplicar"
                       >
                         <Copy className="w-3.5 h-3.5" />
                       </button>
@@ -138,6 +141,7 @@ export function ProdutosTable({
                         onClick={(e) => deleteProduct(p.id, e)}
                         className="p-1 bg-white/5 hover:bg-white/10 text-rose-400 hover:text-rose-500 rounded transition-colors"
                         title="Remover"
+                        aria-label="Remover"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

@@ -45,16 +45,16 @@ BEGIN
     WHERE id = v_tenant_id;
   END IF;
 
-  -- Cria/atualiza usuário master admin@gthec.com (senha: gthec@2025)
+  -- Cria/atualiza usuário master admin@gthec.com (senha: gerenciada no Supabase Auth — valor removido do repositório)
   IF EXISTS (SELECT 1 FROM public.users WHERE email = 'admin@gthec.com') THEN
     UPDATE public.users SET
       is_master = true, active = true, role = 'Super Admin',
       name = 'G-Tech Administrador',
-      password_hash = 'Z3RoZWNAMjAyNQ=='
+      password_hash = 'REDACTED-use-Supabase-Auth'
     WHERE email = 'admin@gthec.com';
   ELSE
     INSERT INTO public.users (tenant_id, name, email, password_hash, role, is_master, active)
-    VALUES (v_tenant_id, 'G-Tech Administrador', 'admin@gthec.com', 'Z3RoZWNAMjAyNQ==', 'Super Admin', true, true);
+    VALUES (v_tenant_id, 'G-Tech Administrador', 'admin@gthec.com', 'REDACTED-use-Supabase-Auth', 'Super Admin', true, true);
   END IF;
 END $$;
 

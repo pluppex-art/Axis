@@ -194,6 +194,7 @@ export function ClientesList({
                       <button
                         onClick={(e) => { e.stopPropagation(); onEdit(c); }}
                         title="Editar Cliente"
+                        aria-label="Editar Cliente"
                         className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10 rounded-lg transition-colors"
                       >
                         <Pencil className="w-3.5 h-3.5" />
@@ -201,6 +202,7 @@ export function ClientesList({
                       <button
                         onClick={(e) => { e.stopPropagation(); onManageContatos(c.id); }}
                         title="Contatos e Decisores"
+                        aria-label="Contatos e Decisores"
                         className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10 rounded-lg transition-colors"
                       >
                         <Users className="w-3.5 h-3.5" />
@@ -208,6 +210,7 @@ export function ClientesList({
                       <button
                         onClick={(e) => { e.stopPropagation(); onDelete(c.id); }}
                         title="Remover Cliente"
+                        aria-label="Remover Cliente"
                         className="p-2 bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)] hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
