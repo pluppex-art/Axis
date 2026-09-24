@@ -292,14 +292,14 @@ export function InteractiveForm() {
               <Icon className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-white text-sm opacity-90">{formConfig.name}</h1>
-              <p className="text-white/50 text-xs">Passo {currentStep + 1} de {totalSteps}</p>
+              <h1 className="text-[#ffffff] text-sm opacity-90">{formConfig.name}</h1>
+              <p className="text-[rgba(255,255,255,0.6)] text-xs">Passo {currentStep + 1} de {totalSteps}</p>
             </div>
           </div>
 
           <div className="flex gap-1">
             {Array.from({ length: totalSteps }).map((_, i) => (
-              <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i <= currentStep ? 'w-8 bg-white' : 'w-2 bg-white/20'}`} />
+              <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i <= currentStep ? 'w-8 bg-[#ffffff]' : 'w-2 bg-[rgba(255,255,255,0.25)]'}`} />
             ))}
           </div>
         </div>
@@ -396,7 +396,7 @@ export function InteractiveForm() {
         </div>
 
         {/* Footer info */}
-        <div className="mt-8 text-center text-xs text-white/40 font-mono tracking-wide">
+        <div className="mt-8 text-center text-xs text-[rgba(255,255,255,0.5)] font-mono tracking-wide">
           <p>Powered by S.P.Y. CRM ✦ Captação Segura e Inteligente</p>
         </div>
 
