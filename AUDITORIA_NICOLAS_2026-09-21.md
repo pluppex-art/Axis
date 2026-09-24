@@ -3,7 +3,7 @@
 > **Atualização 2026-09-24** — este relatório é histórico (retrato de 2026-09-01 a 2026-09-03 ou da data indicada) e não foi reescrito. O que mudou desde então:
 > - O banco vivo tem hoje **129 tabelas, 100% com RLS**, 4 buckets (`avatars`, `proposals`, `products`, `finance`); `chat_contacts`/`chat_messages` existem com RLS e o WhatsApp usa o provedor WAHA real com persistência (não é mais só simulador em memória); existe webhook de **entrada** (`POST /api/whatsapp/webhook/:instanceId`) e webhooks de **saída** reais (`dispatch_webhook_event`/`pg_net`).
 > - Variáveis de ambiente renomeadas: `AXIS_*` → `SPY_*` (`SPY_CORS_ORIGIN`, `SPY_API_KEYS`; o código ainda aceita `AXIS_*` como fallback).
-> - Migrations de 2026-09-21 no repo (`cr1`, `cr2`, `cr3` e `fixes_m5_m7_baixo_get_public_imovel` confirmadas como **não aplicadas** no banco vivo em 2026-09-24 (`a1` foi **aplicada** em 2026-09-24; `a4` já estava aplicada)) ainda pendentes de aplicação.
+> - Migrations de 2026-09-21 no repo (`cr3` e `fixes_m5_m7_baixo_get_public_imovel` seguem **não aplicadas** no banco vivo (`a1`, `cr1` e `cr2` foram **aplicadas** em 2026-09-24; `a4` já estava aplicada)) ainda pendentes de aplicação.
 > - Achados novos ainda abertos (SSRF em rotas de teste de integração, `resolveTenantId` do Google Calendar, aceite público de proposta sem checagem de status, cache Redis por tenant × RLS por módulo, `tenant-theme` sem limite, permissão por módulo só em modo log): ver TRD §19.6 e Plano, Fase 4.
 > Estado verificado atual: [`docs/projeto/05-ESQUEMA-BACKEND.md`](docs/projeto/05-ESQUEMA-BACKEND.md), [`docs/projeto/02-TRD.md`](docs/projeto/02-TRD.md) §19 e achados abertos em [`docs/projeto/06-PLANO-DE-IMPLEMENTACAO.md`](docs/projeto/06-PLANO-DE-IMPLEMENTACAO.md) (Fase 4).
 

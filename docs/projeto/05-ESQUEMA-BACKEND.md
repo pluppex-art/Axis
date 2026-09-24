@@ -210,7 +210,7 @@ Quase toda tabela de negócio: **uma policy `tenant_isolation` (ALL)** com `has_
 | # | Achado | Impacto | Ação |
 |---|---|---|---|
 | 1 | `clientes` sem unicidade de `documento`/`email` | Duplicados possíveis por corrida (já ocorreu) | Índices únicos parciais `(tenant_id, documento)` e `(tenant_id, lower(email))` após deduplicar |
-| 2 | **Migrations de 2026-09-21 no repo não estão aplicadas no banco vivo:** `a1_finance_period_lock_db_trigger` (`guard_finance_period_lock`), `cr1_cargos_squads_admin_only_write` (`is_tenant_admin_or_master`), `cr2_guard_tenant_modules_plan_update`, `cr3_clinica_educacao_module_read_enforcement` (`user_has_module_access`) | Bloqueio de período **só na UI**; escrita em cargos/squads e troca de plano/módulos sem guarda no banco | Revisar e aplicar (ou remover do repo) |
+| 2 | **Migrations de 2026-09-21:** `a1_finance_period_lock_db_trigger`, `cr1_cargos_squads_admin_only_write` e `cr2_guard_tenant_modules_plan_update` foram **aplicadas em 2026-09-24**; `cr3_clinica_educacao_module_read_enforcement` (`user_has_module_access`) e `fixes_m5_m7_baixo_get_public_imovel` **seguem pendentes** | Leitura de prontuário/mensalidade sem checagem de módulo no banco; 2 produtos com `tenant_id` nulo; `anon` ainda com grants de escrita em `tenants` | Aplicar `cr3` e `m5_m7` |
 | 3 | Permissões por módulo em **modo log** (`permission_check_log`) | Nada é bloqueado ainda | Migrar para enforcement após validar `would_have_blocked` |
 | 4 | `quantidade` sobrecarregada em item recorrente | Confusão de exibição/relatórios | Coluna `cycles` (Plano, Fase 2) |
 | 5 | `leads."clientId"` e `"productIds"` sem FK | Vínculo órfão possível (já houve) | FK `leads.client_id → clientes` ou limpeza garantida por trigger |

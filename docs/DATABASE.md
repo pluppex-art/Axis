@@ -1,6 +1,6 @@
 # Banco de dados
 
-Supabase/Postgres 17, projeto `snwkzvgompfgqoqbpihe`. Schema `public`, **129 tabelas, todas com RLS** (verificado ao vivo em 2026-09-24). Migrações versionadas em [`supabase/migrations/`](../supabase/migrations/) — atenção: as `20260921_cr1/cr2/cr3` e `m5_m7` do repo **ainda não estão aplicadas** no banco vivo (`a1` e `a4` estão). O dicionário de dados completo (tabelas, colunas, FKs, funções, triggers) está em [`projeto/05-ESQUEMA-BACKEND.md`](projeto/05-ESQUEMA-BACKEND.md), que é a fonte de verdade; este documento só resume convenções. Extensões: `plpgsql`, `uuid-ossp`, `pgcrypto`, `pg_stat_statements`, `supabase_vault`, `pg_net`, `pg_graphql`, `pg_cron`, `http`, `vector`.
+Supabase/Postgres 17, projeto `snwkzvgompfgqoqbpihe`. Schema `public`, **129 tabelas, todas com RLS** (verificado ao vivo em 2026-09-24). Migrações versionadas em [`supabase/migrations/`](../supabase/migrations/) — atenção: as `20260921_cr3` e `m5_m7` do repo **ainda não estão aplicadas** no banco vivo (`a1`, `a4`, `cr1` e `cr2` estão). O dicionário de dados completo (tabelas, colunas, FKs, funções, triggers) está em [`projeto/05-ESQUEMA-BACKEND.md`](projeto/05-ESQUEMA-BACKEND.md), que é a fonte de verdade; este documento só resume convenções. Extensões: `plpgsql`, `uuid-ossp`, `pgcrypto`, `pg_stat_statements`, `supabase_vault`, `pg_net`, `pg_graphql`, `pg_cron`, `http`, `vector`.
 
 ## Convenção de multi-tenant
 

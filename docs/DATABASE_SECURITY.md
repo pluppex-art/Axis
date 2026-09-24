@@ -21,7 +21,7 @@ has_tenant_access(target_tenant_id) —
   OR EXISTS (SELECT 1 FROM tenant_partners WHERE tenant_id = target AND partner_id = current_partner_id())
 ```
 
-Existem ainda `is_own_tenant_or_super_admin(target_tenant_id)`, `email_taken(check_email)` e `platform_metrics_overview()`. A migration `20260921_cr1_*` (ainda **não aplicada** no banco vivo em 2026-09-24; `a1` já foi aplicada) adiciona `is_tenant_admin_or_master()` para escrita restrita em `cargos`/`squads`, e `20260921_cr3_*` adiciona `user_has_module_access()` para leitura por módulo em clínica/educação. `users.is_tenant_admin` é uma **coluna real** (`bool`, não derivada) — ver [AUTHORIZATION.md](AUTHORIZATION.md).
+Existem ainda `is_own_tenant_or_super_admin(target_tenant_id)`, `email_taken(check_email)` e `platform_metrics_overview()`. A migration `20260921_cr1_*` (aplicada em 2026-09-24) adiciona `is_tenant_admin_or_master()` para escrita restrita em `cargos`/`squads`, e `20260921_cr3_*` adiciona `user_has_module_access()` para leitura por módulo em clínica/educação. `users.is_tenant_admin` é uma **coluna real** (`bool`, não derivada) — ver [AUTHORIZATION.md](AUTHORIZATION.md).
 
 `has_tenant_access()` é a policy padrão (`tenant_isolation`) na grande maioria das 129 tabelas — dono direto, master, ou parceiro mapeado, todos passam.
 
@@ -53,7 +53,7 @@ Um `partner` pode enxergar múltiplos tenants sem ser `is_super_admin`. O mapeam
 
 - `webhooks`/`webhook_logs` **têm uso real**: triggers em `leads`/`tasks` (`webhook_lead_created`, `webhook_lead_status_changed`, `webhook_task_created`) chamam `dispatch_webhook_event(...)`, que dispara via `pg_net` (assíncrono) e registra em `webhook_logs` (migrations `20260919_webhooks_dispatch_real.sql` e `20260919_revoke_public_execute_dispatch_functions.sql`, esta última retirando `EXECUTE` público das funções de despacho). Conectores externos usam `external_integrations` (0 policies, só `service_role`) e `external_integration_logs`.
 - **Permissão por módulo em modo log:** os triggers `trg_permission_log_{crm,financeiro,rh,clinica,educacao}` chamam `log_module_permission_check`, que grava em `permission_check_log` (`would_have_blocked`) **sem bloquear nada**. Enforcement real ainda não existe no banco (só `user_has_module_access`/CR3, não aplicado).
-- **Migrations de 2026-09-21 no repo (estado em 2026-09-24):** `a1_finance_period_lock_db_trigger` **aplicada** (bloqueio de período agora também no banco) e `a4_dev_module_rls_policies` já aplicada; **ainda NÃO aplicadas:** `cr1_cargos_squads_admin_only_write`, `cr2_guard_tenant_modules_plan_update`, `cr3_clinica_educacao_module_read_enforcement` e `fixes_m5_m7_baixo_get_public_imovel` (impacto medido antes: 0 usuários perderiam acesso a dados de clínica/educação). Revisar e aplicar (ou remover do repo) — ver [projeto/05-ESQUEMA-BACKEND.md](projeto/05-ESQUEMA-BACKEND.md) §11.
+- **Migrations de 2026-09-21 no repo (estado em 2026-09-24):** `a1_finance_period_lock_db_trigger`, `cr1_cargos_squads_admin_only_write` e `cr2_guard_tenant_modules_plan_update` **aplicadas em 2026-09-24** (bloqueio de período no banco; escrita em cargos/squads só para admin/master; módulos/plano só pelo master) e `a4_dev_module_rls_policies` já aplicada; **ainda NÃO aplicadas:** `cr3_clinica_educacao_module_read_enforcement` e `fixes_m5_m7_baixo_get_public_imovel` (impacto medido antes: 0 usuários perderiam acesso a dados de clínica/educação). Revisar e aplicar (ou remover do repo) — ver [projeto/05-ESQUEMA-BACKEND.md](projeto/05-ESQUEMA-BACKEND.md) §11.
 
 ## Storage
 
