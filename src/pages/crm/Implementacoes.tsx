@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Rocket, Play, Search, ClipboardList, CheckCircle2, Clock, Gauge, ChevronRight } from "lucide-react";
 import { PageContainer } from "../../components/PageContainer";
@@ -8,6 +8,7 @@ import { EmptyState } from "../../components/ui/empty-state";
 import { StatCell, StatCellRow } from "../finance/components/StatCell";
 import { ImplementationProgressBar } from "../../components/implementacao/ImplementationProgressBar";
 import { useData } from "../../contexts/DataContext";
+import { supabase } from "../../lib/supabase";
 import { cn } from "../../lib/utils";
 import {
   IMPLEMENTATION_STATUSES, IMPLEMENTATION_STATUS_TONE, computeProgress, type ImplementationStatus,
@@ -36,6 +37,7 @@ export default function Implementacoes() {
   const [busca, setBusca] = useState("");
   const [outroClienteId, setOutroClienteId] = useState("");
   const [iniciando, setIniciando] = useState<string | null>(null);
+  const iniciandoRef = useRef(false);
 
   const clientePorId = useMemo(() => new Map((clienteBase as any[]).map((c) => [c.id, c])), [clienteBase]);
   const comImplementacao = useMemo(() => new Set((implementations as any[]).map((i) => i.cliente_id)), [implementations]);
@@ -87,8 +89,17 @@ export default function Implementacoes() {
   }, [linhas, filtro, busca]);
 
   const iniciar = async (cliente: any, lead?: any) => {
+    // Trava síncrona (o estado só atualiza no próximo render — um duplo clique passaria).
+    if (iniciandoRef.current) return;
+    iniciandoRef.current = true;
     setIniciando(cliente.id);
     try {
+      // Confere no banco antes de criar: a lista local pode estar defasada (ex.: iniciada
+      // em outra aba) e o banco só aceita uma implementação por cliente.
+      if (supabase) {
+        const { data: existente } = await supabase.from("implementations").select("id").eq("cliente_id", cliente.id).maybeSingle();
+        if (existente?.id) { navigate(`/app/crm/implementacoes/${existente.id}`); return; }
+      }
       const created = await addImplementation({
         cliente_id: cliente.id,
         lead_id: lead?.id || null,
@@ -99,6 +110,7 @@ export default function Implementacoes() {
       if (!cliente.status || cliente.status === "Ativo") await updateClienteBase(cliente.id, { status: "Em Implantação" });
       if (created?.id) navigate(`/app/crm/implementacoes/${created.id}`);
     } finally {
+      iniciandoRef.current = false;
       setIniciando(null);
     }
   };

@@ -1094,6 +1094,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           { name: 'products', promise: cachedFetchAllRowsForTenant('products', tenantId, true), apply: (res) => { if (res.data) setProducts(res.data.map(mapProductRow)); productsAuthoritativeLoadedRef.current = true; } },
           { name: 'proposals', promise: fetchAllRowsForTenant('proposals', tenantId), apply: (res) => { if (res.data) setProposals(res.data); setProposalsLoaded(true); } },
           { name: 'proposal_items', promise: fetchAllRowsForTenant('proposal_items', tenantId), apply: (res) => { if (res.data) setProposalItems(res.data); } },
+          // Carga inicial (não lazy de nicho): a página CRM > Implementações não
+          // chama ensureNicheModulesLoaded, e sem a lista carregada ela mostra
+          // clientes que já têm implementação como "aguardando início".
+          { name: 'implementations', promise: fetchAllRowsForTenant('implementations', tenantId), apply: (res) => { if (res.data) setImplementations(res.data); } },
           // turmas/students: só usados nas páginas de Educação — movidos pro
           // lazy load de nicho (ensureNicheModulesLoaded) abaixo.
           {
@@ -1282,7 +1286,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       { name: 'finance_attachments', promise: fetchAllRowsForTenant('finance_attachments', tenantId), apply: (res) => { if (res.data) setFinanceAttachments(res.data); } },
       { name: 'finance_categories', promise: fetchAllRowsForTenant('finance_categories', tenantId), apply: (res) => { if (res.data) setFinanceCategories(res.data); } },
       { name: 'finance_budgets', promise: fetchAllRowsForTenant('finance_budgets', tenantId), apply: (res) => { if (res.data) setFinanceBudgets(res.data); } },
-      { name: 'implementations', promise: fetchAllRowsForTenant('implementations', tenantId), apply: (res) => { if (res.data) setImplementations(res.data); } },
       { name: 'marketing_automations', promise: fetchAllRowsForTenant('marketing_automations', tenantId), apply: (res) => { if (res.data) setMarketingAutomations(res.data); } },
       { name: 'marketing_forms', promise: fetchAllRowsForTenant('marketing_forms', tenantId), apply: (res) => { if (res.data) setMarketingForms(res.data); } },
       { name: 'marketing_content', promise: fetchAllRowsForTenant('marketing_content', tenantId, (q: any) => q.is('deleted_at', null)), apply: (res) => { if (res.data) setMarketingContent(res.data); } },
