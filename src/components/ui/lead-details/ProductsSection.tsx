@@ -379,7 +379,8 @@ export function ProductsSection({
         onClose={() => setIsAddModalOpen(false)}
         availableProducts={availableProducts}
         initialProductId={prefillProductId}
-        existingProposal={editingExistingProposal && existingProposal ? { id: existingProposal.id, titulo: existingProposal.titulo, status: existingProposal.status } : null}
+        existingProposal={editingExistingProposal && existingProposal ? { id: existingProposal.id, titulo: existingProposal.titulo, status: existingProposal.status, valor: existingProposal.valor } : null}
+        existingItems={editingExistingProposal ? existingProposalItems : []}
         leadId={leadId}
         leadName={leadName}
         companyName={companyName}

@@ -55,7 +55,9 @@ interface AddProdutoLeadModalProps {
   initialProductId?: string;
   /** Modo "editar proposta": os produtos escolhidos entram como itens DESTA proposta já
    * existente (nunca cria uma segunda proposta pro mesmo lead). */
-  existingProposal?: { id: string; titulo?: string; status?: string } | null;
+  existingProposal?: { id: string; titulo?: string; status?: string; valor?: number } | null;
+  /** Itens que já estão na proposta existente (só exibição, pra ver o que já foi vendido). */
+  existingItems?: any[];
   /** Chamado depois que a venda é fechada com sucesso, pra quem chamou registrar no
    * histórico de alterações do lead (setAlterationLogs) sem esse modal precisar saber
    * desse detalhe. */
@@ -149,6 +151,7 @@ export function AddProdutoLeadModal({
   seller,
   initialProductId,
   existingProposal,
+  existingItems = [],
   onDone,
 }: AddProdutoLeadModalProps) {
   const { createProposalWithItems, addItemsToProposal, addFinanceEntry, updateLead, addNotification, leads, resolveFinanceCategoryId } = useData();
@@ -566,6 +569,29 @@ export function AddProdutoLeadModal({
           </p>
         )}
 
+        {existingProposal?.id && (
+          <div className="rounded-2xl border border-blue-500/25 bg-blue-500/[0.04] p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" /> Já na proposta ({existingItems.length})
+              </span>
+              {existingProposal.valor !== undefined && (
+                <span className="text-[11px] font-mono font-black text-blue-500">{formatCurrency(Number(existingProposal.valor) || 0)}</span>
+              )}
+            </div>
+            {existingItems.length === 0 ? (
+              <p className="text-[11px] text-[var(--color-text-faint)]">Nenhum item registrado ainda.</p>
+            ) : existingItems.map((it: any) => (
+              <div key={it.id} className="flex items-center justify-between gap-2 bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5">
+                <p className="text-[11px] font-bold text-[var(--color-text-primary)] truncate">{it.product_name}</p>
+                <span className="text-[10px] font-mono text-[var(--color-text-muted)] shrink-0">
+                  {it.quantidade}x {formatCurrency(Number(it.preco_unitario) || 0)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* ── CARRINHO DESTA PROPOSTA (produtos já adicionados) ── */}
         {cartItems.length > 0 && (
           <div className="bg-emerald-500/5 border border-emerald-500/25 rounded-xl p-3 space-y-2">
@@ -956,7 +982,7 @@ export function AddProdutoLeadModal({
             Cancelar
           </Button>
           <div className="flex items-center gap-2">
-            {product && step >= 4 && (
+            {product && (
               <Button
                 type="button"
                 variant="outline"
@@ -965,7 +991,7 @@ export function AddProdutoLeadModal({
                 title="Guarda este produto e volta pra etapa 1 pra escolher o próximo"
                 className="h-9 px-4 text-xs font-bold gap-1.5"
               >
-                <Plus className="w-3.5 h-3.5" /> Adicionar outro produto
+                <Plus className="w-3.5 h-3.5" /> Adicionar outro produto (+)
               </Button>
             )}
             <Button
