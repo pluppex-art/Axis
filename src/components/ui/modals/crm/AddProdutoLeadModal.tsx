@@ -154,7 +154,7 @@ export function AddProdutoLeadModal({
   existingItems = [],
   onDone,
 }: AddProdutoLeadModalProps) {
-  const { createProposalWithItems, addItemsToProposal, addFinanceEntry, updateLead, addNotification, leads, resolveFinanceCategoryId } = useData();
+  const { createProposalWithItems, addItemsToProposal, editProposalItems, addFinanceEntry, updateLead, addNotification, leads, resolveFinanceCategoryId } = useData();
   const { formatCurrency } = useLocalization();
 
   const [productId, setProductId] = useState("");
@@ -202,9 +202,19 @@ export function AddProdutoLeadModal({
   // resumo de uma linha (clicável pra reabrir).
   const [step, setStep] = useState(1);
 
+  // Edição dos itens que já estão na proposta (modo lápis): quantidade/preço editáveis e
+  // remoção. Só vira escrita no banco ao salvar.
+  const [itemEdits, setItemEdits] = useState<Record<string, { quantidade: string; preco: string }>>({});
+  const [removedItemIds, setRemovedItemIds] = useState<string[]>([]);
+  // Em modo edição as etapas de "novo produto" só aparecem depois de clicar no "+".
+  const [addingNew, setAddingNew] = useState(false);
+
   useEffect(() => {
     if (!isOpen) return;
     setCartItems([]);
+    setItemEdits({});
+    setAddingNew(false);
+    setRemovedItemIds([]);
     setStep(initialProductId ? 2 : 1);
     setProductId(initialProductId || "");
     setQuantity(1);
@@ -328,6 +338,19 @@ export function AddProdutoLeadModal({
 
   const cartTotal = cartItems.reduce((sum, ci) => sum + ci.sale.totalProjectedAmount, 0);
 
+  const pendingItemEdits = existingItems
+    .filter((it: any) => !removedItemIds.includes(it.id) && itemEdits[it.id])
+    .map((it: any) => ({
+      id: it.id as string,
+      quantidade: Math.max(1, parseFloat(itemEdits[it.id].quantidade) || 0),
+      preco_unitario: Math.max(0, parseFloat(itemEdits[it.id].preco) || 0),
+    }))
+    .filter((e) => {
+      const it = existingItems.find((x: any) => x.id === e.id);
+      return e.quantidade !== Number(it.quantidade) || e.preco_unitario !== Number(it.preco_unitario);
+    });
+  const hasItemEdits = !!existingProposal?.id && (pendingItemEdits.length > 0 || removedItemIds.length > 0);
+
   const handleSubmit = async () => {
     // O produto ainda configurado no formulário (se houver) entra na venda junto com o
     // carrinho — assim quem vende só 1 produto continua sem precisar clicar "Adicionar"
@@ -348,12 +371,21 @@ export function AddProdutoLeadModal({
           }]
         : []),
     ];
-    if (allItems.length === 0) {
+    if (allItems.length === 0 && !hasItemEdits) {
       toast.error("Selecione ao menos um produto.");
       return;
     }
     setSaving(true);
     try {
+      if (existingProposal?.id && hasItemEdits) {
+        await editProposalItems(existingProposal.id, pendingItemEdits, removedItemIds);
+        if (allItems.length === 0) {
+          toast.success("Itens da proposta atualizados.", { description: "Os lançamentos financeiros já gerados não foram alterados." });
+          onDone?.("✏️ Itens da proposta editados.");
+          onClose();
+          return;
+        }
+      }
       const clientName = companyName || leadName || "Cliente";
       // Vínculos reais que dá pra derivar sem inventar nada: category_id (o
       // DRE lê o id, não só o texto livre `category`) e o contato (cliente já
@@ -524,6 +556,8 @@ export function AddProdutoLeadModal({
     }
   };
 
+  const showSteps = !existingProposal?.id || addingNew || cartItems.length > 0 || !!productId;
+
   const nextBtn = (label: string, onClick: () => void, disabled = false) => (
     <div className="flex justify-end pt-1">
       <Button type="button" onClick={onClick} disabled={disabled} className="h-9 px-4 text-xs font-bold gap-1.5">
@@ -573,7 +607,7 @@ export function AddProdutoLeadModal({
           <div className="rounded-2xl border border-blue-500/25 bg-blue-500/[0.04] p-3 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" /> Já na proposta ({existingItems.length})
+                <FileText className="w-3.5 h-3.5" /> Produtos na proposta ({existingItems.length}) — edite abaixo
               </span>
               {existingProposal.valor !== undefined && (
                 <span className="text-[11px] font-mono font-black text-blue-500">{formatCurrency(Number(existingProposal.valor) || 0)}</span>
@@ -581,14 +615,49 @@ export function AddProdutoLeadModal({
             </div>
             {existingItems.length === 0 ? (
               <p className="text-[11px] text-[var(--color-text-faint)]">Nenhum item registrado ainda.</p>
-            ) : existingItems.map((it: any) => (
-              <div key={it.id} className="flex items-center justify-between gap-2 bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] rounded-lg px-2.5 py-1.5">
-                <p className="text-[11px] font-bold text-[var(--color-text-primary)] truncate">{it.product_name}</p>
-                <span className="text-[10px] font-mono text-[var(--color-text-muted)] shrink-0">
-                  {it.quantidade}x {formatCurrency(Number(it.preco_unitario) || 0)}
-                </span>
-              </div>
-            ))}
+            ) : existingItems.map((it: any) => {
+              const removed = removedItemIds.includes(it.id);
+              const ed = itemEdits[it.id] ?? { quantidade: String(it.quantidade ?? 1), preco: String(it.preco_unitario ?? 0) };
+              const setEd = (patch: Partial<{ quantidade: string; preco: string }>) =>
+                setItemEdits((prev) => ({ ...prev, [it.id]: { ...ed, ...patch } }));
+              const lineTotal = (parseFloat(ed.quantidade) || 0) * (parseFloat(ed.preco) || 0);
+              return (
+                <div key={it.id} className={cn("bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] rounded-xl p-2.5 space-y-2", removed && "opacity-50")}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={cn("text-[11px] font-bold text-[var(--color-text-primary)] truncate", removed && "line-through")}>{it.product_name}</p>
+                    <button
+                      type="button"
+                      onClick={() => setRemovedItemIds((prev) => removed ? prev.filter((x) => x !== it.id) : [...prev, it.id])}
+                      title={removed ? "Desfazer remoção" : "Remover da proposta"}
+                      className="p-1.5 text-[var(--color-text-faint)] hover:text-danger hover:bg-danger/10 rounded-lg transition-colors shrink-0"
+                    >
+                      {removed ? <Plus className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  {!removed && (
+                    <div className="grid grid-cols-3 gap-2 items-end">
+                      <div>
+                        <label className={labelClass}>Quantidade</label>
+                        <input type="number" min={1} value={ed.quantidade} onChange={(e) => setEd({ quantidade: e.target.value })} className={inputClass} />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Valor unit. (R$)</label>
+                        <input type="number" min={0} step="0.01" value={ed.preco} onChange={(e) => setEd({ preco: e.target.value })} className={inputClass} />
+                      </div>
+                      <div className="text-right">
+                        <span className={labelClass}>Subtotal</span>
+                        <span className="text-xs font-mono font-black text-[var(--color-text-primary)]">{formatCurrency(lineTotal)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {existingItems.length > 0 && (
+              <p className="text-[10px] text-[var(--color-text-faint)] flex items-start gap-1">
+                <Info className="w-3 h-3 shrink-0 mt-0.5" /> Editar aqui ajusta a proposta; cobranças já lançadas no financeiro não são alteradas.
+              </p>
+            )}
           </div>
         )}
 
@@ -628,6 +697,17 @@ export function AddProdutoLeadModal({
           </div>
         )}
 
+        {existingProposal?.id && !showSteps && (
+          <button
+            type="button"
+            onClick={() => { setAddingNew(true); setStep(1); }}
+            className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--color-primary-blue)]/40 py-3 text-xs font-bold text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/5 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Adicionar outro produto
+          </button>
+        )}
+        {showSteps && (
+          <div className="space-y-4">
         {/* ── ETAPA 1: PRODUTO ── */}
         <StepShell n={1} title="Produto" icon={Package} current={step} step={step}
           summary={product ? `${product.name} · ${quantity}x · ${formatCurrency(unitPrice)}` : undefined}
@@ -976,6 +1056,9 @@ export function AddProdutoLeadModal({
             </div>
         </StepShell>
 
+          </div>
+        )}
+
         {/* ── AÇÕES ── */}
         <div className="flex items-center justify-between gap-2 pt-3 border-t border-[var(--color-border-subtle)] sticky bottom-0 bg-[var(--color-surface-elevated)]">
           <Button type="button" variant="outline" onClick={onClose} className="h-9 px-4 text-xs font-bold">
@@ -986,7 +1069,7 @@ export function AddProdutoLeadModal({
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleAddToCart}
+                onClick={() => { handleAddToCart(); }}
                 disabled={saving}
                 title="Guarda este produto e volta pra etapa 1 pra escolher o próximo"
                 className="h-9 px-4 text-xs font-bold gap-1.5"
@@ -997,7 +1080,7 @@ export function AddProdutoLeadModal({
             <Button
               type="button"
               onClick={handleSubmit}
-              disabled={(!product && cartItems.length === 0) || saving}
+              disabled={(!product && cartItems.length === 0 && !hasItemEdits) || saving}
               className="h-9 px-5 text-xs font-bold gap-1.5"
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}

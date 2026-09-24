@@ -2359,6 +2359,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await updateProposal(proposalId, { valor: (Number(prop.valor) || 0) + addedValor });
   };
 
+  // Edita itens que JÁ estão numa proposta (quantidade/preço) e/ou remove itens, e
+  // ajusta o valor da proposta pela diferença (não recalcula do zero: o valor da
+  // proposta pode carregar desconto/implantação que não estão nas linhas). Lançamentos
+  // financeiros já gerados NÃO são alterados.
+  const editProposalItems = async (
+    proposalId: string,
+    edits: Array<{ id: string; quantidade: number; preco_unitario: number }>,
+    removedIds: string[],
+  ) => {
+    const prop = proposalsRef.current.find((p: any) => p.id === proposalId);
+    if (!prop) throw new Error('Proposta não encontrada.');
+    let delta = 0;
+    for (const e of edits) {
+      const old = (proposalItems || []).find((pi: any) => pi.id === e.id && pi.proposal_id === proposalId);
+      if (!old) continue;
+      delta += e.quantidade * e.preco_unitario - (Number(old.quantidade) || 0) * (Number(old.preco_unitario) || 0);
+      await proposalItemCrud.update(e.id, { quantidade: e.quantidade, preco_unitario: e.preco_unitario });
+    }
+    for (const id of removedIds) {
+      const old = (proposalItems || []).find((pi: any) => pi.id === id && pi.proposal_id === proposalId);
+      if (!old) continue;
+      delta -= (Number(old.quantidade) || 0) * (Number(old.preco_unitario) || 0);
+      await proposalItemCrud.del(id);
+    }
+    if (delta !== 0) await updateProposal(proposalId, { valor: Math.max(0, (Number(prop.valor) || 0) + delta) });
+  };
+
   // Excluir uma proposta precisa limpar TUDO que só existe por causa dela —
   // senão fica resíduo: valor "preso" no lead (achado real: lead do Murilo/
   // Geplan Contabilidade mostrando R$22.729 sem nenhuma proposta restante),
@@ -3049,6 +3076,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       proposalItems,
       createProposalWithItems,
       addItemsToProposal,
+      editProposalItems,
       syncAcceptedProposal,
       certificates,
       setCertificates,
