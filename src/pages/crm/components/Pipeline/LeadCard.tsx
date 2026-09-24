@@ -8,6 +8,7 @@ import {
   TrendingUp, Clock, UserCheck, Layers,
 } from 'lucide-react';
 import { cn, parseCurrencyBR } from '../../../../lib/utils';
+import { leadInterestEstimate } from '../../../../components/ui/lead-details/LeadDetailsModal.helpers';
 
 interface LeadCardProps {
   item: any;
@@ -125,7 +126,7 @@ export function LeadCard({
   // `linkedProposalValue` (proposals.valor) só existe quando uma proposta de
   // verdade foi criada — prioridade sobre `linkedProducts`, que agora vira
   // só uma ESTIMATIVA (mesmo tratamento visual de avgWonTicket, com "~").
-  const hasRealValue = parseCurrencyBR(item.value) > 0 || !!linkedProposalValue;
+  const hasRealValue = leadInterestEstimate(item, proposals as any[], products as any[]) !== null || parseCurrencyBR(item.value) > 0 || !!linkedProposalValue;
   const estimateFromInterest = !hasRealValue && produtosInteresse.length > 0
     ? produtosInteresse.reduce((s, p) => s + (Number(p.price) || 0), 0)
     : 0;
@@ -134,7 +135,10 @@ export function LeadCard({
   // o ticket médio dos negócios Fechado do tenant como ESTIMATIVA, marcada com
   // "~" e estilo diferenciado. Não é valor real — só um sinal de potencial.
   const isEstimated = !hasRealValue && (estimateFromInterest > 0 || avgWonTicket > 0);
-  const displayValue = parseCurrencyBR(item.value) > 0
+  const interestValue = leadInterestEstimate(item, proposals as any[], products as any[]);
+  const displayValue = interestValue !== null
+    ? formatCurrency(interestValue)
+    : parseCurrencyBR(item.value) > 0
     ? formatCurrency(parseCurrencyBR(item.value))
     : linkedProposalValue
       ? formatCurrency(Number(linkedProposalValue))

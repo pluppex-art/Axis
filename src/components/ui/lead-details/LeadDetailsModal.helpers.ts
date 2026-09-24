@@ -62,13 +62,14 @@ export function handleMarkLead(params: {
 }
 
 
-/** Estimativa a partir dos produtos de interesse: só vale enquanto o lead não tem valor real
- * (lead.value zerado) nem proposta — depois disso o valor da proposta manda. */
-export function leadInterestEstimate(lead: any, proposals: any[], products: any[]): number {
-  if (!lead) return 0;
-  const raw = Number(String(lead.value ?? "0").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
-  if (raw > 0) return 0;
-  if ((proposals || []).some((p: any) => p.lead_id === lead.id)) return 0;
-  const ids: string[] = Array.isArray(lead.customFields?.produtosInteresseIds) ? lead.customFields.produtosInteresseIds : [];
-  return ids.reduce((sum, id) => sum + (Number((products || []).find((p: any) => p.id === id)?.price) || 0), 0);
+/** Valor derivado dos produtos de interesse (tags da aba Produtos): soma dos preços dos
+ * marcados, recalculada a cada render — tirar uma tag diminui, zerar todas zera, marcar outra
+ * soma. Só vale enquanto o lead não tem proposta (depois o valor da proposta manda) e só
+ * quando as tags já foram usadas nesse lead; caso contrário devolve null (usar lead.value). */
+export function leadInterestEstimate(lead: any, proposals: any[], products: any[]): number | null {
+  if (!lead) return null;
+  if ((proposals || []).some((p: any) => p.lead_id === lead.id)) return null;
+  const ids = lead.customFields?.produtosInteresseIds;
+  if (!Array.isArray(ids)) return null;
+  return ids.reduce((sum: number, id: string) => sum + (Number((products || []).find((p: any) => p.id === id)?.price) || 0), 0);
 }

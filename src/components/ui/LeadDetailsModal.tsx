@@ -135,8 +135,8 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
   // fechado (mesmo bug corrigido no "Total de Ganhos" do Pipeline, ver usePipeline.ts).
   // lead.value já é a fonte de verdade, sincronizada com a proposta aceita.
   const interestEstimate = leadInterestEstimate(lead, proposals as any[], products as any[]);
-  const formattedValue = interestEstimate > 0
-    ? `~${formatCurrency(interestEstimate)}`
+  const formattedValue = interestEstimate !== null
+    ? formatCurrency(interestEstimate)
     : formatLeadValueBRL(lead?.value ?? value, formatCurrency);
   const initials = ((companyName || leadName || "LD").substring(0, 2)).toUpperCase();
 

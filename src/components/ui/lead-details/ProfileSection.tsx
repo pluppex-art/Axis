@@ -94,7 +94,7 @@ export function ProfileSection({
   // string formatada "R$ X,XX" (leads criados pelo NewLeadModal).
   const displayValue = useMemo(() => {
     const estimate = leadInterestEstimate(lead, proposals as any[], catalogProducts as any[]);
-    return estimate > 0 ? `~${formatCurrency(estimate)}` : formatCurrency(parseCurrencyBR(lead?.value));
+    return estimate !== null ? formatCurrency(estimate) : formatCurrency(parseCurrencyBR(lead?.value));
   }, [lead, proposals, catalogProducts, formatCurrency]);
 
   // Valor do Produto: referência de catálogo (preço cheio, sem desconto) dos
