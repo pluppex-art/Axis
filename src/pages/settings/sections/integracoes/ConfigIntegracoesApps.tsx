@@ -767,8 +767,8 @@ export function ConfigIntegracoesApps() {
         statusVariant: (globalWebhooks.length > 0 ? "info" : "neutral") as any,
         badgeText: globalWebhooks.length > 0 ? `${globalWebhooks.length} endpoint(s)` : "Disponível",
         highlightInfo: globalWebhooks.length > 0 ? "Disparo manual via teste" : "Nenhum endpoint cadastrado",
-        onConfigure: () => navigate("/configuracoes/integracoes/webhooks"),
-        onToggle: () => navigate("/configuracoes/integracoes/webhooks"),
+        onConfigure: () => navigate("/app/configuracoes/integracoes/webhooks"),
+        onToggle: () => navigate("/app/configuracoes/integracoes/webhooks"),
       },
       {
         id: "smtp",
@@ -783,8 +783,8 @@ export function ConfigIntegracoesApps() {
         statusVariant: (appSettings?.integracoes_smtp?.smtpServer ? "info" : "neutral") as any,
         badgeText: appSettings?.integracoes_smtp?.smtpServer ? "Aguarda Teste" : "Disponível",
         highlightInfo: appSettings?.integracoes_smtp?.smtpServer || "Nenhum servidor configurado",
-        onConfigure: () => navigate("/configuracoes/integracoes/smtp"),
-        onToggle: () => navigate("/configuracoes/integracoes/smtp"),
+        onConfigure: () => navigate("/app/configuracoes/integracoes/smtp"),
+        onToggle: () => navigate("/app/configuracoes/integracoes/smtp"),
       },
     ];
 
