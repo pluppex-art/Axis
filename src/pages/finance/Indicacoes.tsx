@@ -7,9 +7,10 @@ import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid } from "recharts";
 import {
   Plus, X, Trash2, Download, Handshake, CheckCircle2, Clock, XCircle, DollarSign,
-  UserPlus, Share2, Copy, ExternalLink, QrCode, Send, MessageCircle, Link, Check, Users
+  UserPlus, Share2, Copy, ExternalLink, QrCode, Send, MessageCircle, Link, Check, Users, BarChart3
 } from "lucide-react";
 
 const DEFAULT_COMMISSION_KEY = "indicacao_comissao_padrao";
@@ -103,6 +104,15 @@ export default function Indicacoes() {
     const totalPago = indicacoes.filter(i => i.status === "Paga").reduce((acc, i) => acc + Number(i.commission_value || 0), 0);
     const totalPendente = indicacoes.filter(i => i.status === "Pendente" || i.status === "Aprovada").reduce((acc, i) => acc + Number(i.commission_value || 0), 0);
     return { total, pendentes, totalPago, totalPendente };
+  }, [indicacoes]);
+
+  const STATUS_COLORS: Record<string, string> = {
+    Pendente: "#f59e0b", Aprovada: "#3b82f6", Paga: "#10b981", Cancelada: "#f43f5e",
+  };
+  const statusBreakdown = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const i of indicacoes) counts.set(i.status, (counts.get(i.status) || 0) + 1);
+    return Array.from(counts.entries()).map(([status, count]) => ({ status, count, fill: STATUS_COLORS[status] || "#94a3b8" }));
   }, [indicacoes]);
 
   const referrerOptions = referrerType === "colaborador" ? colaboradores : clienteBase;
@@ -357,6 +367,27 @@ export default function Indicacoes() {
           <p className="text-xl font-black text-[var(--color-text-primary)]">{currency(kpis.totalPendente)}</p>
         </Card>
       </div>
+
+      {indicacoes.length > 0 && (
+        <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm">
+          <h3 className="text-xs font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-[var(--color-text-faint)]" /> Indicações por Status
+          </h3>
+          <div className="h-40 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={statusBreakdown} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" vertical={false} />
+                <XAxis dataKey="status" stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                <Bar dataKey="count" name="Indicações" radius={[4, 4, 0, 0]}>
+                  {statusBreakdown.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
 
       {/* Configuração de Comissão Padrão */}
       <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm flex items-center justify-between gap-4 flex-wrap">

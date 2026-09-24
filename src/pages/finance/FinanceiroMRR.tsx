@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Repeat2, Users, TrendingDown, Percent, Layers } from "lucide-react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { StatCell, StatCellRow } from "./components/StatCell";
@@ -72,6 +73,23 @@ export default function FinanceiroMRR() {
               <p className="text-[11px] text-[var(--color-text-muted)] mt-1 mb-4">
                 Churn mensal observado nos últimos 3 meses: {(projection as Extract<typeof projection, { insufficientData: false }>).monthlyChurnRate}%
               </p>
+              <div className="h-40 w-full mb-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={(projection as Extract<typeof projection, { insufficientData: false }>).months} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="mrrProjectionFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-primary-blue)" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="var(--color-primary-blue)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" vertical={false} />
+                    <XAxis dataKey="label" stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                    <Area type="monotone" dataKey="mrr" name="MRR Projetado" stroke="var(--color-primary-blue)" strokeWidth={2.5} fill="url(#mrrProjectionFill)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 {(projection as Extract<typeof projection, { insufficientData: false }>).months.map(m => (
                   <div key={m.month} className="border border-[var(--color-border-subtle)] rounded-[var(--radius-control)] p-3 text-center">

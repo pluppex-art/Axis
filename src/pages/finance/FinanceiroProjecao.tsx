@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
-import { ArrowUpRight, ArrowDownRight, Scale } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Scale, Waves } from "lucide-react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { parseEntryDate } from "./lib/financeDates";
@@ -93,6 +94,32 @@ export default function FinanceiroProjecao() {
           <StatCell label={`Pagamentos Previstos (${horizonte}d)`} value={formatCurrency(totalPagar)} icon={ArrowDownRight} tone="danger" />
           <StatCell label="Saldo Projetado do Período" value={formatCurrency(saldoProjetado)} icon={Scale} tone={saldoProjetado < 0 ? "danger" : "neutral"} />
         </StatCellRow>
+
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+              <Waves className="w-4 h-4 text-[var(--color-text-faint)]" /> Saldo Acumulado Projetado ({horizonte}d)
+            </h3>
+          </div>
+          <div className="h-48 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={grupos} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="saldoAcumuladoFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--color-primary-blue)" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="var(--color-primary-blue)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" vertical={false} />
+                <XAxis dataKey="label" stroke="var(--color-text-muted)" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                <ReferenceLine y={0} stroke="var(--color-text-faint)" strokeDasharray="3 3" />
+                <Area type="monotone" dataKey="acumulado" name="Saldo Acumulado" stroke="var(--color-primary-blue)" strokeWidth={2.5} fill="url(#saldoAcumuladoFill)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
 
         <Card className="overflow-hidden">
           <div className="p-4 border-b border-[var(--color-border-subtle)]">

@@ -238,6 +238,48 @@ export interface DreResult {
   lucroLiquido: number;
 }
 
+const MONTH_NAMES_SHORT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+
+export interface MonthlyDrePoint {
+  key: string; // 'YYYY-MM'
+  label: string;
+  receitaBruta: number;
+  despesaTotal: number;
+  lucroLiquido: number;
+}
+
+/**
+ * Série mensal de DRE pros últimos N meses (incluindo o atual) — usada pelos
+ * gráficos de tendência (DRE, Central de Relatórios). Roda `calcularDRE` uma
+ * vez por mês do intervalo, sempre em regime de competência (mesmo default
+ * do dashboard), nunca soma acumulada nem reimplementa a lógica de linha.
+ */
+export function getMonthlyDreSeries(
+  entries: FinanceEntryLike[],
+  categoriesMap: Map<string, FinanceCategoryLike>,
+  months: number = 6
+): MonthlyDrePoint[] {
+  const now = new Date();
+  const buckets: { key: string; label: string; start: Date; end: Date }[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+    buckets.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: MONTH_NAMES_SHORT[d.getMonth()], start, end });
+  }
+  return buckets.map(b => {
+    const entriesDoMes = entries.filter(e => { const dt = parseEntryDate(e.date); return !!dt && dt >= b.start && dt <= b.end; });
+    const dre = calcularDRE(entriesDoMes, categoriesMap);
+    return {
+      key: b.key,
+      label: b.label,
+      receitaBruta: dre.receitaBruta,
+      despesaTotal: round2(dre.receitaBruta - dre.lucroLiquido),
+      lucroLiquido: dre.lucroLiquido,
+    };
+  });
+}
+
 /**
  * DRE — sempre regime de COMPETÊNCIA (todos os lançamentos, pagos ou não,
  * por padrão; `apenasPagos` existe só pra respeitar o filtro "Incluir

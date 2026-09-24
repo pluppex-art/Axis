@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { StatCell, StatCellRow } from "./components/StatCell";
@@ -10,7 +11,7 @@ import {
 } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
-import { resultadoAtualDoMes, saldoDaConta, transferenciasDaConta, isInMonth, type FinanceEntryLike } from "./lib/financeEngine";
+import { resultadoAtualDoMes, saldoDaConta, transferenciasDaConta, isInMonth, categoriesById, getMonthlyDreSeries, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
 import { cn } from "../../lib/utils";
 
 interface ReportLink { title: string; href: string; icon: LucideIcon; }
@@ -80,8 +81,11 @@ const EXTRAS: ReportLink[] = [
 ];
 
 export default function FinanceiroRelatorios() {
-  const { financeEntries, financeBankAccounts, financeTransfers } = useData();
+  const { financeEntries, financeBankAccounts, financeTransfers, financeCategories } = useData();
   const { formatCurrency } = useLocalization();
+
+  const catMap = useMemo(() => categoriesById(financeCategories as FinanceCategoryLike[]), [financeCategories]);
+  const monthlySeries = useMemo(() => getMonthlyDreSeries(financeEntries as FinanceEntryLike[], catMap, 6), [financeEntries, catMap]);
 
   const kpis = useMemo(() => {
     const now = new Date();
@@ -110,6 +114,31 @@ export default function FinanceiroRelatorios() {
           <StatCell label="Resultado do Mês" value={formatCurrency(kpis.resultadoMes)} icon={Scale} tone={kpis.resultadoMes < 0 ? "danger" : "neutral"} />
           <StatCell label="Saldo em Contas" value={formatCurrency(kpis.saldoEmContas)} icon={Wallet} tone={kpis.saldoEmContas < 0 ? "danger" : "neutral"} />
         </StatCellRow>
+
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-[var(--color-text-faint)]" /> Receita x Despesa — Últimos 6 Meses
+            </h3>
+            <Link to="/app/financeiro/dre" className="text-[11px] font-semibold text-[var(--color-primary-blue)] hover:underline flex items-center gap-0.5">
+              Ver DRE completo <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="h-56 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={monthlySeries} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" vertical={false} />
+                <XAxis dataKey="label" stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                <Legend wrapperStyle={{ fontSize: "11px" }} />
+                <Bar dataKey="receitaBruta" name="Receita" fill="var(--color-success)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="despesaTotal" name="Despesa" fill="var(--color-danger)" radius={[4, 4, 0, 0]} />
+                <Line type="monotone" dataKey="lucroLiquido" name="Lucro Líquido" stroke="var(--color-primary-blue)" strokeWidth={2.5} dot={{ r: 3 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
 
         {GROUPS.map(group => (
           <div key={group.title}>
