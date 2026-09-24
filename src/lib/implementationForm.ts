@@ -132,6 +132,10 @@ export const IMPLEMENTATION_SECTIONS: ImplSection[] = [
       { id: "agenda_usa", label: "Usa Google Calendar pra agendar reuniões?", type: "boolean", audience: "client", group: "Agenda" },
       statusField("agenda_status", "Status da integração", "Agenda"),
 
+      { id: "maxdata_usa", label: "Vai usar a base Max Data?", type: "boolean", audience: "client", group: "Max Data" },
+      { id: "maxdata_id", label: "ID do cliente/base na Max Data", type: "text", audience: "client", group: "Max Data" },
+      statusField("maxdata_status", "Status da integração", "Max Data"),
+
       { id: "outras_integracoes", label: "Outras ferramentas que precisam se conectar", type: "textarea", audience: "client", group: "Outras" },
     ],
   },
@@ -331,6 +335,8 @@ export interface TenantSnapshot {
   google?: { customerId?: string; measurementId?: string; connected?: boolean } | null;
   payments: { name: "Mercado Pago" | "Stripe" | "Asaas"; connected: boolean }[];
   smtp?: { server?: string; user?: string } | null;
+  /** Max Data: só o ID público da base e se URL+chave já estão preenchidas — nunca a chave. */
+  maxdata?: { clientId?: string; configured?: boolean; connected?: boolean } | null;
   stages: string[];
   auroraActive: number;
 }
@@ -413,6 +419,13 @@ export function applyTenantSnapshot(current: ImplData, snap: TenantSnapshot): { 
     fill("pag_gateway", gateway.name);
     fill("pag_conta_criada", true);
     raise("pag_status", "Concluída");
+  }
+
+  const md = snap.maxdata;
+  if (md && (md.clientId || md.configured || md.connected)) {
+    fill("maxdata_usa", true);
+    fill("maxdata_id", md.clientId);
+    raise("maxdata_status", md.connected ? "Concluída" : "Em andamento");
   }
 
   if (snap.smtp?.server && snap.smtp?.user) {

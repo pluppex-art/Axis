@@ -37,70 +37,16 @@ import {
   Sparkles,
   Layers,
   HelpCircle,
+  Database,
 } from "lucide-react";
 import { useData } from "../../../../contexts/DataContext";
 import { toast } from "sonner";
 import { NovaIntegracaoModal } from "../../../../components/ui/modals/settings/NovaIntegracaoModal";
 import { apiFetch } from "../../../../lib/apiClient";
+import { DEFAULT_META_CONFIG, DEFAULT_GOOGLE_CONFIG, DEFAULT_PAYMENT_CONFIG, DEFAULT_MAXDATA_CONFIG } from "../../../../lib/tenantIntegrations";
 
 // Integration Categories
-type IntegrationCategory = "todas" | "anuncios" | "mensageria" | "pagamentos" | "automacoes" | "email";
-
-const DEFAULT_META_CONFIG = {
-  connected: false,
-  accountName: "",
-  accountId: "",
-  pixelId: "",
-  pixelStatus: "disconnected" as "active" | "pending" | "disconnected",
-  capiToken: "",
-  datasetId: "",
-  trackingActive: false,
-  trackedEvents: {
-    PageView: true,
-    Lead: true,
-    Schedule: true,
-    Purchase: true,
-    ViewContent: true,
-    Contact: true,
-    CompleteRegistration: true,
-  },
-  lastTestPing: null as { event: string; timestamp: string; status: number; latency: number; ok: boolean } | null,
-};
-
-const DEFAULT_GOOGLE_CONFIG = {
-  connected: false,
-  accountName: "",
-  customerId: "",
-  measurementId: "",
-  apiSecret: "",
-  conversionLabel: "",
-  enhancedConversions: false,
-  tagStatus: "disconnected" as "active" | "pending" | "disconnected",
-  lastTestPing: null as { event: string; timestamp: string; status: number; latency: number; ok: boolean } | null,
-};
-
-const DEFAULT_PAYMENT_CONFIG = {
-  mercadoPago: {
-    connected: false,
-    environment: "sandbox" as "sandbox" | "production",
-    publicKey: "",
-    accessToken: "",
-    webhookUrl: "",
-  },
-  stripe: {
-    connected: false,
-    environment: "sandbox" as "sandbox" | "production",
-    publishableKey: "",
-    secretKey: "",
-    webhookSecret: "",
-  },
-  asaas: {
-    connected: false,
-    environment: "sandbox" as "sandbox" | "production",
-    apiKey: "",
-    webhookToken: "",
-  },
-};
+type IntegrationCategory = "todas" | "anuncios" | "mensageria" | "pagamentos" | "automacoes" | "email" | "dados";
 
 export function ConfigIntegracoesApps() {
   const navigate = useNavigate();
@@ -120,6 +66,7 @@ export function ConfigIntegracoesApps() {
   const [metaConfig, setMetaConfig] = useState(DEFAULT_META_CONFIG);
   const [googleConfig, setGoogleConfig] = useState(DEFAULT_GOOGLE_CONFIG);
   const [paymentConfig, setPaymentConfig] = useState(DEFAULT_PAYMENT_CONFIG);
+  const [maxdataConfig, setMaxdataConfig] = useState(DEFAULT_MAXDATA_CONFIG);
   const [customIntegrations, setCustomIntegrations] = useState<any[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -186,9 +133,19 @@ export function ConfigIntegracoesApps() {
 
   useEffect(() => {
     if (hydrated || !appSettingsLoaded) return;
-    if (appSettings.integracoes_meta_ads) setMetaConfig(appSettings.integracoes_meta_ads);
-    if (appSettings.integracoes_google_ads) setGoogleConfig(appSettings.integracoes_google_ads);
-    if (appSettings.integracoes_payments) setPaymentConfig(appSettings.integracoes_payments);
+    // Defaults por baixo do que está salvo: uma configuração PARCIAL (ex.: gravada
+    // de fora pela Implementação) não pode derrubar a tela ao ler campo ausente.
+    if (appSettings.integracoes_meta_ads) setMetaConfig({ ...DEFAULT_META_CONFIG, ...appSettings.integracoes_meta_ads, trackedEvents: { ...DEFAULT_META_CONFIG.trackedEvents, ...(appSettings.integracoes_meta_ads.trackedEvents || {}) } });
+    if (appSettings.integracoes_google_ads) setGoogleConfig({ ...DEFAULT_GOOGLE_CONFIG, ...appSettings.integracoes_google_ads });
+    if (appSettings.integracoes_payments) {
+      const saved = appSettings.integracoes_payments;
+      setPaymentConfig({
+        mercadoPago: { ...DEFAULT_PAYMENT_CONFIG.mercadoPago, ...(saved.mercadoPago || {}) },
+        stripe: { ...DEFAULT_PAYMENT_CONFIG.stripe, ...(saved.stripe || {}) },
+        asaas: { ...DEFAULT_PAYMENT_CONFIG.asaas, ...(saved.asaas || {}) },
+      });
+    }
+    if (appSettings.integracoes_maxdata) setMaxdataConfig({ ...DEFAULT_MAXDATA_CONFIG, ...appSettings.integracoes_maxdata });
     if (appSettings.integracoes_custom) setCustomIntegrations(appSettings.integracoes_custom);
     setHydrated(true);
   }, [appSettings, appSettingsLoaded, hydrated]);
@@ -217,6 +174,21 @@ export function ConfigIntegracoesApps() {
   useEffect(() => {
     if (hydrated) saveAppSetting("integracoes_custom", customIntegrations);
   }, [customIntegrations, hydrated]);
+
+  useEffect(() => {
+    if (hydrated) saveAppSetting("integracoes_maxdata", maxdataConfig);
+  }, [maxdataConfig, hydrated]);
+
+  const handleToggleMaxdataConnected = () => {
+    const next = !maxdataConfig.connected;
+    if (next && (!maxdataConfig.apiUrl.trim() || !maxdataConfig.apiKey.trim() || !maxdataConfig.clientId.trim())) {
+      toast.error("Preencha a URL da API, a chave e o ID da base antes de marcar como conectada.");
+      setSelectedConfigModal("maxdata");
+      return;
+    }
+    setMaxdataConfig((prev) => ({ ...prev, connected: next }));
+    toast[next ? "success" : "info"](next ? "Max Data marcada como conectada." : "Max Data desconectada.");
+  };
 
   const [whatsappProviderStatus, setWhatsappProviderStatus] = useState<{ provider: "simulator" | "waha"; configured: boolean } | null>(null);
 
@@ -494,6 +466,22 @@ export function ConfigIntegracoesApps() {
         },
       },
       {
+        id: "maxdata",
+        name: "Max Data",
+        category: "dados" as IntegrationCategory,
+        icon: Database,
+        iconBg: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+        description:
+          "Base de dados de clientes. A conexão fica pronta aqui (URL da API, chave e ID da base deste cliente); a importação e o enriquecimento de dados ainda não estão ligados — entram quando a API da Max Data for definida.",
+        connected: maxdataConfig.connected,
+        statusText: maxdataConfig.connected ? "Conectado" : maxdataConfig.apiUrl ? "Credenciais Preenchidas" : "Não Conectado",
+        statusVariant: (maxdataConfig.connected ? "success" : maxdataConfig.apiUrl ? "info" : "neutral") as any,
+        badgeText: maxdataConfig.connected ? maxdataConfig.environment.toUpperCase() : "Disponível",
+        highlightInfo: maxdataConfig.clientId ? `Base: ${maxdataConfig.clientId}` : "Requer URL, chave e ID da base",
+        onConfigure: () => setSelectedConfigModal("maxdata"),
+        onToggle: handleToggleMaxdataConnected,
+      },
+      {
         id: "n8n",
         name: "n8n / Webhooks Globais",
         category: "automacoes" as IntegrationCategory,
@@ -550,7 +538,7 @@ export function ConfigIntegracoesApps() {
     }));
 
     return [...list, ...customList];
-  }, [metaConfig, googleConfig, instances, paymentConfig, customIntegrations, globalWebhooks, appSettings]);
+  }, [metaConfig, googleConfig, instances, paymentConfig, maxdataConfig, customIntegrations, globalWebhooks, appSettings]);
 
   // Filtered integrations based on Category and Search Query
   const filteredIntegrations = useMemo(() => {
@@ -591,6 +579,22 @@ export function ConfigIntegracoesApps() {
         </div>
       </div>
 
+      {/* Resumo: quantas integrações estão de fato conectadas */}
+      <div className="flex items-center gap-4 rounded-[var(--radius-panel)] border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] p-4">
+        <div className="flex-1">
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="font-semibold text-[var(--color-text-primary)]">Integrações conectadas</span>
+            <span className="tabular-nums font-bold text-[var(--color-text-primary)]">{allIntegrations.filter((i) => i.connected).length} de {allIntegrations.length}</span>
+          </div>
+          <div className="w-full h-1.5 rounded-full bg-[var(--color-surface-sunken)] overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+              style={{ width: `${allIntegrations.length === 0 ? 0 : Math.round((allIntegrations.filter((i) => i.connected).length / allIntegrations.length) * 100)}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Filter Tabs & Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface-elevated)] p-2 rounded-[var(--radius-panel)] border border-[var(--color-border-default)] shadow-[var(--shadow-control)]">
         <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
@@ -601,13 +605,14 @@ export function ConfigIntegracoesApps() {
             { id: "pagamentos", label: "Pagamentos & Checkout" },
             { id: "automacoes", label: "Automações & Webhooks" },
             { id: "email", label: "E-mail & SMTP" },
+            { id: "dados", label: "Dados & Bases" },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveCategory(tab.id as IntegrationCategory)}
               className={`px-3 py-1.5 rounded-[var(--radius-control)] text-xs font-bold transition-all shrink-0 cursor-pointer ${
                 activeCategory === tab.id
-                  ? "bg-[var(--color-primary-blue)] text-white shadow-sm"
+                  ? "bg-[var(--color-primary-blue)] !text-white shadow-sm"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)]"
               }`}
             >
@@ -955,6 +960,70 @@ export function ConfigIntegracoesApps() {
       {/* ========================================================================= */}
       {/* MODAL DEDICADO: GOOGLE ADS & ANALYTICS */}
       {/* ========================================================================= */}
+      {selectedConfigModal === "maxdata" && (
+        <Modal
+          isOpen={true}
+          onClose={() => setSelectedConfigModal(null)}
+          maxWidth="max-w-xl"
+          title={
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+                <Database className="w-5 h-5 text-violet-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-[var(--color-text-primary)]">Configuração Max Data</h3>
+                <p className="text-xs text-[var(--color-text-muted)]">Conexão com a base de dados de clientes</p>
+              </div>
+            </div>
+          }
+          footer={
+            <div className="flex justify-between items-center w-full">
+              <Badge variant={maxdataConfig.connected ? "success" : "neutral"} dot dotPulse={maxdataConfig.connected}>
+                {maxdataConfig.connected ? "Conectada" : "Desconectada"}
+              </Badge>
+              <Button onClick={() => { toast.success("Configuração da Max Data salva."); setSelectedConfigModal(null); }}>Fechar</Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <Alert variant="info" title="Conexão pronta, comportamento a definir">
+              Deixe a conexão pronta: URL da API, chave e o ID da base deste cliente. A importação e o enriquecimento
+              de dados ainda não estão ligados — entram quando a API da Max Data for definida. Os campos são salvos
+              automaticamente e a chave nunca aparece em relatórios nem em links compartilhados.
+            </Alert>
+            <FormField label="URL da API" required hint="Ex.: https://api.maxdata.com.br">
+              <Input type="text" value={maxdataConfig.apiUrl} onChange={(e) => setMaxdataConfig((p) => ({ ...p, apiUrl: e.target.value }))} placeholder="https://" />
+            </FormField>
+            <FormField label="Chave de API" required hint="Fica guardada neste ambiente">
+              <Input type="password" autoComplete="off" value={maxdataConfig.apiKey} onChange={(e) => setMaxdataConfig((p) => ({ ...p, apiKey: e.target.value }))} />
+            </FormField>
+            <FormField label="ID do cliente/base na Max Data" required hint="Identifica qual base é deste cliente">
+              <Input type="text" value={maxdataConfig.clientId} onChange={(e) => setMaxdataConfig((p) => ({ ...p, clientId: e.target.value }))} />
+            </FormField>
+            <FormField label="Ambiente">
+              <select
+                value={maxdataConfig.environment}
+                onChange={(e) => setMaxdataConfig((p) => ({ ...p, environment: e.target.value as "sandbox" | "production" }))}
+                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer"
+              >
+                <option value="production">Produção</option>
+                <option value="sandbox">Sandbox / testes</option>
+              </select>
+            </FormField>
+            <FormField label="Observações">
+              <Input type="text" value={maxdataConfig.notes} onChange={(e) => setMaxdataConfig((p) => ({ ...p, notes: e.target.value }))} />
+            </FormField>
+            <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-[var(--color-border-default)] p-3">
+              <div>
+                <p className="text-xs font-bold text-[var(--color-text-primary)]">Marcar como conectada</p>
+                <p className="text-[11px] text-[var(--color-text-muted)]">Requer URL, chave e ID da base preenchidos.</p>
+              </div>
+              <Switch checked={maxdataConfig.connected} onCheckedChange={handleToggleMaxdataConnected} />
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {selectedConfigModal === "google-ads" && (
         <Modal
           isOpen={true}

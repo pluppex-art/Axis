@@ -20,7 +20,7 @@ export async function readTenantSnapshot(db: any, tenantId: string): Promise<Ten
     db.from("users").select("name, email, role, is_tenant_admin, phone")
       .eq("tenant_id", tenantId).eq("is_master", false).is("deleted_at", null).or("active.is.null,active.eq.true").limit(200),
     db.from("app_settings").select("key, value").eq("tenant_id", tenantId)
-      .in("key", ["empresa_dados", "integracoes_meta_ads", "integracoes_google_ads", "integracoes_payments", "integracoes_smtp"]),
+      .in("key", ["empresa_dados", "integracoes_meta_ads", "integracoes_google_ads", "integracoes_payments", "integracoes_smtp", "integracoes_maxdata"]),
     db.from("whatsapp_instances").select("phone, status").eq("tenant_id", tenantId),
     db.from("crm_pipeline_stages").select("nome, ordem").eq("tenant_id", tenantId).order("ordem", { ascending: true }).limit(100),
     db.from("aurora_agents").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("active", true),
@@ -35,6 +35,7 @@ export async function readTenantSnapshot(db: any, tenantId: string): Promise<Ten
   const google = settings.integracoes_google_ads || {};
   const pay = settings.integracoes_payments || {};
   const smtp = settings.integracoes_smtp || {};
+  const maxdata = settings.integracoes_maxdata || {};
 
   const stageNames: string[] = [];
   for (const s of stagesR.data || []) {
@@ -55,6 +56,7 @@ export async function readTenantSnapshot(db: any, tenantId: string): Promise<Ten
       { name: "Asaas", connected: !!pay.asaas?.connected },
     ],
     smtp: { server: str(smtp.smtpServer), user: str(smtp.smtpUser) },
+    maxdata: { clientId: str(maxdata.clientId), configured: !!(str(maxdata.apiUrl) && str(maxdata.apiKey)), connected: !!maxdata.connected },
     stages: stageNames,
     auroraActive: agentsR.count || 0,
   };

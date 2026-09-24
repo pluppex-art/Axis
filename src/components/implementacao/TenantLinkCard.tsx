@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { supabase } from "../../lib/supabase";
-import { apiFetch } from "../../lib/apiClient";
+import { syncImplementationTenant } from "../../lib/implementationTenantApi";
 
 const norm = (s: string) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 
@@ -51,13 +51,9 @@ export function TenantLinkCard({ implementationId, clienteNome, linkedTenantId, 
     setBusy(true);
     try {
       await beforeSync?.();
-      const res = await apiFetch(`/api/implementations/${implementationId}/sync-tenant`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ tenantId }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) { toast.error(body?.error || "Não foi possível puxar os dados do ambiente."); return; }
+      const r = await syncImplementationTenant(implementationId, tenantId);
+      if (r.ok === false) { toast.error(r.error); return; }
+      const body = r.body;
       await onSynced({ data: body.data, linked_tenant_id: tenantId, last_synced_at: body.syncedAt });
       const nCampos = body.filled?.length || 0;
       const nStatus = body.statusRaised?.length || 0;

@@ -15,6 +15,10 @@ import { cacheGet, cacheSet, redisHealthCheck } from "./server/redisClient.js";
 import { assertSafeHttpUrl, assertSafeSmtpTarget } from "./server/ssrfGuard.js";
 import { readTenantSnapshot } from "./server/implementationSync.js";
 import {
+  INTEGRATION_DEFS, INTEGRATION_SETTING_KEYS, getIntegrationDef as implGetIntegrationDef, maskedView as implMaskedView,
+  validateIntegrationValues as implValidateIntegrationValues, applyIntegrationUpdate as implApplyIntegrationUpdate,
+} from "./src/lib/tenantIntegrations.js";
+import {
   allFields as implAllFields, applyPatch as implApplyPatch, computeProgress as implComputeProgress,
   findField as implFindField, pendingFields as implPendingFields, sanitizePatch as implSanitizePatch,
   coerceFieldValue as implCoerceFieldValue, applyTenantSnapshot as implApplyTenantSnapshot, IMPLEMENTATION_SECTIONS,
@@ -2525,6 +2529,57 @@ app.post("/api/implementations/:id/sync-tenant", requireUser, requireMaster, asy
     console.error("[sync-tenant]", err?.message);
     return res.status(500).json({ error: "Falha ao ler o ambiente do cliente." });
   }
+});
+
+// ── Implementação: configurar as integrações do cliente DE FORA ─────────────
+// Só MASTER. O tenant-alvo vem SEMPRE da implementação (linked_tenant_id,
+// lido sob RLS do solicitante) — nunca do corpo da requisição, então não dá
+// pra apontar a escrita pra um ambiente arbitrário. Segredos (chaves/tokens)
+// só entram: a leitura devolve "definido/não definido", nunca o valor, e
+// regravar com segredo vazio mantém o que já existe. Valores nunca vão pro
+// log — só quais campos mudaram.
+async function loadLinkedImplementation(req: any, res: any) {
+  if (!supabaseService) { res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." }); return null; }
+  const { data: impl } = await req.supabase.from("implementations").select("id, tenant_id, linked_tenant_id").eq("id", req.params.id).maybeSingle();
+  if (!impl) { res.status(404).json({ error: "Implementação não encontrada." }); return null; }
+  if (!impl.linked_tenant_id) { res.status(409).json({ error: "Vincule a implementação ao ambiente do cliente antes de configurar as integrações." }); return null; }
+  if (impl.linked_tenant_id === impl.tenant_id) { res.status(400).json({ error: "O ambiente vinculado é o da sua própria empresa." }); return null; }
+  return impl;
+}
+
+app.get("/api/implementations/:id/tenant-integrations", requireUser, requireMaster, async (req: any, res) => {
+  const impl = await loadLinkedImplementation(req, res);
+  if (!impl) return;
+  const [{ data: tenant }, { data: rows }] = await Promise.all([
+    supabaseService!.from("tenants").select("name").eq("id", impl.linked_tenant_id).maybeSingle(),
+    supabaseService!.from("app_settings").select("key, value").eq("tenant_id", impl.linked_tenant_id).in("key", INTEGRATION_SETTING_KEYS),
+  ]);
+  const settings: Record<string, any> = {};
+  for (const r of rows || []) settings[r.key] = r.value;
+  return res.json({ tenantName: tenant?.name || "", integrations: INTEGRATION_DEFS.map((d) => implMaskedView(d, settings[d.settingsKey])) });
+});
+
+app.put("/api/implementations/:id/tenant-integrations/:integration", requireUser, requireMaster, async (req: any, res) => {
+  const def = implGetIntegrationDef(req.params.integration);
+  if (!def) return res.status(404).json({ error: "Integração desconhecida." });
+  const impl = await loadLinkedImplementation(req, res);
+  if (!impl) return;
+
+  const { clean, errors } = implValidateIntegrationValues(def, req.body?.values || {});
+  if (errors.length > 0) return res.status(400).json({ error: errors.join(" ") });
+  const wantConnected = typeof req.body?.connected === "boolean" ? req.body.connected : undefined;
+
+  const { data: row } = await supabaseService!.from("app_settings").select("value").eq("tenant_id", impl.linked_tenant_id).eq("key", def.settingsKey).maybeSingle();
+  const { settingValue, missingRequired, connected } = implApplyIntegrationUpdate(def, row?.value, clean, wantConnected);
+  if (wantConnected === true && !connected) return res.status(400).json({ error: `Faltam campos obrigatórios pra marcar como conectada: ${missingRequired.join(", ")}.` });
+
+  const { error } = await supabaseService!.from("app_settings").upsert(
+    { tenant_id: impl.linked_tenant_id, key: def.settingsKey, value: settingValue },
+    { onConflict: "tenant_id,key" }
+  );
+  if (error) return res.status(500).json({ error: "Não foi possível gravar a integração." });
+  console.info("[impl-integration]", JSON.stringify({ actor: req.user?.id, implementation: impl.id, tenant: impl.linked_tenant_id, integration: def.id, fields: Object.keys(clean), connected }));
+  return res.json({ ok: true, missingRequired, integration: implMaskedView(def, settingValue) });
 });
 
 // ── Public Proposal Authenticated Fetch with Full Multi-Tenant Branding ─────

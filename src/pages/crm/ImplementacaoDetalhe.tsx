@@ -13,6 +13,8 @@ import { ImplementationSectionForm } from "../../components/implementacao/Implem
 import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { TenantLinkCard } from "../../components/implementacao/TenantLinkCard";
+import { RemoteIntegrationsPanel } from "../../components/implementacao/RemoteIntegrationsPanel";
+import { syncImplementationTenant } from "../../lib/implementationTenantApi";
 import { cn } from "../../lib/utils";
 import {
   IMPLEMENTATION_SECTIONS, IMPLEMENTATION_STATUSES, IMPLEMENTATION_STATUS_TONE, computeProgress,
@@ -206,6 +208,19 @@ export default function ImplementacaoDetalhe() {
             beforeSync={flush}
             onSynced={async (patch) => { setData(patch.data); await updateImplementation(impl.id, patch); }}
             onUnlink={() => updateImplementation(impl.id, { linked_tenant_id: null })}
+          />
+        )}
+
+        {user?.isMaster && impl.linked_tenant_id && (
+          <RemoteIntegrationsPanel
+            implementationId={impl.id}
+            onSaved={async () => {
+              // Depois de gravar no ambiente do cliente, puxa de novo pra o formulário
+              // (IDs e status das integrações) refletir o que acabou de ficar pronto.
+              await flush();
+              const r = await syncImplementationTenant(impl.id, impl.linked_tenant_id);
+              if (r.ok) { setData(r.body.data); await updateImplementation(impl.id, { data: r.body.data, last_synced_at: r.body.syncedAt }); }
+            }}
           />
         )}
 
