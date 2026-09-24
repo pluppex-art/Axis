@@ -11,6 +11,7 @@ import { FinanceiroBottomPanels } from "./components/FinanceiroVisaoGeral/Financ
 import { FinanceiroProjecaoReceita } from "./components/FinanceiroVisaoGeral/FinanceiroProjecaoReceita";
 import { FinanceiroPrevistoRealizado } from "./components/FinanceiroVisaoGeral/FinanceiroPrevistoRealizado";
 import { FinanceiroComparativoMes } from "./components/FinanceiroVisaoGeral/FinanceiroComparativoMes";
+import { FinanceiroDespesasPorCategoria } from "./components/FinanceiroVisaoGeral/FinanceiroDespesasPorCategoria";
 import { FinanceiroAgendaMes } from "./components/FinanceiroVisaoGeral/FinanceiroAgendaMes";
 import { FinanceiroAnexosResumo } from "./components/FinanceiroVisaoGeral/FinanceiroAnexosResumo";
 import { downloadCsv } from "../../lib/csvExport";
@@ -259,6 +260,19 @@ export default function FinanceiroVisaoGeral() {
     })),
   [financeEntries, formatCurrency]);
 
+  // Despesas por categoria do MESMO ciclo já selecionado no topo da tela
+  // (cicloEntries) — nenhuma outra tela do Financeiro tem essa quebra por
+  // categoria fora do DRE (que só agrega, não lista categoria por categoria).
+  const categoriaGastos = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of cicloEntries) {
+      if (e.type !== "Pagar" || e.status !== "Pago") continue;
+      const nome = e.category || "Sem categoria";
+      map.set(nome, (map.get(nome) || 0) + e.value);
+    }
+    return Array.from(map.entries()).map(([nome, valor]) => ({ nome, valor }));
+  }, [cicloEntries]);
+
   const chartData = useMemo(() => {
     const now = new Date();
     return Array.from({ length: 6 }, (_, i) => {
@@ -329,6 +343,7 @@ export default function FinanceiroVisaoGeral() {
           <FinanceiroPrevistoRealizado recebimentos={previstoRealizadoRecebimentos} despesas={previstoRealizadoDespesas} />
           <FinanceiroComparativoMes linhas={comparativoLinhas} />
         </div>
+        <FinanceiroDespesasPorCategoria categorias={categoriaGastos} />
         <FinanceiroCashflowChart chartData={chartData} liquidez={liquidez} burnRate={burnRate} />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2">

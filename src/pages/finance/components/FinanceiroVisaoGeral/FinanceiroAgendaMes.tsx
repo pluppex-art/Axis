@@ -84,7 +84,7 @@ export function FinanceiroAgendaMes() {
               onClick={() => setDiaSelecionado(selecionado ? null : dia)}
               className={cn(
                 "aspect-square rounded-[var(--radius-control)] text-xs flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer",
-                selecionado ? "bg-[var(--color-primary-blue)] text-white" : isHoje(dia) ? "bg-[var(--color-surface-sunken)] font-semibold text-[var(--color-text-primary)] ring-1 ring-[var(--color-primary-blue)]/40" : "hover:bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)]"
+                selecionado ? "bg-[var(--color-primary-blue)] !text-white" : isHoje(dia) ? "bg-[var(--color-surface-sunken)] font-semibold text-[var(--color-text-primary)] ring-1 ring-[var(--color-primary-blue)]/40" : "hover:bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)]"
               )}
             >
               <span>{dia}</span>
