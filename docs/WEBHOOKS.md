@@ -1,5 +1,7 @@
 # Webhooks
 
+> **Atualização 2026-09-24:** existem webhooks de **saída** reais (triggers no banco + `pg_net`) e um webhook de **entrada** real (WAHA). Inventário de rotas em [API.md](API.md) e [`projeto/02-TRD.md`](projeto/02-TRD.md) §14.2.
+
 ## Saída (o sistema chama webhooks externos)
 
 ### Aurora chat → n8n
@@ -8,8 +10,11 @@
 ### Rodízio de leads ("Julia") → n8n
 Automação externa (n8n) que lê/escreve em `julia_interaction_log`/`julia_round_robin_state` usando `service_role` (não passa pelo `server.ts`, não é uma rota HTTP deste repo). RLS dessas tabelas não afeta `service_role` (que sempre ignora RLS) — o isolamento por tenant nelas existe pra proteger contra acesso via `anon`/`authenticated`, não contra a própria automação. Ver [DATABASE_SECURITY.md](DATABASE_SECURITY.md).
 
-### WhatsApp (simulador)
-As instâncias simuladas de WhatsApp têm um campo `webhookUrl` (ex.: `https://spy-crm.cloud/api/webhooks/whatsapp`), mas isso é **dado de configuração simulado** — o simulador (`server.ts`, seção WhatsApp) não faz nenhuma chamada HTTP real de saída para essa URL hoje. Ver [API.md](API.md#whatsapp-simulador--requireuser).
+### Webhooks de saída configuráveis por tenant (banco → URL externa)
+Triggers em `leads`/`tasks` (`webhook_lead_created`, `webhook_lead_status_changed`, `webhook_task_created`) chamam a função `dispatch_webhook_event(...)`, que faz o POST via extensão `pg_net` (assíncrono, fora da transação) para as URLs cadastradas em `webhooks` / `app_settings.globalWebhooks` e registra o resultado em `webhook_logs` (`status_code`, `payload`, `response`). Migrations: `20260919_webhooks_dispatch_real.sql` e `20260919_revoke_public_execute_dispatch_functions.sql` (remove `EXECUTE` público das funções de despacho). Conectores externos por tenant usam `external_integrations` (tabela sem policy — só `service_role`) e `external_integration_logs`, com os triggers `trg_external_lead_created`/`_status_changed`/`trg_external_task_created`; o CRUD passa por `/api/integrations/external*` (`requireTenantAdmin`). O teste de URL (`POST /api/integrations/webhook-test`) faz requisição a URL arbitrária e deve passar pelo guard de SSRF (`server/ssrfGuard.ts`).
+
+### WhatsApp (WAHA)
+O backend fala com o WAHA (`WAHA_API_URL`/`WAHA_API_KEY`) via `server/whatsappProvider.ts` para criar sessão, QR, conexão e envio. Sem essas variáveis o `SimulatorProvider` assume e nenhuma chamada real é feita. Ao criar uma instância, o backend gera um `webhook_secret` e a URL de retorno (`.../api/whatsapp/webhook/:instanceId?secret=...`) que o WAHA deve chamar (ver "Entrada" abaixo).
 
 ## RPC pública chamada pelo formulário do E-EMPREENDA+
 
@@ -17,14 +22,25 @@ Não é um webhook (não é um evento assinado empurrado por outro sistema), mas
 
 ## Entrada (webhooks que chegam de fora)
 
-**Não existe nenhuma rota HTTP neste repo que receba um webhook de fora** (não há `POST /api/webhooks/*` nem equivalente em `server.ts` ou nas Supabase Edge Functions). A única forma de escrita externa sem sessão de usuário é `POST /api/v1/leads`, que é uma API própria autenticada por `x-api-key` (ver [API.md](API.md#api-pública-por-chave)) — não um webhook no sentido de "outro sistema empurra um evento assinado pra cá".
+### WAHA → `POST /api/whatsapp/webhook/:instanceId?secret=<webhook_secret>`
+Rota **pública** (sem `requireUser`), em `server.ts`. Comportamento verificado em 2026-09-24 (TRD §14.2):
+- Responde `200 {received:true}` **antes** de processar; `403` se o `secret` não confere com `whatsapp_instances.webhook_secret` daquela instância; `503` sem Supabase/service key.
+- O `tenant_id` vem da **linha da instância** no banco, nunca do payload.
+- Processa `event: "message"` (`payload.from/body/id/fromMe`): faz upsert em `chat_contacts` e insert em `chat_messages` (`wa_message_id` único — `23505` é tratado como duplicata e ignorado) via `service_role`; depois pode disparar `runAuroraAutoReply` (resposta automática por IA).
+- Rate limit de `/api/whatsapp` (60/min por IP).
+- **Pontos de atenção (TRD §14.2/§19.6):** o segredo vai na query string (o WAHA só suporta esse formato **[a validar]**) e no TRD (2026-09-24) era comparado com `!==`; o `server.ts` atual (working tree) já usa `safeEqual` (`crypto.timingSafeEqual`). O contrato do payload WAHA ainda não foi exercitado contra um servidor real neste ambiente.
 
-Se um webhook de entrada for adicionado no futuro (ex.: confirmação de entrega do WhatsApp real, callback de um provedor de pagamento), o padrão mínimo a seguir, que hoje **não existe em lugar nenhum do código** e precisaria ser criado do zero:
-- Verificar assinatura/segredo do provedor (HMAC ou similar) antes de processar qualquer payload — nunca confiar em "veio de tal IP" ou em um header arbitrário.
-- Resolver o `tenant_id` a partir de algo que o provedor não pode forjar (ex.: um identificador de instância já cadastrado no seu banco), nunca aceitar um `tenant_id` solto no corpo da requisição.
-- Rate limiting próprio (o mesmo `express-rate-limit` já usado nas outras rotas).
-- Responder rápido (2xx) e processar assíncrono, se o provedor exigir isso pra não reenviar.
+### Outros pontos de entrada
+- `POST /api/v1/leads`, `/api/v1/lead-activities`, `/api/v1/finance-entries` — API própria autenticada por `x-api-key` (ver [API.md](API.md#api-pública-por-chave)), não um webhook assinado.
+- `GET /api/google-calendar/oauth/callback` — callback OAuth, validado por `state` assinado com HMAC (`GOOGLE_OAUTH_STATE_SECRET`).
+- `POST /api/public/lead-capture` — formulário público (limiter 5/min).
+
+Padrão mínimo para **qualquer webhook de entrada novo**:
+- Verificar assinatura/segredo do provedor (HMAC ou segredo por instância) em **tempo constante** antes de processar o payload — nunca confiar em "veio de tal IP" ou em header arbitrário.
+- Resolver o `tenant_id` a partir de algo que o provedor não pode forjar (ex.: instância já cadastrada), nunca de um `tenant_id` solto no corpo.
+- Rate limiting próprio (`express-rate-limit`).
+- Responder rápido (2xx) e processar depois, se o provedor exigir; tratar duplicatas (idempotência por ID do evento).
 
 ## Tabelas `webhooks` / `webhook_logs`
 
-Existem no banco, com RLS (`tenant_isolation`/`has_tenant_access(tenant_id)`) já correta desde a criação — mas **nenhum código do repo (frontend ou `server.ts`) as lê ou escreve hoje**. Schema morto, sem risco de segurança (ao contrário do achado em `ai_usage_log`/`aurora_audit_log`, ver [DATABASE_SECURITY.md](DATABASE_SECURITY.md)), mas também sem função — provavelmente preparadas para uma feature de webhooks configuráveis por tenant que ainda não foi implementada na UI.
+Têm **uso real** (webhooks de saída acima), com RLS `tenant_isolation`/`has_tenant_access(tenant_id)`. `webhook_logs` recebe as respostas do `pg_net`. A origem exata das URLs (`webhooks` × `app_settings.globalWebhooks`) está descrita em [`projeto/02-TRD.md`](projeto/02-TRD.md) §15.1. Estrutura de colunas em [`projeto/05-ESQUEMA-BACKEND.md`](projeto/05-ESQUEMA-BACKEND.md) (A.6).

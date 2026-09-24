@@ -9,7 +9,7 @@ Frontend (React + Vite, SPA)
 Supabase (Postgres + Auth + Storage)
     │  RLS aplica isolamento por tenant em toda query
     ▼
-~70 tabelas, todas (exceto tenants/tabelas de plataforma) com tenant_id + policy tenant_isolation
+129 tabelas com RLS, quase todas (exceto tenants/tabelas de plataforma) com tenant_id + policy tenant_isolation
 
 Frontend
     │  fetch para /api/* (Bearer JWT ou x-api-key)
@@ -23,7 +23,7 @@ Supabase (client escopado pela sessão do chamador — respeita RLS)
        sempre atrás de requireMaster, e em /api/v1/leads, onde o tenant vem da
        chave de API (nunca do corpo da requisição)
 
-Integrações externas: Gemini/Groq (IA), n8n (automação "Julia", Aurora chat)
+Integrações externas: Gemini/Groq (IA), n8n (automação "Julia", Aurora chat), WAHA (WhatsApp), Google Calendar, Redis (cache opcional), conectores externos por tenant
 ```
 
 ## Por que duas formas de acessar dados
@@ -48,7 +48,7 @@ Cada linha de dado operacional (leads, clientes, contratos, financeiro, etc.) ca
 
 ## Frontend
 
-- **Roteamento**: `src/App.tsx`, React Router. Toda rota autenticada fica sob `<ProtectedRoute>` (`src/components/ProtectedRoute.tsx`), que redireciona pra `/login` se não há sessão, e opcionalmente exige `user.isMaster` (`requireMaster`) — hoje só usado em `/app/admin`.
+- **Roteamento**: `src/App.tsx`, React Router. Toda rota autenticada fica sob `<ProtectedRoute>` (`src/components/ProtectedRoute.tsx`), que redireciona pra `/login` se não há sessão, e opcionalmente exige `requireMaster`, `requirePartner`, `requireTenantAdmin` ou `requireModule` (ver [AUTHORIZATION.md](AUTHORIZATION.md)).
 - **Estado global**: dois contexts — `AuthContext` (sessão, tenant ativo, papéis) e `DataContext` (todas as entidades de negócio, com CRUD que já carimba `tenant_id` automaticamente).
 - **UI**: componentes em `src/components/ui/`, páginas por módulo em `src/pages/<modulo>/`.
 
@@ -60,8 +60,13 @@ Peças centrais:
 - `requireUser` — valida um JWT real do Supabase Auth, anexa `req.user` e `req.supabase` (client escopado pela sessão do chamador).
 - `requireApiKey` — valida `x-api-key` contra `SPY_API_KEYS`, resolve o tenant a partir da própria chave (nunca do corpo da requisição).
 - `requireMaster` — usado depois de `requireUser`, confirma `users.is_master` no banco antes de liberar rotas administrativas.
-- Rate limiting (`express-rate-limit`) nas rotas de IA, na API pública e no simulador de WhatsApp.
+- `requireTenantAdmin` — `is_master` ou `users.is_tenant_admin` (conectores externos).
+- Rate limiting (`express-rate-limit`) nas rotas de IA, na API pública, no WhatsApp, no Google Calendar e na captura pública de lead.
+- Cache Redis opcional (`server/redisClient.ts`, cache-aside por TTL, falha aberta) para resumos e listas.
+- Módulos extraídos em `server/`: `googleCalendar.ts` (router OAuth/eventos/Meet), `whatsappProvider.ts` (WAHA real ou simulador), `redisClient.ts` e, quando presente, `ssrfGuard.ts` (validação de URLs de teste de integração).
 - CORS restrito por allowlist (`SPY_CORS_ORIGIN`).
+
+Visão técnica completa (fluxos, inventário de rotas, funções, riscos): [`docs/projeto/`](projeto/) — PRD, TRD, fluxos, UI/UX, esquema de backend e plano de implementação.
 
 ## Banco de dados
 
@@ -71,4 +76,7 @@ Supabase/Postgres. Ver [DATABASE.md](DATABASE.md) (schema/convenções) e [DATAB
 
 - **Gemini / Groq** — IA generativa (scoring de leads, copiloto de vendas, análise de chamadas). Chamadas tanto do backend (`server.ts`) quanto direto do frontend em alguns pontos (`VITE_GEMINI_API_KEY`/`VITE_GROQ_API_KEY` — ver nota de exposição em [SECURITY_AUDIT.md](../SECURITY_AUDIT.md)).
 - **n8n** — automações externas: rodízio de leads ("Julia") e o chat da Aurora (`AURORA_WEBHOOK_URL`, só chamado server-side).
-- **Supabase Storage** — dois buckets públicos (`avatars`, `proposals`), escrita restrita por pasta = tenant_id + RLS, com limite de tamanho/tipo configurado no bucket.
+- **WAHA** — gateway de WhatsApp (`WAHA_API_URL`); mensagens persistidas em `chat_contacts`/`chat_messages`; webhook de entrada em `POST /api/whatsapp/webhook/:instanceId`.
+- **Google Calendar** — OAuth server-side; tokens em `google_calendar_connections`.
+- **Webhooks de saída** — triggers do banco + `pg_net` (`dispatch_webhook_event`), ver [WEBHOOKS.md](WEBHOOKS.md).
+- **Supabase Storage** — quatro buckets públicos (`avatars`, `proposals`, `products`, `finance`), escrita restrita por pasta = tenant_id + RLS, com limite de tamanho/tipo configurado no bucket.

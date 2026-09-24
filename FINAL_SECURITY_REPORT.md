@@ -1,5 +1,14 @@
 # Relatório final de segurança — Axis
 
+> **Atualização 2026-09-24** — este relatório é histórico (retrato de 2026-09-01 a 2026-09-03 ou da data indicada) e não foi reescrito. O que mudou desde então:
+> - **A9 e A10 estão corrigidas** (tabela abaixo atualizada): as tabelas `chat_*` foram criadas com `tenant_id` + RLS e o simulador em memória foi substituído por persistência real + WAHA.
+> - "Não existe endpoint de webhook de entrada" (teste de webhook forjado) deixou de ser verdade: há o webhook do WAHA, protegido por segredo por instância.
+> - O banco vivo tem hoje **129 tabelas, 100% com RLS**, 4 buckets (`avatars`, `proposals`, `products`, `finance`); `chat_contacts`/`chat_messages` existem com RLS e o WhatsApp usa o provedor WAHA real com persistência (não é mais só simulador em memória); existe webhook de **entrada** (`POST /api/whatsapp/webhook/:instanceId`) e webhooks de **saída** reais (`dispatch_webhook_event`/`pg_net`).
+> - Variáveis de ambiente renomeadas: `AXIS_*` → `SPY_*` (`SPY_CORS_ORIGIN`, `SPY_API_KEYS`; o código ainda aceita `AXIS_*` como fallback).
+> - Migrations de 2026-09-21 no repo (`cr1`, `cr2`, `cr3` e `fixes_m5_m7_baixo_get_public_imovel` confirmadas como **não aplicadas** no banco vivo em 2026-09-24 (`a1` foi **aplicada** em 2026-09-24; `a4` já estava aplicada)) ainda pendentes de aplicação.
+> - Achados novos ainda abertos (SSRF em rotas de teste de integração, `resolveTenantId` do Google Calendar, aceite público de proposta sem checagem de status, cache Redis por tenant × RLS por módulo, `tenant-theme` sem limite, permissão por módulo só em modo log): ver TRD §19.6 e Plano, Fase 4.
+> Estado verificado atual: [`docs/projeto/05-ESQUEMA-BACKEND.md`](docs/projeto/05-ESQUEMA-BACKEND.md), [`docs/projeto/02-TRD.md`](docs/projeto/02-TRD.md) §19 e achados abertos em [`docs/projeto/06-PLANO-DE-IMPLEMENTACAO.md`](docs/projeto/06-PLANO-DE-IMPLEMENTACAO.md) (Fase 4).
+
 **Período:** 2026-09-01 a 2026-09-03. **Escopo:** frontend (React/Vite), backend (`server.ts`/Vercel), Supabase (Postgres/RLS/Storage/Auth), dependências, histórico do Git, organização do repositório e documentação. Ver [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) pro levantamento achado-por-achado completo — este documento é o resumo executivo.
 
 ## Nível geral de segurança: 🟡 Médio, com pendências críticas de ação manual
@@ -23,8 +32,8 @@ A arquitetura de isolamento multi-tenant (RLS/`has_tenant_access`) é sólida e 
 | A6 | 🟠 Alto | `/register` morta mas com `registerPartner()` viva | 🟢 corrigido (removido) |
 | A7 | 🟠 Alto | Sessão "demo" confiava em `sessionStorage` sem verificação | 🟢 corrigido |
 | A8 | 🟠 Alto | `tenants`: policy `anon` sem restrição de coluna | 🟢 corrigido (GRANT por coluna) |
-| A9 | 🟠 Alto | `chat_messages`/`chat_contacts` sem `tenant_id` (tabelas não existem ainda) | 🟡 documentado, não aplicável até as tabelas serem criadas |
-| A10 | 🟠 Alto | Simulador de WhatsApp em memória sem isolamento de tenant — **ativo** | 🟢 corrigido (buckets por tenant) |
+| A9 | 🟠 Alto | `chat_messages`/`chat_contacts` sem `tenant_id` (tabelas não existiam) | 🟢 corrigido em 2026-09-21 — tabelas criadas (`20260921_whatsapp_real_chat_persistence.sql`) com `tenant_id` + RLS `tenant_isolation`; existem no banco vivo (verificado 2026-09-24) |
+| A10 | 🟠 Alto | Simulador de WhatsApp em memória sem isolamento de tenant — **ativo** | 🟢 corrigido (buckets por tenant) e depois substituído: persistência real em `chat_*` + provedor WAHA; o simulador só resta como provedor de fallback sem estado em memória (2026-09-24) |
 | A11 | 🟠 Alto | Respostas de erro vazando `error.message` cru | 🟢 corrigido |
 | M1 | 🟡 Médio | Buckets de Storage sem limite de tamanho/tipo | 🟢 corrigido |
 | M2 | 🟡 Médio | Arquivo/dependência Firebase órfãos | 🟢 corrigido |
@@ -35,7 +44,7 @@ A arquitetura de isolamento multi-tenant (RLS/`has_tenant_access`) é sólida e 
 | B1 | 🟢 Baixo | Sem headers de segurança | 🟢 corrigido |
 | B2 | 🟢 Baixo | Sem CI/CD | 🟢 corrigido |
 
-**18 de 21 achados endereçáveis por código/config foram corrigidos e verificados** (via `tsc --noEmit`, `npm run build`, `get_advisors`, e testes ao vivo no banco via `SET ROLE`). Os 3 restantes (A9, M5, C3-residual) são decisões de produto/arquitetura ou dependem de uma tabela que ainda não existe — documentados, não escondidos.
+**18 de 21 achados endereçáveis por código/config foram corrigidos e verificados** (via `tsc --noEmit`, `npm run build`, `get_advisors`, e testes ao vivo no banco via `SET ROLE`). Os restantes (M5, C3-residual; A9 foi resolvida depois, ver a atualização no topo) são decisões de produto/arquitetura — documentados, não escondidos.
 
 Além da tabela acima, uma segunda passada de `get_advisors` (security) depois da fase de documentação encontrou e já corrigiu: `search_path` mutável em duas funções trigger (`set_updated_at`, `sync_sprint_task_project_from_issue` — risco baixo, corrigido por ser mecânico) e confirmou como seguro (não é vulnerabilidade real) o padrão de `platform_metrics_overview()`, que é `SECURITY DEFINER` executável por `anon` mas já se auto-protege checando `is_super_admin()`/`current_partner_id()` no corpo. Fica pendente só a ativação de "Leaked Password Protection" no painel do Supabase Auth (não é uma migração SQL).
 
@@ -51,7 +60,7 @@ Sem acesso a uma sessão de navegador real logada, os testes possíveis diretame
 | **Injeção de SQL** | Revisão estática — toda query em `server.ts` usa o query builder do `supabase-js` (parametrizado) ou `.rpc()` contra funções nomeadas fixas; nenhuma concatenação de string de usuário em SQL bruto encontrada | ✅ Nenhum vetor encontrado |
 | **XSS via HTML não sanitizado** | `grep -rn "dangerouslySetInnerHTML"` em `src/` | ✅ Nenhuma ocorrência — nenhum ponto do frontend injeta HTML bruto vindo de dado do usuário |
 | **Upload malicioso (tamanho/tipo)** | Inspeção de config dos buckets Storage | ✅ Enforcement no bucket, não só no cliente (M1, corrigido) |
-| **Webhook forjado/sem assinatura** | Inventário de rotas | N/A — não existe nenhum endpoint de webhook de entrada no sistema hoje (ver [docs/WEBHOOKS.md](docs/WEBHOOKS.md)) |
+| **Webhook forjado/sem assinatura** | Inventário de rotas | N/A em 2026-09-03 (não havia webhook de entrada). **Desatualizado:** hoje existe `POST /api/whatsapp/webhook/:instanceId` (WAHA), com segredo por instância — ver [docs/WEBHOOKS.md](docs/WEBHOOKS.md) |
 | **Token expirado/adulterado** | Revisão de `requireUser` | ✅ Validação delegada a `supabase.auth.getUser(token)` (verifica assinatura contra o Supabase, não decodifica localmente) — não há verificação própria de JWT que possa ter um bug de implementação |
 | **IDOR (adivinhar/enumerar ID de outro tenant)** | Coberto pelo teste de isolamento cross-tenant acima, aplicado ao padrão geral de toda tabela com `tenant_isolation` | ✅ Mesma policy vale pra toda tabela no mesmo padrão — não é um caso isolado de `leads` |
 | **RPC pública `SECURITY DEFINER` aceitando parâmetro de tenant sem validação** | `get_advisors` (security) sinalizou toda função `SECURITY DEFINER` executável por `anon`/`authenticated`; cada uma foi lida manualmente | ❌→✅ `claim_next_form_sdr(p_tenant_id)` aceitava qualquer tenant sem checagem — achado crítico (C5), corrigido e reverificado ao vivo. `platform_metrics_overview()` foi sinalizada igual, mas confirmada segura por já validar `is_super_admin()`/`current_partner_id()` no próprio corpo. |

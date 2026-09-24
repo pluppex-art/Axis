@@ -13,7 +13,7 @@ vercel.json:
     /(.*)      → /index.html         (SPA — todo o resto cai no React Router)
 ```
 
-`api/index.ts` só importa e reexporta o app Express de `server.ts` — não há rotas Vercel-específicas separadas, todo o roteamento de API vive em `server.ts` mesmo. Isso significa: qualquer rota nova adicionada em `server.ts` já funciona em produção sem tocar em `vercel.json`.
+`api/index.ts` só importa e reexporta o app Express de `server.ts` — não há rotas Vercel-específicas separadas, todo o roteamento de API vive em `server.ts` (mais o router de `server/googleCalendar.ts`). Não há `functions`/`maxDuration` configurados: rotas longas (chat da Aurora, IA) dependem do limite de tempo do plano da Vercel. O bundle `dist/server.cjs` (`npm start`) serve para rodar fora da Vercel (ex.: VPS, ver [`vps-setup-guide.md`](../vps-setup-guide.md)). Isso significa: qualquer rota nova adicionada em `server.ts` já funciona em produção sem tocar em `vercel.json`.
 
 ## Headers de segurança
 
@@ -26,11 +26,13 @@ Aplicados a toda rota (`"source": "/(.*)"`), adicionados nesta auditoria (B1):
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | Evita vazar a URL completa (que pode conter dados sensíveis em query string) pra outros domínios via header `Referer`. |
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | Força HTTPS em requisições futuras ao domínio, mesmo que alguém tente acessar via `http://`. |
 
-**Não incluído**: `Content-Security-Policy`. Deliberadamente adiado — definir uma CSP corretamente exige primeiro inventariar todo recurso externo carregado pelo frontend (CDNs, fontes, os próprios `VITE_*` de IA chamados direto do navegador — ver [ENVIRONMENT.md](ENVIRONMENT.md)); uma CSP mal calibrada quebra a aplicação silenciosamente em vez de proteger. Fica como próximo passo recomendado, não como pendência esquecida.
+**Não incluído**: `Content-Security-Policy`, `Permissions-Policy` e `Cross-Origin-Opener-Policy` (ver [TRD §19.4](projeto/02-TRD.md)). Deliberadamente adiado — definir uma CSP corretamente exige primeiro inventariar todo recurso externo carregado pelo frontend (CDNs, fontes, os próprios `VITE_*` de IA chamados direto do navegador — ver [ENVIRONMENT.md](ENVIRONMENT.md)); uma CSP mal calibrada quebra a aplicação silenciosamente em vez de proteger. Fica como próximo passo recomendado, não como pendência esquecida.
 
 ## Variáveis de ambiente em produção
 
-Configuradas no painel da Vercel (Project Settings → Environment Variables), nunca no `vercel.json` nem commitadas. Ver [ENVIRONMENT.md](ENVIRONMENT.md) pra lista completa e o que cada uma faz — atenção especial a `SUPABASE_SERVICE_ROLE_KEY` (nunca com prefixo `VITE_`) e `SPY_CORS_ORIGIN` (nunca `"*"`).
+Configuradas no painel da Vercel (Project Settings → Environment Variables), nunca no `vercel.json` nem commitadas. Ver [ENVIRONMENT.md](ENVIRONMENT.md) pra lista completa e o que cada uma faz — atenção especial a `SUPABASE_SERVICE_ROLE_KEY` (nunca com prefixo `VITE_`), `SPY_CORS_ORIGIN` (nunca `"*"`), `SPY_API_KEYS`, `REDIS_URL` (endpoint externo com TLS), `WAHA_API_URL`/`WAHA_API_KEY` e as variáveis `GOOGLE_*`. Remova as variáveis legadas `AXIS_*` depois de migrar para as `SPY_*`.
+
+Migrations em `supabase/migrations/` **não** são aplicadas pelo deploy da Vercel — são aplicadas manualmente no Supabase. Confira o que está aplicado no banco vivo antes de assumir (em 2026-09-24, as `20260921_cr1/cr2/cr3` e `m5_m7` estavam pendentes; `a1` e `a4` já aplicadas).
 
 ## CI (`.github/workflows/ci.yml`)
 

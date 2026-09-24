@@ -9,8 +9,8 @@ Campos em `public.users`, refletidos em `AuthContext` (`src/contexts/AuthContext
 | Campo | Escopo | O que libera |
 |---|---|---|
 | `is_master` (`user.isMaster`) | Global/plataforma | `/app/admin` (gestão de tenants — `requireMaster` no frontend via `ProtectedRoute` e no backend via middleware); vê todos os tenants por `is_super_admin()` na RLS; pode trocar credenciais de qualquer usuário (`POST /api/admin/tenant-user/:id/credentials`). |
-| `isTenantAdmin` (derivado, não é coluna própria) | Um tenant | Admin daquele tenant especificamente — distinto de `isMaster`. Hoje gate criação de membros de RH (`RHColaboradores.tsx`). |
-| `role` (texto livre) | Um tenant | Papel funcional dentro do tenant (ex.: "Vendedor", "Gerente") — **hoje é texto livre, sem enum/constraint no banco** (ver `SECURITY_AUDIT.md`, M5, não corrigido ainda). Usado principalmente pra exibição e alguma lógica de UI, não é a base de nenhuma policy RLS hoje. |
+| `isTenantAdmin` (`users.is_tenant_admin`, coluna real `bool`) | Um tenant | Admin daquele tenant especificamente — distinto de `isMaster`. Gate de criação de membros de RH (`RHColaboradores.tsx`), das telas de Configurações (equipe, cargos, permissões, squads, bloqueio de período, auditoria financeira, comissões) e de `requireTenantAdmin` no backend. |
+| `role` (texto livre) | Um tenant | Papel funcional dentro do tenant (ex.: "Vendedor", "Gerente") — **hoje é texto livre, sem enum/constraint no banco** (ver `SECURITY_AUDIT.md`, M5, não corrigido ainda). Casa por nome com `cargos.nome`; os `cargos` definem quais módulos o usuário vê (`cargos.modulos`) — usado por `ProtectedRoute requireModule` e pelo menu. Não é a base de nenhuma policy RLS aplicada hoje (a CR3, que usaria isso, não está aplicada). |
 | Parceiro (`partners`/`tenant_partners`) | Múltiplos tenants | Um parceiro enxerga os tenants mapeados a ele em `tenant_partners`, via `has_tenant_access()`. Só `is_super_admin()` cria/edita parceiros ou seus mapeamentos — um parceiro não se autoconcede acesso a tenants novos. |
 
 ## Onde cada papel é de fato aplicado
@@ -21,10 +21,18 @@ Campos em `public.users`, refletidos em `AuthContext` (`src/contexts/AuthContext
 ### No backend `server.ts` (real, pra ações que passam por ele)
 - `requireUser` — exige sessão válida, ponto.
 - `requireMaster` (sempre depois de `requireUser`) — confirma `is_master=true` direto no banco antes de liberar as 3 rotas `/api/admin/*` (criar tenant, ver admin de um tenant, trocar credencial de outro usuário). Essas rotas usam `service_role` por baixo — é por isso que o gate no backend é obrigatório e não pode ser só de UI.
+- `requireTenantAdmin` (depois de `requireUser`) — `is_master` ou `users.is_tenant_admin`; hoje só em `/api/integrations/external*` (conectores externos, que usam `service_role`).
 - Todas as outras rotas `requireUser` (IA, settings genéricos, WhatsApp) **não têm checagem de papel adicional** — qualquer usuário autenticado do tenant pode chamá-las. Isso é aceitável hoje porque nenhuma delas expõe dado de outro tenant (usam `req.supabase`, escopado pela sessão) nem faz ação destrutiva de plataforma — mas é RBAC raso: um vendedor comum pode chamar `/api/ai/performance-audit` do tenant inteiro, por exemplo. Ver `SECURITY_AUDIT.md` (C3) — não é uma vulnerabilidade de vazamento entre tenants, é ausência de granularidade de papel dentro do próprio tenant.
 
+### Permissão por módulo no banco: modo log (não bloqueia)
+Os triggers `trg_permission_log_{crm,financeiro,rh,clinica,educacao}` chamam `log_module_permission_check`, que só grava em `permission_check_log` (`would_have_blocked`) — **nenhuma escrita/leitura é negada por cargo/módulo ainda** (verificado ao vivo em 2026-09-24). A migration `20260921_cr3_*` (leitura de clínica/educação via `user_has_module_access`) e `20260921_cr1_*` (escrita de `cargos`/`squads` só para admin, via `is_tenant_admin_or_master`) estão no repo mas **não aplicadas** no banco vivo. Enquanto isso, `requireModule`/`requireTenantAdmin` no frontend são só UX. Consulta do log: `GET /api/admin/permission-check-log` (só `requireUser`; depende da RLS da tabela).
+
 ### No frontend (só UX, não é segurança)
-- `ProtectedRoute` (`src/components/ProtectedRoute.tsx`) — redireciona pra `/login` sem sessão; com `requireMaster`, redireciona pra `/app` se `!user.isMaster`. Usado hoje só na rota `/app/admin`.
+- `ProtectedRoute` (`src/components/ProtectedRoute.tsx`) — redireciona pra `/login` sem sessão e aceita quatro guardas opcionais (todas redirecionam pra `/app`):
+  - `requireMaster` — só `user.isMaster` (ex.: `/app/admin`);
+  - `requirePartner` — master ou usuário com `partnerId` (ex.: `/app/parceiros`);
+  - `requireTenantAdmin` — master ou `isTenantAdmin` (telas de Configurações de empresa/financeiro e comissões do imobiliário);
+  - `requireModule="<chave>"` — bloqueia se o módulo não está habilitado no tenant ativo (`allTenantModules`, com aliases como `solar`/`energia-solar`; não se aplica a master/parceiro) **e** se o cargo do usuário (`cargos.modulos`, casado por `user.role` = `cargos.nome`) tem lista restrita que não inclui o módulo. Aplicado nas rotas de marketing, financeiro, imobiliário, solar, automotivo, varejo, clínica e educação.
 - Botões/menus escondidos por `user.isMaster`/`user.isTenantAdmin` em várias telas (ex.: botão "Novo Registro" em RH). Conveniência — a rota/policy por trás é que decide de verdade.
 
 ## Criação de usuários
@@ -37,4 +45,5 @@ Campos em `public.users`, refletidos em `AuthContext` (`src/contexts/AuthContext
 
 - `role` como texto livre, sem enum (M5) — baixo risco, mas permite digitar qualquer string.
 - RBAC dentro do tenant é raso nas rotas de IA (C3, acima) — qualquer usuário autenticado do tenant pode chamar qualquer rota `requireUser`. Corrigir exigiria decidir um modelo de permissão granular (ex.: `role IN (...)` por rota), o que é uma decisão de produto, não um fix mecânico — fora do escopo desta rodada.
-- Gate `tenantName.includes("G-Tech")` em `Sidebar.tsx` (visibilidade de um menu interno) continua baseado em nome de string, não em papel/permissão real — sinalizado, não corrigido (é só um item de menu, sem rota/dado real atrás que não seja já protegido pela RLS).
+- Gates baseados em nome de tenant (string) para visibilidade de itens de menu, em vez de papel/permissão real — sinalizado, não corrigido (é só item de menu, sem rota/dado atrás que não seja já protegido pela RLS). Confira o `Sidebar` atual antes de assumir que ainda existe.
+- Enforcement por módulo no banco (modo log → bloqueio) e RBAC granular nas rotas de IA: planejados em [`projeto/06-PLANO-DE-IMPLEMENTACAO.md`](projeto/06-PLANO-DE-IMPLEMENTACAO.md), Fase 4.

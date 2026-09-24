@@ -17,7 +17,7 @@ Causado por `stageId` do lead não bater com nenhuma coluna atual do funil (drif
 
 ## "Erro 503: Nenhuma API Key configurada" / "Banco de dados não configurado no servidor"
 
-`SPY_API_KEYS` ou as variáveis do Supabase (`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`) não estão setadas no ambiente que está rodando `server.ts`. Ver [ENVIRONMENT.md](ENVIRONMENT.md).
+`SPY_API_KEYS` (ou o fallback legado `AXIS_API_KEYS`) ou as variáveis do Supabase (`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`) não estão setadas no ambiente que está rodando `server.ts`. Ver [ENVIRONMENT.md](ENVIRONMENT.md).
 
 ## "Um usuário master vê dado de um tenant que não devia"
 
@@ -29,7 +29,19 @@ Isso é esperado se o usuário for `is_master` (vê todos os tenants por design)
 
 ## "Nicho não aparece / dropdown de nicho vazio"
 
-Nichos globais vêm de `public.nichos` (`tenant_id IS NULL`, `ativo = true`) via `fetchGlobalNiches()`. Se a chamada ao Supabase falhar (rede, RLS mal configurada), o dropdown cai num fallback fixo (`NICHES_FALLBACK`) — se o dropdown mostrar só esse fallback reduzido, o problema está na conexão/permissão de leitura de `nichos`, não no componente. Ver [DATABASE.md](DATABASE.md#nichos).
+Nichos vêm de `public.nichos` (`tenant_id IS NULL` = global, ou `tenant_id` do tenant), carregados pelo `DataContext` com `.or('tenant_id.eq.<tenant>,tenant_id.is.null')`. Se a lista vier vazia, verifique no Console se há `[DataContext] ❌ Falha ao carregar módulo de nicho` (rede/RLS de leitura em `nichos`), se o tenant está carregado e se há nichos globais ativos no banco (seed `20260901_nichos_globais_seed.sql`). (O antigo `NICHES_FALLBACK`/`fetchGlobalNiches` não existe mais no código.) Ver [DATABASE.md](DATABASE.md#nichos).
+
+## "row violates row-level security policy" / listas vazias sem erro
+
+Quase sempre é a RLS funcionando: usuário sem `tenant_id` em `public.users`, `insert` sem `tenant_id`, sessão expirada ou policy específica da tabela. **Nunca desabilite a RLS** — siga o diagnóstico seguro (`SET LOCAL ROLE authenticated` + `request.jwt.claims`) em [`DEBUG_BANCO.md`](../DEBUG_BANCO.md).
+
+## WhatsApp não recebe mensagens / "Simulador" aparece no lugar do WAHA
+
+`GET /api/whatsapp/provider-status` mostra o provedor ativo: `simulator` significa que `WAHA_API_URL` não está definida no ambiente do backend. Com WAHA ativo, confira se o WAHA consegue alcançar `POST /api/whatsapp/webhook/:instanceId?secret=...` (`403` = segredo diferente do `whatsapp_instances.webhook_secret`). Ver [WEBHOOKS.md](WEBHOOKS.md).
+
+## Dados de resumo/lista "atrasados" (Redis)
+
+As rotas `-summary`/`-list` cacheiam por 20–60 s quando `REDIS_URL` existe (header `X-Cache: HIT|MISS`; `GET /api/health/redis` mostra a conexão). Sem Redis o servidor funciona normalmente, só sem cache.
 
 ## `npm audit` reportando vulnerabilidade nova
 

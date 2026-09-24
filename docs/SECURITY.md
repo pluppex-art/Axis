@@ -19,7 +19,7 @@ Cada tenant (empresa) só acessa seus próprios dados, com duas exceções delib
 
 - Chave `anon` do Supabase e `VITE_*` são **públicas por design** — a chave `service_role` é a única que precisa de sigilo real no lado Supabase, e só é usada no backend, atrás de `requireMaster` (exceto em `/api/v1/leads`, onde o tenant vem da API key, nunca do corpo da requisição). Ver [ENVIRONMENT.md](ENVIRONMENT.md).
 - Nenhum arquivo `.pem`/`.key`/certificado foi encontrado commitado no repositório.
-- Chaves reais foram encontradas no histórico do git (`AXIS_API_KEY_MAIN`, `AXIS_API_KEY_FORM`, chave do Gemini) e continuam sendo os valores em uso — 🚨 rotação é ação manual pendente, ver [ENVIRONMENT.md](ENVIRONMENT.md#achado-desta-auditoria-chaves-reais-no-histórico-do-git).
+- Chaves reais foram encontradas no histórico do git (`AXIS_API_KEY_MAIN`/`AXIS_API_KEY_FORM` — hoje `SPY_API_KEYS` — e a chave do Gemini) e continuam sendo os valores em uso — 🚨 rotação é ação manual pendente, ver [ENVIRONMENT.md](ENVIRONMENT.md#achado-desta-auditoria-chaves-reais-no-histórico-do-git).
 - Uma conta master com credenciais hardcoded no bundle do cliente foi encontrada e removida do código — 🚨 a senha dessa conta ainda precisa ser trocada manualmente no Supabase Auth, ver [AUTHENTICATION.md](AUTHENTICATION.md#conta-master-hardcoded-removida).
 
 ## Rate limiting

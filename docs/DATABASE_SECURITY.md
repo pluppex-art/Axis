@@ -1,8 +1,10 @@
 # Segurança do banco (RLS)
 
-Estado verificado ao vivo no projeto `snwkzvgompfgqoqbpihe` em 2026-09-03 (`pg_policies`, `pg_class.relrowsecurity`, `information_schema.role_table_grants`) — não apenas os arquivos de migração. Ver [[rls_policy_without_enable_footgun]] no histórico deste projeto: já aconteceu de uma policy ser criada sem `ENABLE ROW LEVEL SECURITY` na tabela, o que a torna decorativa. Antes de confiar neste documento no futuro, reconfira ao vivo — ele descreve um estado, não uma garantia permanente.
+> **Atualização 2026-09-24:** os números e fatos abaixo foram reverificados ao vivo nesta data (metadados apenas: `pg_class`, `pg_policies`, `pg_proc`, `storage.buckets`). Dicionário completo de tabelas/colunas/policies/funções em [`projeto/05-ESQUEMA-BACKEND.md`](projeto/05-ESQUEMA-BACKEND.md) (§10 segurança, §11 drift) e resumo por grupo de policy em [`projeto/02-TRD.md`](projeto/02-TRD.md) §15 e §19. O conteúdo das seções de achados históricos (2026-09-03) foi mantido.
 
-**RLS está habilitada em todas as ~73 tabelas de `public`, sem exceção.** Todas têm `tenant_id` exceto `tenants`, `partners`, `tenant_partners` e `user_settings` (ver [DATABASE.md](DATABASE.md#convenção-de-multi-tenant)).
+Estado verificado ao vivo no projeto `snwkzvgompfgqoqbpihe` em 2026-09-03 e reconferido em 2026-09-24 (`pg_policies`, `pg_class.relrowsecurity`, `information_schema.role_table_grants`) — não apenas os arquivos de migração. Ver [[rls_policy_without_enable_footgun]] no histórico deste projeto: já aconteceu de uma policy ser criada sem `ENABLE ROW LEVEL SECURITY` na tabela, o que a torna decorativa. Antes de confiar neste documento no futuro, reconfira ao vivo — ele descreve um estado, não uma garantia permanente.
+
+**RLS está habilitada em todas as 129 tabelas de `public` (100%), sem exceção** (2026-09-24). Extensões instaladas: `plpgsql`, `uuid-ossp`, `pgcrypto`, `pg_stat_statements`, `supabase_vault`, `pg_net`, `pg_graphql`, `pg_cron`, `http`, `vector`. Têm `tenant_id` todas exceto `tenants`, `module_manifest`, `tool_registry`, `event_action_map` e `google_oauth_app_config` (plataforma/config global) — `partners`, `tenant_partners` e `user_settings` também são exceções por ownership (parceiro/usuário), ver [DATABASE.md](DATABASE.md#convenção-de-multi-tenant). Quatro tabelas têm RLS ligada e **0 policies** (só `service_role`): `api_key_usage_log`, `external_integrations`, `julia_round_robin_state`, `tenant_integrations`.
 
 ## Funções de isolamento
 
@@ -19,7 +21,9 @@ has_tenant_access(target_tenant_id) —
   OR EXISTS (SELECT 1 FROM tenant_partners WHERE tenant_id = target AND partner_id = current_partner_id())
 ```
 
-`has_tenant_access()` é a policy padrão (`tenant_isolation`) em ~55 das ~73 tabelas — dono direto, master, ou parceiro mapeado, todos passam.
+Existem ainda `is_own_tenant_or_super_admin(target_tenant_id)`, `email_taken(check_email)` e `platform_metrics_overview()`. A migration `20260921_cr1_*` (ainda **não aplicada** no banco vivo em 2026-09-24; `a1` já foi aplicada) adiciona `is_tenant_admin_or_master()` para escrita restrita em `cargos`/`squads`, e `20260921_cr3_*` adiciona `user_has_module_access()` para leitura por módulo em clínica/educação. `users.is_tenant_admin` é uma **coluna real** (`bool`, não derivada) — ver [AUTHORIZATION.md](AUTHORIZATION.md).
+
+`has_tenant_access()` é a policy padrão (`tenant_isolation`) na grande maioria das 129 tabelas — dono direto, master, ou parceiro mapeado, todos passam.
 
 ## Padrões de policy em uso
 
@@ -41,18 +45,28 @@ has_tenant_access(target_tenant_id) —
 
 Um `partner` pode enxergar múltiplos tenants sem ser `is_super_admin`. O mapeamento vive em `tenant_partners (tenant_id, partner_id)`, e é isso que `has_tenant_access()` consulta. Só master (`is_super_admin()`) pode criar/editar/remover parceiros ou seus mapeamentos — um parceiro não pode se auto-conceder acesso a um tenant novo.
 
-## Tabelas referenciadas no código mas ausentes do schema
+## Tabelas de chat (antes "ausentes do schema")
 
-`chat_messages`/`chat_contacts` (usadas por rotas do simulador de WhatsApp em `server.ts`) não existem hoje no banco. **Antes de criá-las**: `tenant_id uuid references tenants(id)` obrigatório + `enable row level security` + policy `tenant_isolation` com `has_tenant_access(tenant_id)`, seguindo exatamente o padrão de toda outra tabela — não repetir o erro que gerou o achado de `ai_usage_log`/`aurora_audit_log` acima.
+`chat_contacts`/`chat_messages` **existem** desde a migration `20260921_whatsapp_real_chat_persistence.sql` (e `20260921_fix_chat_messages_wa_message_id_constraint.sql`), com `tenant_id` obrigatório, RLS habilitada e policy `tenant_isolation`, seguindo o padrão de toda outra tabela. São usadas pelas rotas WhatsApp do `server.ts` (provider WAHA real ou simulador) e pelo webhook de entrada do WAHA (que grava via `service_role` a partir do `tenant_id` da própria linha de `whatsapp_instances`, nunca do payload). Não repetir o erro que gerou o achado de `ai_usage_log`/`aurora_audit_log` acima em tabelas novas.
+
+## Webhooks de saída e permissão por módulo
+
+- `webhooks`/`webhook_logs` **têm uso real**: triggers em `leads`/`tasks` (`webhook_lead_created`, `webhook_lead_status_changed`, `webhook_task_created`) chamam `dispatch_webhook_event(...)`, que dispara via `pg_net` (assíncrono) e registra em `webhook_logs` (migrations `20260919_webhooks_dispatch_real.sql` e `20260919_revoke_public_execute_dispatch_functions.sql`, esta última retirando `EXECUTE` público das funções de despacho). Conectores externos usam `external_integrations` (0 policies, só `service_role`) e `external_integration_logs`.
+- **Permissão por módulo em modo log:** os triggers `trg_permission_log_{crm,financeiro,rh,clinica,educacao}` chamam `log_module_permission_check`, que grava em `permission_check_log` (`would_have_blocked`) **sem bloquear nada**. Enforcement real ainda não existe no banco (só `user_has_module_access`/CR3, não aplicado).
+- **Migrations de 2026-09-21 no repo (estado em 2026-09-24):** `a1_finance_period_lock_db_trigger` **aplicada** (bloqueio de período agora também no banco) e `a4_dev_module_rls_policies` já aplicada; **ainda NÃO aplicadas:** `cr1_cargos_squads_admin_only_write`, `cr2_guard_tenant_modules_plan_update`, `cr3_clinica_educacao_module_read_enforcement` e `fixes_m5_m7_baixo_get_public_imovel` (impacto medido antes: 0 usuários perderiam acesso a dados de clínica/educação). Revisar e aplicar (ou remover do repo) — ver [projeto/05-ESQUEMA-BACKEND.md](projeto/05-ESQUEMA-BACKEND.md) §11.
 
 ## Storage
 
-Buckets `avatars` e `proposals`, ambos `public: true` (URL de leitura é pública, sem policy — é assim que avatar/proposta abrem em `<img>`/link direto). Escrita (`INSERT`/`UPDATE`/`DELETE` em `storage.objects`) restrita por policy a `(storage.foldername(name))[1] = current_tenant_id()::text` — cada tenant só escreve na própria pasta. Limite de tamanho e MIME type configurado no bucket (`file_size_limit`, `allowed_mime_types`), não apenas confiado ao cliente:
+Quatro buckets — `avatars`, `proposals`, `products` e `finance` — todos `public: true` (URL de leitura é pública, sem policy — é assim que avatar/proposta abrem em `<img>`/link direto). Escrita (`INSERT`/`UPDATE`/`DELETE` em `storage.objects`) restrita por policy a `(storage.foldername(name))[1] = current_tenant_id()::text` — cada tenant só escreve na própria pasta. Limite de tamanho e MIME type configurado no bucket (`file_size_limit`, `allowed_mime_types`), não apenas confiado ao cliente:
 
 | Bucket | Tamanho máx. | MIME permitidos |
 |---|---|---|
 | `avatars` | 5 MB | `image/png`, `image/jpeg`, `image/webp`, `image/gif` |
 | `proposals` | 20 MB | `application/pdf`, `image/png`, `image/jpeg` |
+| `products` | 25 MB | ver migration `20260904_products_storage_and_attributes` (MIME conforme configurado no bucket) |
+| `finance` | 25 MB | ver migration `20260918_finance_attachments_bucket_and_table` (anexos financeiros; MIME conforme configurado no bucket) |
+
+Os limites de `avatars`/`proposals` foram verificados em 2026-09-03; para `products`/`finance` o tamanho foi verificado em 2026-09-24 e a lista de MIME deve ser conferida em `storage.buckets.allowed_mime_types` (não transcrita aqui).
 
 ## Funções `SECURITY DEFINER` chamáveis via RPC pública
 
