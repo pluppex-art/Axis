@@ -1,12 +1,15 @@
-import { Clock, Flame, Info, MessageCircle, Package, ScrollText, Sun, Zap, StickyNote, ListTodo } from "lucide-react";
+import { Clock, Flame, Info, Package, ScrollText, Sun, StickyNote, ListTodo } from "lucide-react";
 
+// Removidas as abas "Chat" (mensagens — composição de template pra copiar/colar
+// manualmente, nunca teve envio real de WhatsApp/e-mail/Instagram) e "Relatório
+// IA" (relatorio/SdrReportSection) a pedido do usuário — o painel "IA Copilot"
+// (ícone de cérebro no cabeçalho do modal, LeadCopilot.tsx) é um recurso
+// separado e continua existindo.
 export const LeadDetailsModalTabs = [
   { id: "informacoes", label: "Informações",  short: "INFO",     icon: Info          },
   { id: "notas",       label: "Notas",        short: "NOTAS",    icon: StickyNote    },
   { id: "tarefas",     label: "Tarefas",      short: "TAREFAS",  icon: ListTodo      },
   { id: "historico",   label: "Histórico",    short: "HIST.",    icon: Clock         },
-  { id: "mensagens",   label: "Chat",         short: "CHAT",     icon: MessageCircle },
-  { id: "relatorio",   label: "Relatório IA", short: "IA",       icon: Zap           },
   { id: "produtos",    label: "Produtos",     short: "PROD.",    icon: Package       },
   { id: "logs",        label: "Logs",         short: "LOGS",     icon: ScrollText    },
 ] as const;

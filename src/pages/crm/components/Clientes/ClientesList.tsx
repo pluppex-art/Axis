@@ -42,6 +42,9 @@ interface Cliente {
 
 interface ClientesListProps {
   clientes: Cliente[];
+  /** Decisor "principal" (cliente_contatos.principal=true) por cliente —
+   * mostrado junto com o Documento na tabela. */
+  decisorPorCliente?: Record<string, { nome: string; cargo?: string | null }>;
   searchQuery: string;
   onSearchChange: (v: string) => void;
   sectorFilter: string;
@@ -61,7 +64,7 @@ function statusBadgeVariant(status?: string): "success" | "warning" | "secondary
 }
 
 export function ClientesList({
-  clientes, searchQuery, onSearchChange,
+  clientes, decisorPorCliente = {}, searchQuery, onSearchChange,
   sectorFilter, onSectorChange, statusFilter, onStatusChange, onDelete, onEdit, onManageContatos, onOpenDetalhes,
 }: ClientesListProps) {
   const filtered = useMemo(() => clientes.filter(c => {
@@ -157,7 +160,15 @@ export function ClientesList({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-xs font-mono text-[var(--color-text-muted)]">{c.documento || "—"}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-mono text-[var(--color-text-muted)]">{c.documento || "—"}</span>
+                      {decisorPorCliente[c.id] && (
+                        <span className="text-[10px] text-[var(--color-text-faint)] truncate max-w-[140px]" title="Decisor (contato principal)">
+                          {decisorPorCliente[c.id].nome}
+                          {decisorPorCliente[c.id].cargo ? ` · ${decisorPorCliente[c.id].cargo}` : ""}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <span className="text-[10px] font-bold bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] px-2 py-0.5 rounded uppercase tracking-wide">
@@ -252,6 +263,15 @@ export function ClientesList({
               <div className="flex items-center gap-1.5"><Phone className="w-3 h-3 text-[var(--color-text-faint)] shrink-0" /><span>{c.phone}</span></div>
               {c.documento && (
                 <div className="flex items-center gap-1.5"><FileText className="w-3 h-3 text-[var(--color-text-faint)] shrink-0" /><span className="font-mono">{c.documento}</span></div>
+              )}
+              {decisorPorCliente[c.id] && (
+                <div className="flex items-center gap-1.5" title="Decisor (contato principal)">
+                  <Users className="w-3 h-3 text-[var(--color-text-faint)] shrink-0" />
+                  <span className="truncate">
+                    {decisorPorCliente[c.id].nome}
+                    {decisorPorCliente[c.id].cargo ? ` · ${decisorPorCliente[c.id].cargo}` : ""}
+                  </span>
+                </div>
               )}
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { AgendarReuniaoModal } from "./modals/crm/AgendarReuniaoModal";
 import { supabase } from "../../lib/supabase";
@@ -17,8 +17,6 @@ import { useLeadDetails } from "./lead-details/useLeadDetails";
 import { LeadCopilot } from "./LeadCopilot";
 import { ProfileSection } from "./lead-details/ProfileSection";
 import { TimelineSection } from "./lead-details/TimelineSection";
-import { SdrReportSection } from "./lead-details/SdrReportSection";
-import { MessagingSection } from "./lead-details/MessagingSection";
 import { ProductsSection } from "./lead-details/ProductsSection";
 import { LogsSection } from "./lead-details/LogsSection";
 import { NotasSection } from "./lead-details/NotasSection";
@@ -80,10 +78,8 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
     handleUpdateScore,
     stagesDef,
     currentStageId, setCurrentStageId,
-    reportContextOverride, setReportContextOverride,
     tempColors,
     customLeadFields,
-    applyMessageTemplate,
     enrollInLinkedTurmas,
   } = useLeadDetails(lead, onClose);
 
@@ -91,15 +87,6 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
     setCurrentTab("informacoes");
     setShowCopilot(false);
   }, [lead?.id]);
-
-  const handleSetActiveTab = useCallback((tab: string) => {
-    const map: Record<string, string> = {
-      timeline: "historico", sdrReport: "relatorio",
-      whatsapp: "mensagens", products: "produtos",
-      revenueIntel: "informacoes", logs: "logs",
-    };
-    setCurrentTab(map[tab] || tab);
-  }, []);
 
   const handleReuniaoConfirm = async (reuniaoId: string, _meetLink: string) => {
     setShowAgendarReuniao(false);
@@ -279,9 +266,6 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
                       handleRemoveTag={handleRemoveTag}
                       handleConvertLead={handleConvertLead}
                       setAlterationLogs={setAlterationLogs}
-                      setActiveTab={handleSetActiveTab}
-                      setChatChannel={() => {}}
-                      applyMessageTemplate={applyMessageTemplate}
                       updateLead={updateLead}
                     />
 
@@ -401,30 +385,6 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
                       activityError={activityError}      setActivityError={setActivityError}
                       selectedFiles={selectedFiles}      setSelectedFiles={setSelectedFiles}
                       handleRegisterActivity={handleRegisterActivity}
-                      seller={seller}
-                    />
-                  </div>
-                )}
-
-                {currentTab === "relatorio" && (
-                  <div className="px-5 py-4">
-                    <SdrReportSection
-                      lead={lead}
-                      reportContextOverride={reportContextOverride}
-                      setReportContextOverride={setReportContextOverride}
-                      leadName={leadName}
-                      companyName={companyName}
-                      seller={seller}
-                      score={score}
-                    />
-                  </div>
-                )}
-
-                {currentTab === "mensagens" && (
-                  <div className="px-5 py-4">
-                    <MessagingSection
-                      leadName={leadName}
-                      companyName={companyName}
                       seller={seller}
                     />
                   </div>

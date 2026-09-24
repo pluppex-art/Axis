@@ -51,9 +51,6 @@ interface ProfileSectionProps {
   handleRemoveTag: (tag: string) => void;
   handleConvertLead: () => void;
   setAlterationLogs: any;
-  setActiveTab: (tab: string) => void;
-  setChatChannel: (ch: any) => void;
-  applyMessageTemplate: (tpl: string) => void;
   updateLead: any;
 }
 
@@ -73,8 +70,7 @@ export function ProfileSection({
   isEditingInline, setIsEditingInline,
   customLeadFields, customFieldsState, setCustomFieldsState,
   handleAddTag, handleRemoveTag, handleConvertLead,
-  setAlterationLogs, setActiveTab, setChatChannel,
-  applyMessageTemplate, updateLead,
+  setAlterationLogs, updateLead,
 }: ProfileSectionProps) {
   const [cnpjFetching, setCnpjFetching] = useState(false);
   const { leads: allLeads, colaboradores, addLeadActivity: addActivityCtx, proposals, proposalItems, contracts } = useData();
@@ -305,16 +301,17 @@ export function ProfileSection({
         </p>
         <div className="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)] flex items-center justify-between">
           <span className="text-[11px] text-[var(--color-text-faint)]">Ação sugerida:</span>
+          {/* Antes chamava setActiveTab("whatsapp") pra abrir a aba "Chat" do
+              modal — removida (só compunha template pra copiar/colar, nunca
+              teve envio real). Aponta direto pro WhatsApp de verdade agora,
+              mesmo destino do botão "WhatsApp" em Ações Rápidas acima. */}
           <button
             type="button"
-            onClick={() => {
-              setActiveTab("whatsapp");
-              setChatChannel("whatsapp");
-              applyMessageTemplate("Olá {client}! Preparei a proposta para {company}. Segue em anexo.");
-            }}
-            className="text-xs text-[var(--color-primary-blue)] font-bold hover:underline flex items-center gap-1 cursor-pointer"
+            onClick={() => window.open(`https://wa.me/55${phone.replace(/\D/g, "")}`, "_blank")}
+            disabled={!phone}
+            className="text-xs text-[var(--color-primary-blue)] font-bold hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
           >
-            Abrir Chat WhatsApp <ArrowRight className="w-3 h-3" />
+            Abrir WhatsApp <ArrowRight className="w-3 h-3" />
           </button>
         </div>
       </Card>

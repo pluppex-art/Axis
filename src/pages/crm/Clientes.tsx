@@ -4,11 +4,13 @@ import { Plus } from "lucide-react";
 import { NovoClienteModal } from "../../components/ui/modals/crm/NovoClienteModal";
 import { ClienteContatosModal } from "../../components/ui/modals/crm/ClienteContatosModal";
 import { ClienteDetalhesModal } from "../../components/ui/modals/crm/ClienteDetalhesModal";
+import { LeadDetailsModal } from "../../components/ui/LeadDetailsModal";
 import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { PageContainer } from "../../components/PageContainer";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import { useData } from "../../contexts/DataContext";
 import { apiFetch } from "../../lib/apiClient";
 import { ClientesKPIs } from "./components/Clientes/ClientesKPIs";
 import { ClientesList } from "./components/Clientes/ClientesList";
@@ -16,10 +18,17 @@ import { friendlyError } from "../../lib/friendlyError";
 
 export default function Clientes() {
   const { activeTenantId } = useAuth();
+  const { leads } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<any | null>(null);
   const [contatosClienteId, setContatosClienteId] = useState<string | null>(null);
-  const [detalhesClienteId, setDetalhesClienteId] = useState<string | null>(null);
+  // Cliente cujo detalhe foi pedido (clique na linha ou no lápis) mas que não
+  // tem NENHUM lead vinculado (ex.: cadastrado manualmente via "+ Novo
+  // Cliente", nunca foi um lead ganho) — cai no modal simples de sempre
+  // (ClienteDetalhesModal), já que LeadDetailsModal exige um lead de verdade
+  // (funil/score/estágio) e não tem um modo "só cliente".
+  const [orphanDetalhesClienteId, setOrphanDetalhesClienteId] = useState<string | null>(null);
+  const [selectedLeadForDetails, setSelectedLeadForDetails] = useState<any | null>(null);
   const [statusFilter, setStatusFilter] = useState("Todos as situações");
   const [sectorFilter, setSectorFilter] = useState("Todos os setores");
   const [searchQuery, setSearchQuery] = useState("");
@@ -29,6 +38,13 @@ export default function Clientes() {
   // (Redis-SPY, TTL de 20s) só adianta uma prévia enquanto ela não termina.
   const [clientes, setClientes] = useState<any[]>([]);
   const authoritativeLoadedRef = useRef(false);
+
+  // Decisor por cliente, pra mostrar na tabela junto com o Documento — vem do
+  // contato marcado como "principal" em cliente_contatos (a mesma tabela do
+  // ícone de "Contatos e Decisores"), não de `leads`/`proposals`: é a única
+  // fonte que funciona pra QUALQUER cliente, inclusive os cadastrados
+  // manualmente sem lead nenhum por trás.
+  const [decisorPorCliente, setDecisorPorCliente] = useState<Record<string, { nome: string; cargo?: string | null }>>({});
 
   useEffect(() => {
     if (!activeTenantId) return;
@@ -53,6 +69,16 @@ export default function Clientes() {
       if (error) toast.error(`Erro ao carregar clientes: ${friendlyError(error)}`);
       else if (data) setClientes(data);
     });
+
+    supabase.from("cliente_contatos").select("cliente_id, nome, cargo, papel_decisao, principal")
+      .eq("tenant_id", activeTenantId).eq("principal", true).then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        const map: Record<string, { nome: string; cargo?: string | null }> = {};
+        for (const row of data as any[]) {
+          map[row.cliente_id] = { nome: row.nome, cargo: row.papel_decisao || row.cargo || null };
+        }
+        setDecisorPorCliente(map);
+      });
 
     return () => { cancelled = true; };
   }, [activeTenantId]);
@@ -135,6 +161,25 @@ export default function Clientes() {
     toast.success("Cliente removido com sucesso!");
   };
 
+  // Clicar numa linha OU no lápis de editar agora abre o Lead Details de
+  // verdade (funil, score, produtos, propostas — tudo num lugar só) em vez
+  // do modal básico de cliente, sempre que existir um lead real por trás
+  // (leads.clientId -> clientes.id, não tem FK inversa, então a busca é por
+  // aqui — mesmo padrão já usado em ClienteDetalhesModal.tsx). Sem lead
+  // vinculado (cliente cadastrado manualmente), cai no modal simples de
+  // sempre, porque LeadDetailsModal não tem como renderizar sem um lead real.
+  const openClienteOrLead = (clienteId: string) => {
+    const dealLeads = (leads || []).filter((l: any) => l.clientId === clienteId);
+    if (dealLeads.length > 0) {
+      const mostRecent = [...dealLeads].sort((a: any, b: any) =>
+        new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime()
+      )[0];
+      setSelectedLeadForDetails(mostRecent);
+    } else {
+      setOrphanDetalhesClienteId(clienteId);
+    }
+  };
+
   return (
     <PageContainer
       title="Base de Clientes S.P.Y."
@@ -152,6 +197,7 @@ export default function Clientes() {
 
       <ClientesList
         clientes={clientes}
+        decisorPorCliente={decisorPorCliente}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         sectorFilter={sectorFilter}
@@ -159,9 +205,13 @@ export default function Clientes() {
         statusFilter={statusFilter}
         onStatusChange={setStatusFilter}
         onDelete={handleDeleteCliente}
-        onEdit={(c) => setEditingCliente(c)}
+        onEdit={(c) => {
+          const hasDeal = (leads || []).some((l: any) => l.clientId === c.id);
+          if (hasDeal) openClienteOrLead(c.id);
+          else setEditingCliente(c); // sem lead vinculado — só dá pra editar os dados básicos mesmo
+        }}
         onManageContatos={setContatosClienteId}
-        onOpenDetalhes={setDetalhesClienteId}
+        onOpenDetalhes={openClienteOrLead}
       />
 
       <NovoClienteModal
@@ -179,10 +229,16 @@ export default function Clientes() {
       />
 
       <ClienteDetalhesModal
-        isOpen={!!detalhesClienteId}
-        onClose={() => setDetalhesClienteId(null)}
-        cliente={clientes.find(c => c.id === detalhesClienteId) || null}
-        onManageContatos={(id) => { setDetalhesClienteId(null); setContatosClienteId(id); }}
+        isOpen={!!orphanDetalhesClienteId}
+        onClose={() => setOrphanDetalhesClienteId(null)}
+        cliente={clientes.find(c => c.id === orphanDetalhesClienteId) || null}
+        onManageContatos={(id) => { setOrphanDetalhesClienteId(null); setContatosClienteId(id); }}
+      />
+
+      <LeadDetailsModal
+        isOpen={!!selectedLeadForDetails}
+        onClose={() => setSelectedLeadForDetails(null)}
+        lead={selectedLeadForDetails}
       />
     </PageContainer>
   );
