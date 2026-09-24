@@ -210,7 +210,7 @@ Quase toda tabela de negócio: **uma policy `tenant_isolation` (ALL)** com `has_
 | # | Achado | Impacto | Ação |
 |---|---|---|---|
 | 1 | `clientes` sem unicidade de `documento`/`email` | Duplicados possíveis por corrida (já ocorreu) | Índices únicos parciais `(tenant_id, documento)` e `(tenant_id, lower(email))` após deduplicar |
-| 2 | **Migrations de 2026-09-21:** `a1_finance_period_lock_db_trigger`, `cr1_cargos_squads_admin_only_write` e `cr2_guard_tenant_modules_plan_update` foram **aplicadas em 2026-09-24**; `cr3_clinica_educacao_module_read_enforcement` (`user_has_module_access`) e `fixes_m5_m7_baixo_get_public_imovel` **seguem pendentes** | Leitura de prontuário/mensalidade sem checagem de módulo no banco; 2 produtos com `tenant_id` nulo; `anon` ainda com grants de escrita em `tenants` | Aplicar `cr3` e `m5_m7` |
+| 2 | **Migrations de 2026-09-21:** `a1`, `a4`, `cr1`, `cr2`, `cr3` e `m5_m7` **todas aplicadas** em 2026-09-24. Sobra 1 produto com `tenant_id` nulo ("Site Institucional" do tenant G-Tech Master, já excluído; 0 usos em propostas) | Produto órfão invisível para não-master | Reatribuir a um tenant ou excluir |
 | 3 | Permissões por módulo em **modo log** (`permission_check_log`) | Nada é bloqueado ainda | Migrar para enforcement após validar `would_have_blocked` |
 | 4 | `quantidade` sobrecarregada em item recorrente | Confusão de exibição/relatórios | Coluna `cycles` (Plano, Fase 2) |
 | 5 | `leads."clientId"` e `"productIds"` sem FK | Vínculo órfão possível (já houve) | FK `leads.client_id → clientes` ou limpeza garantida por trigger |

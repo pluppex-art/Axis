@@ -32,7 +32,7 @@ Aplicados a toda rota (`"source": "/(.*)"`), adicionados nesta auditoria (B1):
 
 Configuradas no painel da Vercel (Project Settings → Environment Variables), nunca no `vercel.json` nem commitadas. Ver [ENVIRONMENT.md](ENVIRONMENT.md) pra lista completa e o que cada uma faz — atenção especial a `SUPABASE_SERVICE_ROLE_KEY` (nunca com prefixo `VITE_`), `SPY_CORS_ORIGIN` (nunca `"*"`), `SPY_API_KEYS`, `REDIS_URL` (endpoint externo com TLS), `WAHA_API_URL`/`WAHA_API_KEY` e as variáveis `GOOGLE_*`. Remova as variáveis legadas `AXIS_*` depois de migrar para as `SPY_*`.
 
-Migrations em `supabase/migrations/` **não** são aplicadas pelo deploy da Vercel — são aplicadas manualmente no Supabase. Confira o que está aplicado no banco vivo antes de assumir (em 2026-09-24, as `20260921_cr3` e `m5_m7` estavam pendentes; `a1`, `a4`, `cr1` e `cr2` já aplicadas).
+Migrations em `supabase/migrations/` **não** são aplicadas pelo deploy da Vercel — são aplicadas manualmente no Supabase. Confira o que está aplicado no banco vivo antes de assumir (em 2026-09-24, todas as `20260921_*` já estavam aplicadas).
 
 ## CI (`.github/workflows/ci.yml`)
 
