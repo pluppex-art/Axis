@@ -6,6 +6,7 @@ import {
   AlertTriangle, Search, ExternalLink, DollarSign, X, Trash2, Check, Download,
   Send, MessageCircle, Mail
 } from "lucide-react";
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 import { Card } from "../../components/ui/card";
 import { Modal } from "../../components/ui/modal";
 import { Pagination } from "../../components/ui/Pagination";
@@ -52,6 +53,19 @@ export default function FinanceiroCobrancas() {
         categoria: f.category,
       }));
   }, [financeEntries]);
+
+  const cobrancasKpis = useMemo(() => {
+    const liquidadas = cobrancas.filter(c => c.status === "Liquidada");
+    const pendentes = cobrancas.filter(c => c.status === "Pendente");
+    return {
+      valorTotal: cobrancas.reduce((s, c) => s + c.valor, 0),
+      valorLiquidado: liquidadas.reduce((s, c) => s + c.valor, 0),
+      valorPendente: pendentes.reduce((s, c) => s + c.valor, 0),
+      countLiquidadas: liquidadas.length,
+      countPendentes: pendentes.length,
+      countPix: cobrancas.filter(c => c.metodo === "Pix").length,
+    };
+  }, [cobrancas]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -218,10 +232,10 @@ export default function FinanceiroCobrancas() {
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { icon: Receipt, label: "Total Emitido", val: cobrancas.length, color: "text-blue-500" },
-          { icon: CheckCircle2, label: "Liquidadas", val: cobrancas.filter(c => c.status === "Liquidada").length, color: "text-emerald-500" },
-          { icon: Clock, label: "Pendentes", val: cobrancas.filter(c => c.status === "Pendente").length, color: "text-amber-500" },
-          { icon: QrCode, label: "Cobranças Pix", val: cobrancas.filter(c => c.metodo === "Pix").length, color: "text-indigo-500" },
+          { icon: Receipt, label: "Total Emitido", val: formatCurrency(cobrancasKpis.valorTotal), hint: `${cobrancas.length} cobrança(s)`, color: "text-blue-500" },
+          { icon: CheckCircle2, label: "Liquidadas", val: formatCurrency(cobrancasKpis.valorLiquidado), hint: `${cobrancasKpis.countLiquidadas} cobrança(s)`, color: "text-emerald-500" },
+          { icon: Clock, label: "Pendentes", val: formatCurrency(cobrancasKpis.valorPendente), hint: `${cobrancasKpis.countPendentes} cobrança(s)`, color: "text-amber-500" },
+          { icon: QrCode, label: "Cobranças Pix", val: cobrancasKpis.countPix, hint: "por quantidade", color: "text-indigo-500" },
         ].map((k, i) => (
           <Card key={i} className="p-4 bg-[var(--color-surface-elevated)]/40 border border-[var(--color-border-subtle)]">
             <div className="flex items-center justify-between mb-2">
@@ -229,9 +243,38 @@ export default function FinanceiroCobrancas() {
               <k.icon className={`w-4 h-4 ${k.color}`} />
             </div>
             <p className="text-xl font-black text-[var(--color-text-primary)]">{k.val}</p>
+            <p className="text-[10px] text-[var(--color-text-faint)] mt-0.5">{k.hint}</p>
           </Card>
         ))}
       </div>
+
+      {(cobrancasKpis.valorLiquidado > 0 || cobrancasKpis.valorPendente > 0) && (
+        <Card className="p-4 bg-[var(--color-surface-elevated)]/40 border border-[var(--color-border-subtle)] mb-6">
+          <h3 className="text-xs font-bold text-[var(--color-text-primary)] mb-2">Liquidado x Pendente (por valor)</h3>
+          <div className="h-40 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: "Liquidado", value: cobrancasKpis.valorLiquidado, fill: "#10b981" },
+                    { name: "Pendente", value: cobrancasKpis.valorPendente, fill: "#f59e0b" },
+                  ]}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={35}
+                  outerRadius={60}
+                  paddingAngle={2}
+                >
+                  <Cell fill="#10b981" />
+                  <Cell fill="#f59e0b" />
+                </Pie>
+                <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                <Legend wrapperStyle={{ fontSize: "11px" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
 
       {/* Search & Filter Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-5">
@@ -253,7 +296,7 @@ export default function FinanceiroCobrancas() {
               onClick={() => setStatusFilter(st)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
                 statusFilter === st
-                  ? "bg-[var(--color-primary-blue)] text-white border-[var(--color-primary-blue)]"
+                  ? "bg-[var(--color-primary-blue)] !text-white border-[var(--color-primary-blue)]"
                   : "bg-[var(--color-surface-sunken)] text-[var(--color-text-muted)] border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-elevated)]"
               }`}
             >

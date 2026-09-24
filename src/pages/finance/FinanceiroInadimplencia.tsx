@@ -17,11 +17,11 @@ interface InadimplenciaServerSummary {
 }
 
 const AGING_BUCKETS = [
-  { id: "1-7", label: "1–7 dias", min: 1, max: 7 },
-  { id: "8-30", label: "8–30 dias", min: 8, max: 30 },
-  { id: "31-60", label: "31–60 dias", min: 31, max: 60 },
-  { id: "61-90", label: "61–90 dias", min: 61, max: 90 },
-  { id: "90+", label: "+90 dias", min: 91, max: Infinity },
+  { id: "1-7", label: "1–7 dias", min: 1, max: 7, color: "#fbbf24" },
+  { id: "8-30", label: "8–30 dias", min: 8, max: 30, color: "#f59e0b" },
+  { id: "31-60", label: "31–60 dias", min: 31, max: 60, color: "#f97316" },
+  { id: "61-90", label: "61–90 dias", min: 61, max: 90, color: "#f43f5e" },
+  { id: "90+", label: "+90 dias", min: 91, max: Infinity, color: "#be123c" },
 ];
 
 function bucketFor(dias: number) {
@@ -113,8 +113,8 @@ export default function FinanceiroInadimplencia() {
                   <div className="flex-1 h-6 bg-[var(--color-surface-sunken)] rounded-[var(--radius-control)] overflow-hidden">
                     {b.value > 0 && (
                       <div
-                        className="h-full bg-[var(--color-danger)]/70 rounded-[var(--radius-control)] flex items-center justify-end px-2"
-                        style={{ width: `${Math.max(4, (b.value / maxBucketValue) * 100)}%` }}
+                        className="h-full rounded-[var(--radius-control)] flex items-center justify-end px-2 transition-all duration-500"
+                        style={{ width: `${Math.max(4, (b.value / maxBucketValue) * 100)}%`, backgroundColor: AGING_BUCKETS.find(ab => ab.id === b.id)?.color }}
                       >
                         <span className="text-[10px] font-semibold text-white tabular-nums">{formatCurrency(b.value)}</span>
                       </div>

@@ -2,12 +2,14 @@ import { Card } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
 import {
   Download, Calendar, CheckCircle2,
-  Clock, AlertTriangle, Plus, Trash2, DollarSign, Pencil, Lock, Repeat, Layers, User, Search, X, HelpCircle
+  Clock, AlertTriangle, Plus, Trash2, DollarSign, Pencil, Lock, Repeat, Layers, User, Search, X, HelpCircle,
+  TrendingUp, TrendingDown, BarChart3, HourglassIcon,
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
 import { Switch } from "../../components/ui/switch";
 import React, { useMemo, useState } from "react";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid } from "recharts";
 import { useData } from "../../contexts/DataContext";
 import { toast } from "sonner";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
@@ -19,6 +21,8 @@ import { parseEntryDate } from "./lib/financeDates";
 import { useFinanceEntriesList } from "./useFinanceEntriesList";
 import { Pagination } from "../../components/ui/Pagination";
 import { type Frequencia, addPeriodo, splitInstallments } from "../../lib/saleCalculator";
+import { StatCell, StatCellRow } from "./components/StatCell";
+import { isInMonth, pctDelta, getMonthlyRealizedSeries } from "./lib/financeEngine";
 
 type RepeatMode = "none" | "recorrente" | "parcelado";
 
@@ -65,6 +69,53 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
     [clienteBase, tipoContato]
   );
   const resolverContatoId = (nome: string): string | null => contatosSugeridos.find(c => c.name?.toLowerCase() === nome.trim().toLowerCase())?.id || null;
+
+  // KPIs/gráfico do topo — sempre sobre o panorama GERAL deste tipo+status
+  // (não sobre os filtros da tabela abaixo, que são pra achar um lançamento
+  // específico). Pago/Receitas usa regime de caixa (só o realizado);
+  // Receber/Pagar mostra o pipeline completo por status.
+  const kpis = useMemo(() => {
+    const entriesDoTipo = (financeEntries as any[]).filter((e: any) => e.type === type);
+    if (statusFilter === "Pago") {
+      const now = new Date();
+      const y = now.getFullYear(), m = now.getMonth();
+      const prevRef = new Date(y, m - 1, 1);
+      const py = prevRef.getFullYear(), pm = prevRef.getMonth();
+      const pagos = entriesDoTipo.filter((e: any) => e.status === "Pago");
+      const sumMes = (yy: number, mm: number) => pagos.filter((e: any) => isInMonth(e.date, yy, mm)).reduce((s: number, e: any) => s + e.value, 0);
+      const totalMes = sumMes(y, m);
+      const totalMesAnterior = sumMes(py, pm);
+      const totalGeral = pagos.reduce((s: number, e: any) => s + e.value, 0);
+      return {
+        kind: "realizado" as const,
+        totalMes, deltaPct: pctDelta(totalMes, totalMesAnterior),
+        totalGeral, ticketMedio: pagos.length > 0 ? totalGeral / pagos.length : 0, count: pagos.length,
+      };
+    }
+    const sumStatus = (status: string) => entriesDoTipo.filter((e: any) => e.status === status).reduce((s: number, e: any) => s + e.value, 0);
+    const countStatus = (status: string) => entriesDoTipo.filter((e: any) => e.status === status).length;
+    return {
+      kind: "pipeline" as const,
+      pago: sumStatus("Pago"), aVencer: sumStatus("A Vencer"), atrasado: sumStatus("Atrasado"), pendente: sumStatus("Pendente"),
+      countPago: countStatus("Pago"), countAVencer: countStatus("A Vencer"), countAtrasado: countStatus("Atrasado"), countPendente: countStatus("Pendente"),
+    };
+  }, [financeEntries, type, statusFilter]);
+
+  const STATUS_CHART_COLORS: Record<string, string> = { Pago: "#10b981", "A Vencer": "#3b82f6", Atrasado: "#f43f5e", Pendente: "#f59e0b" };
+  const statusBreakdown = useMemo(() => {
+    if (kpis.kind !== "pipeline") return [];
+    return [
+      { status: "Pago", value: kpis.pago, fill: STATUS_CHART_COLORS.Pago },
+      { status: "A Vencer", value: kpis.aVencer, fill: STATUS_CHART_COLORS["A Vencer"] },
+      { status: "Atrasado", value: kpis.atrasado, fill: STATUS_CHART_COLORS.Atrasado },
+      { status: "Pendente", value: kpis.pendente, fill: STATUS_CHART_COLORS.Pendente },
+    ].filter(s => s.value > 0);
+  }, [kpis]);
+
+  const monthlySeries = useMemo(
+    () => (statusFilter === "Pago" ? getMonthlyRealizedSeries(financeEntries as any[], type, 6) : []),
+    [financeEntries, type, statusFilter]
+  );
   const [showNovaCategoria, setShowNovaCategoria] = useState(false);
   const [novaCategoriaNome, setNovaCategoriaNome] = useState("");
   const [novaCategoriaSubtipo, setNovaCategoriaSubtipo] = useState<"DESPESA_FIXA" | "DESPESA_VARIAVEL" | "PESSOAS" | "IMPOSTOS">("DESPESA_VARIAVEL");
@@ -454,6 +505,66 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
           </Button>
         </div>
       </div>
+
+      {kpis.kind === "pipeline" ? (
+        <>
+          <StatCellRow>
+            <StatCell label="Pago" value={formatCurrency(kpis.pago)} icon={CheckCircle2} tone="success" hint={`${kpis.countPago} lançamento(s)`} />
+            <StatCell label="A Vencer" value={formatCurrency(kpis.aVencer)} icon={Clock} tone="neutral" hint={`${kpis.countAVencer} lançamento(s)`} />
+            <StatCell label="Atrasado" value={formatCurrency(kpis.atrasado)} icon={AlertTriangle} tone={kpis.atrasado > 0 ? "danger" : "neutral"} hint={`${kpis.countAtrasado} lançamento(s)`} />
+            <StatCell label="Pendente" value={formatCurrency(kpis.pendente)} icon={HourglassIcon} tone={kpis.pendente > 0 ? "warning" : "neutral"} hint={`${kpis.countPendente} lançamento(s)`} />
+          </StatCellRow>
+          {statusBreakdown.length > 0 && (
+            <Card className="p-4">
+              <h3 className="text-xs font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-[var(--color-text-faint)]" /> {type === "Pagar" ? "Pagamentos" : "Recebimentos"} por Status
+              </h3>
+              <div className="h-36 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={statusBreakdown} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="status" type="category" stroke="var(--color-text-muted)" fontSize={11} width={70} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                      {statusBreakdown.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          )}
+        </>
+      ) : (
+        <>
+          <StatCellRow>
+            <StatCell label={type === "Pagar" ? "Gasto no Mês" : "Recebido no Mês"} value={formatCurrency(kpis.totalMes)} icon={type === "Pagar" ? TrendingDown : TrendingUp} tone={type === "Pagar" ? (kpis.totalMes > 0 ? "danger" : "neutral") : "success"} />
+            <StatCell
+              label="Vs. Mês Anterior"
+              value={kpis.deltaPct === null ? "—" : `${kpis.deltaPct > 0 ? "+" : ""}${kpis.deltaPct}%`}
+              icon={type === "Pagar" ? TrendingUp : TrendingDown}
+              tone={kpis.deltaPct === null ? "neutral" : (type === "Pagar" ? kpis.deltaPct <= 0 : kpis.deltaPct >= 0) ? "success" : "danger"}
+            />
+            <StatCell label="Ticket Médio" value={formatCurrency(kpis.ticketMedio)} icon={DollarSign} />
+            <StatCell label="Total Geral (Histórico)" value={formatCurrency(kpis.totalGeral)} icon={Layers} hint={`${kpis.count} lançamento(s)`} />
+          </StatCellRow>
+          <Card className="p-4">
+            <h3 className="text-xs font-bold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-[var(--color-text-faint)]" /> {title} — Últimos 6 Meses
+            </h3>
+            <div className="h-40 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlySeries} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" vertical={false} />
+                  <XAxis dataKey="label" stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                  <Bar dataKey="value" name={type === "Pagar" ? "Pago" : "Recebido"} fill={type === "Pagar" ? "var(--color-danger)" : "var(--color-success)"} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </>
+      )}
 
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">

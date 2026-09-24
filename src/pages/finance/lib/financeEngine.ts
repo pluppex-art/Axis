@@ -258,6 +258,42 @@ export interface MonthlyDrePoint {
   lucroLiquido: number;
 }
 
+export interface MonthlyRealizedPoint {
+  key: string; // 'YYYY-MM'
+  label: string;
+  value: number;
+}
+
+/**
+ * Série mensal (últimos N meses) de lançamentos PAGOS de um único tipo —
+ * regime de caixa puro. Usada pelos gráficos de Receitas/Despesas/Contas a
+ * Receber/Contas a Pagar (GenericFinanceiroList), que só precisam de uma
+ * linha só, diferente do DRE (que precisa das 3 juntas).
+ */
+export function getMonthlyRealizedSeries(
+  entries: FinanceEntryLike[],
+  type: "Pagar" | "Receber",
+  months: number = 6
+): MonthlyRealizedPoint[] {
+  const now = new Date();
+  const buckets: { key: string; label: string; start: Date; end: Date }[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+    buckets.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: MONTH_NAMES_SHORT[d.getMonth()], start, end });
+  }
+  return buckets.map(b => {
+    const value = round2(
+      entries
+        .filter(e => e.type === type && isPago(e))
+        .filter(e => { const dt = parseEntryDate(e.date); return !!dt && dt >= b.start && dt <= b.end; })
+        .reduce((s, e) => s + e.value, 0)
+    );
+    return { key: b.key, label: b.label, value };
+  });
+}
+
 /**
  * Série mensal de DRE pros últimos N meses (incluindo o atual) — usada pelos
  * gráficos de tendência (DRE, Central de Relatórios). Roda `calcularDRE` uma
