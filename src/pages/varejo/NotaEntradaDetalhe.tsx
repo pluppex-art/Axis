@@ -335,14 +335,14 @@ export default function NotaEntradaDetalhe() {
                     <td className="px-4 py-3">
                       <input type="number" min={1} step={1} disabled={locked} value={i.qtd_estoque ?? ""} onChange={(e) => atualizarItem(i, { qtd_estoque: e.target.value === "" ? null : Number(e.target.value) })} className={cn(inputCls, "text-right tabular-nums")} title="Unidades que entram no estoque (ex.: 2 caixas com 12 = 24)" />
                     </td>
-                    <td className="px-2 py-3">{!locked && nota.origem !== "xml" && <button type="button" onClick={() => removerItem(i)} className="p-1.5 text-[var(--color-text-faint)] hover:text-[var(--color-danger)] cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>}</td>
+                    <td className="px-2 py-3">{!locked && nota.origem === "manual" && <button type="button" onClick={() => removerItem(i)} className="p-1.5 text-[var(--color-text-faint)] hover:text-[var(--color-danger)] cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>}</td>
                   </tr>
                 ))}
                 {itens.length === 0 && <tr><td colSpan={7} className="px-6 py-10 text-center text-[var(--color-text-faint)]">Nenhum item ainda.</td></tr>}
               </tbody>
             </table>
           </div>
-          {!locked && nota.origem !== "xml" && (
+          {!locked && nota.origem === "manual" && (
             <div className="p-4 border-t border-[var(--color-border-subtle)] grid grid-cols-2 md:grid-cols-[1fr_140px_100px_130px_auto] gap-2 items-end">
               <input placeholder="Descrição do item" value={novoItem.descricao} onChange={(e) => setNovoItem((p) => ({ ...p, descricao: e.target.value }))} className={cn(inputCls, "col-span-2 md:col-span-1")} />
               <input placeholder="Código" value={novoItem.codigo} onChange={(e) => setNovoItem((p) => ({ ...p, codigo: e.target.value }))} className={inputCls} />

@@ -14,6 +14,9 @@ import { getWhatsAppProvider, getActiveProviderName, isWahaConfigured } from "./
 import { cacheGet, cacheSet, redisHealthCheck } from "./server/redisClient.js";
 import { assertSafeHttpUrl, assertSafeSmtpTarget } from "./server/ssrfGuard.js";
 import { readTenantSnapshot } from "./server/implementationSync.js";
+import { connFromConfig as maxConnFromConfig, maxdataAuth, maxdataGet, MaxDataError } from "./server/maxdataClient.js";
+import { extractDocs as maxExtractDocs, mapMaxEntryToNota, type MaxEntry, type MaxEntryItem } from "./src/lib/maxdataEntry.js";
+import { findProductForItem, defaultQtdEstoque } from "./src/lib/notaEntrada.js";
 import {
   INTEGRATION_DEFS, INTEGRATION_SETTING_KEYS, getIntegrationDef as implGetIntegrationDef, maskedView as implMaskedView,
   validateIntegrationValues as implValidateIntegrationValues, applyIntegrationUpdate as implApplyIntegrationUpdate,
@@ -280,6 +283,9 @@ const tenantThemeLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHead
 const publicImplementationLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
 app.use("/api/public-proposal", publicProposalLimiter);
 app.use("/api/public-implementation", publicImplementationLimiter);
+const maxdataLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
+app.use("/api/integrations/maxdata", maxdataLimiter);
+app.use("/api/varejo/maxdata", maxdataLimiter);
 app.use("/api/auth/tenant-theme", tenantThemeLimiter);
 app.use("/api/v1/leads", apiKeyLimiter);
 app.use("/api/v1/lead-activities", apiKeyLimiter);
@@ -2580,6 +2586,127 @@ app.put("/api/implementations/:id/tenant-integrations/:integration", requireUser
   if (error) return res.status(500).json({ error: "Não foi possível gravar a integração." });
   console.info("[impl-integration]", JSON.stringify({ actor: req.user?.id, implementation: impl.id, tenant: impl.linked_tenant_id, integration: def.id, fields: Object.keys(clean), connected }));
   return res.json({ ok: true, missingRequired, integration: implMaskedView(def, settingValue) });
+});
+
+// ── Max Data (MaxAPI Go): testar conexão e importar "Entrada Nota Fiscal" ────
+// A chave (application_key) é lida AQUI, no servidor, da config do tenant —
+// o navegador nunca a manda nem a recebe de volta nestas rotas. O destino é
+// validado contra SSRF antes de qualquer chamada. Só LEITURA no Max nesta
+// etapa (nada de criar venda, emitir NF-e nem marcar conferida).
+async function loadMaxdataConn(req: any, res: any, tenantId: string, which: "notas" | "estoque") {
+  const key = which === "estoque" ? "integracoes_maxdata_estoque" : "integracoes_maxdata";
+  const { data } = await req.supabase.from("app_settings").select("value").eq("tenant_id", tenantId).eq("key", key).maybeSingle();
+  const parsed = maxConnFromConfig(data?.value || {});
+  if ("error" in parsed) { res.status(409).json({ error: parsed.error }); return null; }
+  try { await assertSafeHttpUrl(parsed.conn.baseUrl); } catch (e: any) { res.status(400).json({ error: `URL da API não permitida: ${e?.message || "inválida"}` }); return null; }
+  return parsed.conn;
+}
+
+const maxErrorStatus = (e: any) => (e instanceof MaxDataError ? (e.status && e.status >= 400 && e.status < 500 ? 422 : 502) : 500);
+
+app.post("/api/integrations/maxdata/test", requireUser, async (req: any, res) => {
+  const tenantId = await resolveRequestedTenantId(req, res);
+  if (!tenantId) return;
+  const which = req.body?.which === "estoque" ? "estoque" : "notas";
+  const conn = await loadMaxdataConn(req, res, tenantId, which);
+  if (!conn) return;
+  try {
+    const { expiresAt } = await maxdataAuth(conn);
+    let empresa: any = null;
+    try {
+      const body: any = await maxdataGet(conn, `/company/${conn.empId}`);
+      const c = Array.isArray(body) ? body[0] : body;
+      if (c) empresa = { fantasia: c.fantasia || null, razaoSocial: c.razaoSocial || null, cnpj: c.cnpj || null };
+    } catch { /* login OK mas a rota de empresa negou/mudou — não invalida o teste de credenciais */ }
+    return res.json({ ok: true, empresa, tokenExpiraEm: new Date(expiresAt + 60_000).toISOString() });
+  } catch (e: any) {
+    return res.status(maxErrorStatus(e)).json({ ok: false, error: e?.message || "Falha ao conectar à Max Data." });
+  }
+});
+
+app.get("/api/varejo/maxdata/entries", requireUser, async (req: any, res) => {
+  const tenantId = await resolveRequestedTenantId(req, res);
+  if (!tenantId) return;
+  const conn = await loadMaxdataConn(req, res, tenantId, "estoque");
+  if (!conn) return;
+  try {
+    const { docs } = maxExtractDocs<MaxEntry>(await maxdataGet(conn, "/entry"));
+    const ids = docs.map((d) => String(d.id));
+    const { data: jaImportadas } = ids.length
+      ? await req.supabase.from("notas_entrada").select("externo_id, id").eq("tenant_id", tenantId).eq("externo_sistema", "maxdata").neq("status", "Cancelada").in("externo_id", ids)
+      : { data: [] as any[] };
+    const importadas = new Map<string, string>((jaImportadas || []).map((n: any) => [n.externo_id, n.id]));
+    const sortKey = (d: MaxEntry) => String(d.lancamento || d.emissao || "");
+    const entries = [...docs].sort((a, b) => sortKey(b).localeCompare(sortKey(a))).slice(0, 200).map((d) => ({
+      id: d.id, numeroNf: d.numeroNf ?? null, emissao: d.emissao ?? null, lancamento: d.lancamento ?? null,
+      fornecedorNome: d.fornecedorNome ?? null, totalnf: d.totalnf ?? 0, status: d.status ?? null,
+      conferida: !!d.data_conferencia, notaId: importadas.get(String(d.id)) ?? null,
+    }));
+    return res.json({ entries, total: docs.length });
+  } catch (e: any) {
+    return res.status(maxErrorStatus(e)).json({ error: e?.message || "Falha ao ler as entradas da Max Data." });
+  }
+});
+
+app.post("/api/varejo/maxdata/entries/import", requireUser, async (req: any, res) => {
+  const tenantId = await resolveRequestedTenantId(req, res);
+  if (!tenantId) return;
+  const ids: number[] = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter((n: number) => Number.isInteger(n) && n > 0) : [];
+  if (ids.length === 0 || ids.length > 20) return res.status(400).json({ error: "Envie de 1 a 20 entradas." });
+  const conn = await loadMaxdataConn(req, res, tenantId, "estoque");
+  if (!conn) return;
+
+  // Catálogo do tenant, em páginas (o PostgREST corta em 1000 linhas).
+  const products: any[] = [];
+  for (let from = 0; from < 50_000; from += 1000) {
+    const { data, error } = await req.supabase.from("products").select("id, name, sku, active, type_attributes")
+      .eq("tenant_id", tenantId).is("deleted_at", null).range(from, from + 999);
+    if (error) return res.status(500).json({ error: "Não foi possível ler o catálogo de produtos." });
+    products.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+
+  const results: any[] = [];
+  for (const id of ids) {
+    try {
+      const { data: ja } = await req.supabase.from("notas_entrada").select("id").eq("tenant_id", tenantId)
+        .eq("externo_sistema", "maxdata").eq("externo_id", String(id)).neq("status", "Cancelada").maybeSingle();
+      if (ja) { results.push({ id, ok: true, jaImportada: true, notaId: ja.id }); continue; }
+
+      const headBody: any = await maxdataGet(conn, `/entry/${id}`);
+      const entry: MaxEntry | undefined = Array.isArray(headBody) ? headBody[0] : headBody;
+      if (!entry) { results.push({ id, ok: false, error: "Entrada não encontrada na Max Data." }); continue; }
+
+      const items: MaxEntryItem[] = [];
+      const first = maxExtractDocs<MaxEntryItem>(await maxdataGet(conn, `/entry/${id}/items`));
+      items.push(...first.docs);
+      for (let page = 2; page <= Math.min(first.pages, 20); page++) items.push(...maxExtractDocs<MaxEntryItem>(await maxdataGet(conn, `/entry/${id}/items?page=${page}`)).docs);
+
+      const { nota, itens, ignorados } = mapMaxEntryToNota({ ...entry, id }, items);
+      if (itens.length === 0) { results.push({ id, ok: false, error: "A entrada não tem itens com quantidade." }); continue; }
+
+      const { data: criada, error } = await req.supabase.from("notas_entrada")
+        .insert({ ...nota, tenant_id: tenantId, status: "Rascunho", created_by: req.user.id }).select("id").maybeSingle();
+      if (error || !criada) { results.push({ id, ok: false, error: error?.code === "23505" ? "Já importada." : "Não foi possível salvar a nota." }); continue; }
+
+      let vinculados = 0;
+      const rows = itens.map((i) => {
+        const match = findProductForItem(i, products);
+        if (match) vinculados++;
+        return { ...i, tenant_id: tenantId, nota_id: criada.id, product_id: match?.product.id ?? null, qtd_estoque: defaultQtdEstoque(i.quantidade) };
+      });
+      const { error: itensErr } = await req.supabase.from("nota_entrada_itens").insert(rows);
+      if (itensErr) {
+        await req.supabase.from("notas_entrada").delete().eq("id", criada.id);
+        results.push({ id, ok: false, error: "Não foi possível salvar os itens." });
+        continue;
+      }
+      results.push({ id, ok: true, notaId: criada.id, itens: itens.length, vinculados, ignorados });
+    } catch (e: any) {
+      results.push({ id, ok: false, error: e?.message || "Falha ao importar." });
+    }
+  }
+  return res.json({ results });
 });
 
 // ── Public Proposal Authenticated Fetch with Full Multi-Tenant Branding ─────

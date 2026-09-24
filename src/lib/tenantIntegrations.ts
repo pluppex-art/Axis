@@ -21,6 +21,8 @@ export interface IntegrationField {
   help?: string;
   placeholder?: string;
   required?: boolean;
+  /** Só dígitos (ids numéricos de outro sistema). */
+  numeric?: boolean;
 }
 
 export interface IntegrationDef {
@@ -69,32 +71,40 @@ export const DEFAULT_PAYMENT_CONFIG = {
 export const DEFAULT_MAXDATA_CONFIG = {
   connected: false,
   apiUrl: "",
+  /** application_key (segredo). */
   apiKey: "",
+  /** application_name. */
   clientId: "",
+  applicationDescription: "",
+  terminal: "",
+  empId: "",
+  idUser: "0",
   environment: "production" as "sandbox" | "production",
   notes: "",
 };
 
 const ENV = ["sandbox", "production"];
 
+/** Login da MaxAPI: POST /auth com application_name/key/description nos headers e {terminal, empId, idUser} no corpo. */
+const MAXDATA_FIELDS: IntegrationField[] = [
+  { prop: "apiUrl", label: "URL base da API", kind: "url", required: true, placeholder: "https://…", help: "Endereço da MaxAPI deste cliente (a documentação não traz — pedir à Max Data)." },
+  { prop: "clientId", label: "Nome da aplicação (application_name)", kind: "text", required: true },
+  { prop: "apiKey", label: "Chave da aplicação (application_key)", kind: "secret", required: true },
+  { prop: "applicationDescription", label: "Descrição da aplicação (application_description)", kind: "text", required: true, placeholder: "EMPRESA_SPYCRM" },
+  { prop: "terminal", label: "Terminal", kind: "text", required: true, help: "Identificador do terminal usado no login (ex.: PDV01)." },
+  { prop: "empId", label: "ID da empresa no Max (empId)", kind: "text", required: true, numeric: true },
+  { prop: "idUser", label: "ID do usuário no Max (idUser)", kind: "text", numeric: true, help: "Deixe 0 se não houver." },
+  { prop: "environment", label: "Ambiente", kind: "select", options: ENV },
+];
+
 export const INTEGRATION_DEFS: IntegrationDef[] = [
   {
     id: "maxdata", label: "Max Data — Notas fiscais", settingsKey: "integracoes_maxdata",
-    fields: [
-      { prop: "apiUrl", label: "URL da API", kind: "url", required: true, placeholder: "https://api.maxdata.com.br" },
-      { prop: "apiKey", label: "Chave de API", kind: "secret", required: true },
-      { prop: "clientId", label: "ID do cliente/base na Max Data", kind: "text", required: true, help: "Identifica qual base é deste cliente." },
-      { prop: "environment", label: "Ambiente", kind: "select", options: ENV },
-    ],
+    fields: MAXDATA_FIELDS,
   },
   {
     id: "maxdata_estoque", label: "Max Data — Estoque", settingsKey: "integracoes_maxdata_estoque",
-    fields: [
-      { prop: "apiUrl", label: "URL da API", kind: "url", required: true, placeholder: "https://api.maxdata.com.br" },
-      { prop: "apiKey", label: "Chave de API", kind: "secret", required: true },
-      { prop: "clientId", label: "ID do cliente/base na Max Data", kind: "text", required: true, help: "Identifica qual base é deste cliente." },
-      { prop: "environment", label: "Ambiente", kind: "select", options: ENV },
-    ],
+    fields: MAXDATA_FIELDS,
   },
   {
     id: "meta", label: "Meta Ads", settingsKey: "integracoes_meta_ads",
@@ -197,6 +207,7 @@ export function validateIntegrationValues(def: IntegrationDef, values: Record<st
     if (raw === undefined || raw === null) continue;
     const v = String(raw).trim();
     if (v.length > MAX_LEN) { errors.push(`"${f.label}" passou de ${MAX_LEN} caracteres.`); continue; }
+    if (f.numeric && v !== "" && !/^\d+$/.test(v)) { errors.push(`"${f.label}" precisa ser numérico.`); continue; }
     if (f.kind === "select" && v !== "" && !f.options?.includes(v)) { errors.push(`"${f.label}" aceita: ${f.options?.join(", ")}.`); continue; }
     if (f.kind === "url" && v !== "") {
       try {

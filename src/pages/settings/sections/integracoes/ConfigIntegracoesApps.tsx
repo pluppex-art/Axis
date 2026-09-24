@@ -40,6 +40,7 @@ import {
   Database,
 } from "lucide-react";
 import { useData } from "../../../../contexts/DataContext";
+import { useAuth } from "../../../../contexts/AuthContext";
 import { toast } from "sonner";
 import { NovaIntegracaoModal } from "../../../../components/ui/modals/settings/NovaIntegracaoModal";
 import { apiFetch } from "../../../../lib/apiClient";
@@ -52,15 +53,44 @@ type MaxDataConfig = typeof DEFAULT_MAXDATA_CONFIG;
 
 /** Modal de uma conexão Max Data (a mesma tela serve às duas APIs: notas fiscais e estoque). */
 function MaxDataConnectionModal({
-  title, subtitle, config, setConfig, onClose, onToggleConnected,
+  title, subtitle, which, tenantId, config, setConfig, onClose, onToggleConnected,
 }: {
   title: string;
   subtitle: string;
+  which: "notas" | "estoque";
+  tenantId: string | null;
   config: MaxDataConfig;
   setConfig: React.Dispatch<React.SetStateAction<MaxDataConfig>>;
   onClose: () => void;
   onToggleConnected: () => void;
 }) {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Usa a configuração já SALVA (o servidor lê do banco — a chave nunca sai do navegador pra essa chamada).
+  const handleTest = async () => {
+    setTesting(true);
+    setResult(null);
+    try {
+      const res = await apiFetch(`/api/integrations/maxdata/test${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ""}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ which }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        const nome = data.empresa?.fantasia || data.empresa?.razaoSocial;
+        setResult({ ok: true, text: nome ? `Conexão validada — empresa: ${nome}.` : "Login aceito pela Max Data." });
+      } else {
+        setResult({ ok: false, text: data?.error || "Falha ao conectar à Max Data." });
+      }
+    } catch {
+      setResult({ ok: false, text: "Falha ao contatar o servidor." });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
     <Modal
       isOpen={true}
@@ -88,19 +118,33 @@ function MaxDataConnectionModal({
     >
       <div className="space-y-4">
         <Alert variant="info" title="Conexão pronta, comportamento a definir">
-          Deixe a conexão pronta: URL da API, chave e o ID da base deste cliente. O envio e a leitura de dados
-          ainda não estão ligados — entram quando a API for mapeada. Os campos são salvos automaticamente e a
-          chave nunca aparece em relatórios nem em links compartilhados.
+          Login da MaxAPI: nome, chave e descrição da aplicação, mais terminal e empresa. Os campos são salvos
+          automaticamente. Nesta etapa o SPY só LÊ dados do Max (entradas de nota fiscal); enviar vendas ou emitir
+          NF-e não está ligado.
         </Alert>
-        <FormField label="URL da API" required hint="Ex.: https://api.maxdata.com.br">
+        <FormField label="URL base da API" required hint="Endereço da MaxAPI deste cliente — pedir à Max Data (a documentação não traz)">
           <Input type="text" value={config.apiUrl} onChange={(e) => setConfig((p) => ({ ...p, apiUrl: e.target.value }))} placeholder="https://" />
         </FormField>
-        <FormField label="Chave de API" required hint="Fica guardada neste ambiente">
-          <Input type="password" autoComplete="off" value={config.apiKey} onChange={(e) => setConfig((p) => ({ ...p, apiKey: e.target.value }))} />
-        </FormField>
-        <FormField label="ID do cliente/base na Max Data" required hint="Identifica qual base é deste cliente">
+        <FormField label="Nome da aplicação (application_name)" required>
           <Input type="text" value={config.clientId} onChange={(e) => setConfig((p) => ({ ...p, clientId: e.target.value }))} />
         </FormField>
+        <FormField label="Chave da aplicação (application_key)" required hint="Fica guardada neste ambiente e nunca aparece em relatórios nem links">
+          <Input type="password" autoComplete="off" value={config.apiKey} onChange={(e) => setConfig((p) => ({ ...p, apiKey: e.target.value }))} />
+        </FormField>
+        <FormField label="Descrição da aplicação (application_description)" required>
+          <Input type="text" value={config.applicationDescription} onChange={(e) => setConfig((p) => ({ ...p, applicationDescription: e.target.value }))} placeholder="EMPRESA_SPYCRM" />
+        </FormField>
+        <div className="grid grid-cols-3 gap-3">
+          <FormField label="Terminal" required hint="Ex.: PDV01">
+            <Input type="text" value={config.terminal} onChange={(e) => setConfig((p) => ({ ...p, terminal: e.target.value }))} />
+          </FormField>
+          <FormField label="ID da empresa (empId)" required>
+            <Input type="text" inputMode="numeric" value={config.empId} onChange={(e) => setConfig((p) => ({ ...p, empId: e.target.value.replace(/\D/g, "") }))} />
+          </FormField>
+          <FormField label="ID do usuário (idUser)" hint="0 se não houver">
+            <Input type="text" inputMode="numeric" value={config.idUser} onChange={(e) => setConfig((p) => ({ ...p, idUser: e.target.value.replace(/\D/g, "") }))} />
+          </FormField>
+        </div>
         <FormField label="Ambiente">
           <select
             value={config.environment}
@@ -114,10 +158,18 @@ function MaxDataConnectionModal({
         <FormField label="Observações">
           <Input type="text" value={config.notes} onChange={(e) => setConfig((p) => ({ ...p, notes: e.target.value }))} />
         </FormField>
+        <Button variant="outline" onClick={handleTest} disabled={testing} className="w-full text-xs font-bold gap-2">
+          <Activity className="w-3.5 h-3.5 text-cyan-500" /> {testing ? "Testando…" : "Testar conexão (usa a configuração salva)"}
+        </Button>
+        {result && (
+          <div className={`p-3 rounded-[var(--radius-control)] border text-xs ${result.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"}`}>
+            {result.text}
+          </div>
+        )}
         <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-[var(--color-border-default)] p-3">
           <div>
             <p className="text-xs font-bold text-[var(--color-text-primary)]">Marcar como conectada</p>
-            <p className="text-[11px] text-[var(--color-text-muted)]">Requer URL, chave e ID da base preenchidos.</p>
+            <p className="text-[11px] text-[var(--color-text-muted)]">Só depois de testar. Requer os campos obrigatórios preenchidos.</p>
           </div>
           <Switch checked={config.connected} onCheckedChange={onToggleConnected} />
         </div>
@@ -128,6 +180,7 @@ function MaxDataConnectionModal({
 
 export function ConfigIntegracoesApps() {
   const navigate = useNavigate();
+  const { activeTenantId } = useAuth();
   const { setWhatsappWebhookUrl, appSettings, appSettingsLoaded, saveAppSetting, globalWebhooks } = useData();
 
   // Search & Filter State
@@ -270,8 +323,8 @@ export function ConfigIntegracoesApps() {
     label: string
   ) => {
     const next = !cfg.connected;
-    if (next && (!cfg.apiUrl.trim() || !cfg.apiKey.trim() || !cfg.clientId.trim())) {
-      toast.error("Preencha a URL da API, a chave e o ID da base antes de marcar como conectada.");
+    if (next && (!cfg.apiUrl.trim() || !cfg.apiKey.trim() || !cfg.clientId.trim() || !cfg.applicationDescription.trim() || !cfg.terminal.trim() || !cfg.empId.trim())) {
+      toast.error("Preencha URL, nome/chave/descrição da aplicação, terminal e empresa antes de marcar como conectada.");
       setSelectedConfigModal(modalId);
       return;
     }
@@ -1071,6 +1124,8 @@ export function ConfigIntegracoesApps() {
         <MaxDataConnectionModal
           title="Max Data — Notas fiscais"
           subtitle="API que recebe e valida as notas fiscais de entrada"
+          which="notas"
+          tenantId={activeTenantId}
           config={maxdataConfig}
           setConfig={setMaxdataConfig}
           onClose={() => setSelectedConfigModal(null)}
@@ -1082,6 +1137,8 @@ export function ConfigIntegracoesApps() {
         <MaxDataConnectionModal
           title="Max Data — Estoque"
           subtitle="API de estoque: recebe a entrada dos produtos"
+          which="estoque"
+          tenantId={activeTenantId}
           config={maxdataEstoqueConfig}
           setConfig={setMaxdataEstoqueConfig}
           onClose={() => setSelectedConfigModal(null)}

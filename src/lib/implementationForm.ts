@@ -133,7 +133,7 @@ export const IMPLEMENTATION_SECTIONS: ImplSection[] = [
       statusField("agenda_status", "Status da integração", "Agenda"),
 
       { id: "maxdata_usa", label: "Vai usar a base Max Data?", type: "boolean", audience: "client", group: "Max Data" },
-      { id: "maxdata_id", label: "ID do cliente/base na Max Data", type: "text", audience: "client", group: "Max Data" },
+      { id: "maxdata_id", label: "ID da empresa no Max Data (empId)", type: "text", audience: "client", group: "Max Data" },
       statusField("maxdata_status", "Status da integração", "Max Data"),
 
       { id: "outras_integracoes", label: "Outras ferramentas que precisam se conectar", type: "textarea", audience: "client", group: "Outras" },
@@ -335,7 +335,7 @@ export interface TenantSnapshot {
   google?: { customerId?: string; measurementId?: string; connected?: boolean } | null;
   payments: { name: "Mercado Pago" | "Stripe" | "Asaas"; connected: boolean }[];
   smtp?: { server?: string; user?: string } | null;
-  /** Max Data: só o ID público da base e se URL+chave já estão preenchidas — nunca a chave. */
+  /** Max Data: só o ID da empresa (empId) e se URL+chave já estão preenchidas — nunca a chave nem o application_name. */
   maxdata?: { clientId?: string; configured?: boolean; connected?: boolean } | null;
   stages: string[];
   auroraActive: number;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FileUp, Plus, Search, FileText, Loader2, CheckCircle2, Clock, Send, Wallet } from "lucide-react";
+import { FileUp, Plus, Search, FileText, Loader2, CheckCircle2, Clock, Send, Wallet, Database } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
@@ -12,6 +12,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { supabase } from "../../lib/supabase";
+import { apiFetch } from "../../lib/apiClient";
 import { parseNFeXml, nfeTotalsMismatch } from "../../lib/nfe";
 import { NOTA_STATUSES, NOTA_STATUS_TONE, defaultQtdEstoque, findProductForItem, type NotaStatus } from "../../lib/notaEntrada";
 import { cn } from "../../lib/utils";
@@ -32,6 +33,16 @@ export default function NotasEntrada() {
   const [importando, setImportando] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [manual, setManual] = useState({ fornecedor: "", numero: "" });
+
+  // Importar do Max Data
+  const [maxOpen, setMaxOpen] = useState(false);
+  const [maxLoading, setMaxLoading] = useState(false);
+  const [maxError, setMaxError] = useState<string | null>(null);
+  const [maxEntries, setMaxEntries] = useState<any[]>([]);
+  const [maxTotal, setMaxTotal] = useState(0);
+  const [maxBusca, setMaxBusca] = useState("");
+  const [maxSel, setMaxSel] = useState<Set<number>>(new Set());
+  const [maxImportando, setMaxImportando] = useState(false);
 
   const carregar = async () => {
     if (!supabase || !activeTenantId) return;
@@ -124,6 +135,52 @@ export default function NotasEntrada() {
     }
   };
 
+  const abrirMax = async () => {
+    setMaxOpen(true);
+    setMaxLoading(true);
+    setMaxError(null);
+    setMaxSel(new Set());
+    try {
+      const res = await apiFetch(`/api/varejo/maxdata/entries?tenantId=${encodeURIComponent(activeTenantId || "")}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setMaxError(body?.error || "Não foi possível ler as entradas da Max Data."); setMaxEntries([]); return; }
+      setMaxEntries(body.entries || []);
+      setMaxTotal(body.total || 0);
+    } catch {
+      setMaxError("Falha ao contatar o servidor.");
+    } finally {
+      setMaxLoading(false);
+    }
+  };
+
+  const importarMax = async () => {
+    if (maxSel.size === 0) return;
+    setMaxImportando(true);
+    try {
+      const res = await apiFetch(`/api/varejo/maxdata/entries/import?tenantId=${encodeURIComponent(activeTenantId || "")}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: Array.from(maxSel) }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(body?.error || "Não foi possível importar."); return; }
+      const ok = (body.results || []).filter((r: any) => r.ok && !r.jaImportada);
+      const falhas = (body.results || []).filter((r: any) => !r.ok);
+      const vinculados = ok.reduce((sum: number, r: any) => sum + (r.vinculados || 0), 0);
+      const itensTotal = ok.reduce((sum: number, r: any) => sum + (r.itens || 0), 0);
+      if (ok.length > 0) toast.success(`${ok.length} nota(s) importada(s): ${itensTotal} item(ns), ${vinculados} já ligado(s) a produtos.`);
+      if (falhas.length > 0) toast.error(`${falhas.length} não importada(s): ${falhas[0].error}`);
+      setMaxOpen(false);
+      await carregar();
+      if (ok.length === 1 && falhas.length === 0) navigate(`/app/varejo/notas-entrada/${ok[0].notaId}`);
+    } finally {
+      setMaxImportando(false);
+    }
+  };
+
+  const maxFiltradas = maxEntries.filter((e) => {
+    const q = maxBusca.trim().toLowerCase();
+    return !q || String(e.numeroNf ?? "").toLowerCase().includes(q) || (e.fornecedorNome || "").toLowerCase().includes(q);
+  });
+
   const criarManual = async () => {
     if (!supabase || !activeTenantId) return;
     if (!manual.fornecedor.trim()) { toast.error("Informe o fornecedor."); return; }
@@ -145,6 +202,7 @@ export default function NotasEntrada() {
       actions={
         <div className="flex items-center gap-2">
           <input ref={fileRef} type="file" accept=".xml,text/xml,application/xml" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleXml(f); }} />
+          <Button variant="outline" onClick={abrirMax} className="h-9 px-4 text-xs font-medium gap-1.5"><Database className="w-3.5 h-3.5" /> Importar do Max Data</Button>
           <Button variant="outline" onClick={() => setManualOpen(true)} className="h-9 px-4 text-xs font-medium gap-1.5"><Plus className="w-3.5 h-3.5" /> Nota manual</Button>
           <Button onClick={() => fileRef.current?.click()} disabled={importando} className="h-9 px-4 text-xs font-medium gap-1.5">
             {importando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5" />} Importar XML da NF-e
@@ -211,6 +269,45 @@ export default function NotasEntrada() {
           <Clock className="w-3 h-3" /> A validação/venda pela API externa ainda não está ligada: por enquanto o status Enviada/Validada é marcado à mão e a entrada no estoque é feita na própria nota.
         </p>
       </div>
+
+      <Modal isOpen={maxOpen} onClose={() => setMaxOpen(false)} title="Importar do Max Data" description="Entradas de nota fiscal do Max. O SPY só lê — nada é alterado lá. A nota entra como rascunho, com os itens já ligados aos produtos quando o código de barras ou o SKU bate." maxWidth="max-w-3xl">
+        <div className="space-y-3">
+          {maxLoading ? (
+            <p className="text-xs text-[var(--color-text-faint)] flex items-center gap-2 py-6"><Loader2 className="w-3 h-3 animate-spin" /> Lendo entradas do Max…</p>
+          ) : maxError ? (
+            <div className="rounded-[var(--radius-control)] border border-rose-500/30 bg-rose-500/10 text-rose-500 text-xs p-3">{maxError} <span className="block text-[11px] opacity-80 mt-1">Confira em Configurações › Integrações › Max Data — Estoque e use "Testar conexão".</span></div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <input value={maxBusca} onChange={(e) => setMaxBusca(e.target.value)} placeholder="Buscar número ou fornecedor…" className="w-64 bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs" />
+                <span className="text-[11px] text-[var(--color-text-faint)]">Mostrando as {maxEntries.length} mais recentes de {maxTotal}</span>
+              </div>
+              <div className="max-h-[50vh] overflow-y-auto border border-[var(--color-border-subtle)] rounded-[var(--radius-control)]">
+                <table className="w-full text-xs text-left">
+                  <thead className="text-[10px] uppercase font-semibold text-[var(--color-text-muted)] bg-[var(--color-surface-sunken)] sticky top-0"><tr><th className="px-3 py-2 w-8" /><th className="px-3 py-2">NF</th><th className="px-3 py-2">Fornecedor</th><th className="px-3 py-2">Emissão</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2">Situação</th></tr></thead>
+                  <tbody className="divide-y divide-[var(--color-border-subtle)]">
+                    {maxFiltradas.map((e) => (
+                      <tr key={e.id} className={e.notaId ? "opacity-60" : ""}>
+                        <td className="px-3 py-2"><input type="checkbox" disabled={!!e.notaId} checked={maxSel.has(e.id)} onChange={(ev) => setMaxSel((prev) => { const n = new Set(prev); if (ev.target.checked) n.add(e.id); else n.delete(e.id); return n; })} /></td>
+                        <td className="px-3 py-2 font-mono">{e.numeroNf ?? e.id}</td>
+                        <td className="px-3 py-2">{e.fornecedorNome || "—"}</td>
+                        <td className="px-3 py-2 font-mono text-[var(--color-text-muted)]">{e.emissao || "—"}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(Number(e.totalnf) || 0)}</td>
+                        <td className="px-3 py-2">{e.notaId ? <Link to={`/app/varejo/notas-entrada/${e.notaId}`} className="text-emerald-500 hover:underline" onClick={() => setMaxOpen(false)}>Já importada</Link> : <span className="text-[var(--color-text-muted)]">{e.status || (e.conferida ? "Conferida" : "—")}</span>}</td>
+                      </tr>
+                    ))}
+                    {maxFiltradas.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-[var(--color-text-faint)]">Nenhuma entrada encontrada.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => setMaxOpen(false)} className="h-9 px-4 text-xs">Fechar</Button>
+            <Button onClick={importarMax} disabled={maxSel.size === 0 || maxImportando} className="h-9 px-4 text-xs gap-1.5">{maxImportando && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Importar {maxSel.size > 0 ? `(${maxSel.size})` : ""}</Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal isOpen={manualOpen} onClose={() => setManualOpen(false)} title="Nota manual" description="Cria a nota em rascunho; os itens você adiciona na próxima tela." maxWidth="max-w-md">
         <div className="space-y-3">
