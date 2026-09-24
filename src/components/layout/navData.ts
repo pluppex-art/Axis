@@ -74,7 +74,6 @@ export const navSections = [
       { name: "Leads & Pipeline", path: "/app/crm/pipeline", icon: Columns3 },
       { name: "Propostas Comerciais", path: "/app/crm/propostas", icon: FileText },
       { name: "Base de Clientes", path: "/app/crm/clientes", icon: Users },
-      { name: "Implementações", path: "/app/crm/implementacoes", icon: ClipboardList },
     ],
   },
   {
@@ -93,9 +92,14 @@ export const navSections = [
     ],
   },
   {
-    title: "Comunicação & Mkt",
+    title: "Mensageria",
     items: [
       { name: "Mensageria Omnichannel", path: "/app/mensageria", icon: Mail, reqModule: "engajamento" },
+    ],
+  },
+  {
+    title: "Comunicação & Mkt",
+    items: [
       { name: "Automações", path: "/app/automacoes", icon: Zap, reqModule: "engajamento" },
       { name: "Campanhas de Mkt", path: "/app/marketing/campanhas", icon: Megaphone, reqModule: "marketing" },
       { name: "Landing Pages", path: "/app/marketing/landing-pages", icon: Globe, reqModule: "marketing" },
@@ -234,6 +238,7 @@ export const navSections = [
     items: [
       { name: "Painel SaaS & Infra", path: "/app/admin", icon: Server, reqCondition: "master-only" as NavReqCondition },
       { name: "Portal de Parceiros", path: "/app/parceiros", icon: Handshake, reqCondition: "master-or-partner" as NavReqCondition },
+      { name: "Implementações", path: "/app/crm/implementacoes", icon: ClipboardList, reqCondition: "master-only" as NavReqCondition },
     ],
   },
 ];

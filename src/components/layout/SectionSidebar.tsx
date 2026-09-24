@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Menu, X, PanelLeftClose, PanelLeftOpen, ChevronDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -127,11 +127,13 @@ function SectionGroup({
 }) {
   const { t } = useLocalization();
   const GroupIcon = group.icon;
-  // Começa aberto (mesmo comportamento de antes) — só fecha quando o próprio
-  // usuário clica na setinha. Estado local por grupo, não precisa subir pro
-  // pai: cada SectionGroup (desktop e o dropdown mobile, que remonta
-  // independente) mantém o seu.
-  const [isOpen, setIsOpen] = useState(true);
+  // Começa FECHADO — exceto o grupo que contém a página atual, senão a pessoa
+  // entraria numa tela sem ver onde está no menu. Estado local por grupo (desktop
+  // e o dropdown mobile remontam independentes).
+  const hasActive = group.items.some((item) => !item.soon && isActive(item.path));
+  const [isOpen, setIsOpen] = useState(hasActive);
+  // Navegar (por link de fora do menu) pra uma página deste grupo abre ele.
+  useEffect(() => { if (hasActive) setIsOpen(true); }, [hasActive]);
   return (
     <div className="px-2 w-full mb-6 last:mb-0">
       <button
