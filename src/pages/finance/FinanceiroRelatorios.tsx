@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
-import { StatCell, StatCellRow } from "./components/StatCell";
+import { FinanceiroKPIs, type FinanceiroKpiCard } from "./components/FinanceiroVisaoGeral/FinanceiroKPIs";
 import {
   PieChart, Waves, LineChart, Repeat2, AlertTriangle, Inbox, TrendingDown,
   TrendingUp, Wallet, Target, ArrowUpRight, Calendar, Users, Truck,
@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
-import { resultadoAtualDoMes, saldoDaConta, transferenciasDaConta, isInMonth, categoriesById, getMonthlyDreSeries, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
+import { resultadoAtualDoMes, saldoDaConta, transferenciasDaConta, isInMonth, categoriesById, getMonthlyDreSeries, pctDelta, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
 import { cn } from "../../lib/utils";
 
 interface ReportLink { title: string; href: string; icon: LucideIcon; }
@@ -90,16 +90,39 @@ export default function FinanceiroRelatorios() {
   const kpis = useMemo(() => {
     const now = new Date();
     const y = now.getFullYear(), m = now.getMonth();
-    const receitaMes = (financeEntries as FinanceEntryLike[]).filter(e => e.type === "Receber" && e.status === "Pago" && isInMonth(e.date, y, m)).reduce((s, e) => s + e.value, 0);
-    const despesaMes = (financeEntries as FinanceEntryLike[]).filter(e => e.type === "Pagar" && e.status === "Pago" && isInMonth(e.date, y, m)).reduce((s, e) => s + e.value, 0);
+    const prevRef = new Date(y, m - 1, 1);
+    const py = prevRef.getFullYear(), pm = prevRef.getMonth();
+
+    const sumReceita = (yy: number, mm: number) => (financeEntries as FinanceEntryLike[]).filter(e => e.type === "Receber" && e.status === "Pago" && isInMonth(e.date, yy, mm)).reduce((s, e) => s + e.value, 0);
+    const sumDespesa = (yy: number, mm: number) => (financeEntries as FinanceEntryLike[]).filter(e => e.type === "Pagar" && e.status === "Pago" && isInMonth(e.date, yy, mm)).reduce((s, e) => s + e.value, 0);
+
+    const receitaMes = sumReceita(y, m);
+    const despesaMes = sumDespesa(y, m);
+    const receitaMesAnterior = sumReceita(py, pm);
+    const despesaMesAnterior = sumDespesa(py, pm);
     const resultadoMes = resultadoAtualDoMes(financeEntries as FinanceEntryLike[], now);
+    const resultadoMesAnterior = resultadoAtualDoMes(financeEntries as FinanceEntryLike[], prevRef);
     const saldoEmContas = (financeBankAccounts as any[]).filter(c => !c.arquivada).reduce((s, conta) => {
       const entriesDaConta = (financeEntries as FinanceEntryLike[]).filter((e: any) => e.conta_bancaria_id === conta.id);
       const { recebidas, enviadas } = transferenciasDaConta(financeTransfers as any[], conta.id);
       return s + saldoDaConta({ saldoInicial: conta.saldo_inicial, sinalSaldoInicial: conta.sinal_saldo_inicial, entriesDaConta, transferenciasRecebidasPagas: recebidas, transferenciasEnviadasPagas: enviadas });
     }, 0);
-    return { receitaMes, despesaMes, resultadoMes, saldoEmContas };
+    return {
+      receitaMes, despesaMes, resultadoMes, saldoEmContas,
+      receitaDeltaPct: pctDelta(receitaMes, receitaMesAnterior),
+      despesaDeltaPct: pctDelta(despesaMes, despesaMesAnterior),
+      resultadoDeltaPct: pctDelta(resultadoMes, resultadoMesAnterior),
+    };
   }, [financeEntries, financeBankAccounts, financeTransfers]);
+
+  const kpiCards: FinanceiroKpiCard[] = [
+    { label: "Receitas do Mês", value: kpis.receitaMes, format: "currency", deltaPct: kpis.receitaDeltaPct, deltaGoodWhenUp: true, icon: TrendingUp, href: "/app/financeiro/receitas" },
+    { label: "Despesas do Mês", value: kpis.despesaMes, format: "currency", deltaPct: kpis.despesaDeltaPct, deltaGoodWhenUp: false, icon: TrendingDown, href: "/app/financeiro/despesas" },
+    { label: "Resultado do Mês", value: kpis.resultadoMes, format: "currency", deltaPct: kpis.resultadoDeltaPct, deltaGoodWhenUp: true, danger: kpis.resultadoMes < 0, icon: Scale, href: "/app/financeiro/dre" },
+    { label: "Saldo em Contas", value: kpis.saldoEmContas, format: "currency", deltaPct: null, deltaGoodWhenUp: null, danger: kpis.saldoEmContas < 0, icon: Wallet, href: "/app/financeiro/bancos" },
+  ];
+
+  const mesesComMovimento = useMemo(() => monthlySeries.filter(m => m.receitaBruta > 0 || m.despesaTotal > 0).length, [monthlySeries]);
 
   return (
     <PageContainer
@@ -108,12 +131,7 @@ export default function FinanceiroRelatorios() {
       breadcrumb={[{ label: "Financeiro", path: "/app/financeiro/dashboard" }, { label: "Central de Relatórios" }]}
     >
       <div className="space-y-8 max-w-[1700px] mx-auto pb-12">
-        <StatCellRow>
-          <StatCell label="Receitas do Mês" value={formatCurrency(kpis.receitaMes)} icon={TrendingUp} tone="success" hint="Regime de caixa" />
-          <StatCell label="Despesas do Mês" value={formatCurrency(kpis.despesaMes)} icon={TrendingDown} tone="danger" hint="Regime de caixa" />
-          <StatCell label="Resultado do Mês" value={formatCurrency(kpis.resultadoMes)} icon={Scale} tone={kpis.resultadoMes < 0 ? "danger" : "neutral"} />
-          <StatCell label="Saldo em Contas" value={formatCurrency(kpis.saldoEmContas)} icon={Wallet} tone={kpis.saldoEmContas < 0 ? "danger" : "neutral"} />
-        </StatCellRow>
+        <FinanceiroKPIs cards={kpiCards} />
 
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
@@ -124,6 +142,11 @@ export default function FinanceiroRelatorios() {
               Ver DRE completo <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
+          {mesesComMovimento < 2 && (
+            <p className="text-[11px] text-[var(--color-text-faint)] mb-3">
+              Ainda há pouco histórico de lançamentos — este gráfico fica mais informativo à medida que os meses passam.
+            </p>
+          )}
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={monthlySeries} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>

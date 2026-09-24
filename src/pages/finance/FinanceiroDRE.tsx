@@ -9,7 +9,7 @@ import { Button } from "../../components/ui/button";
 import { toast } from "sonner";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { parseEntryDate } from "./lib/financeDates";
-import { calcularDRE, categoriesById, getMonthlyDreSeries, type FinanceCategoryLike, type DreResult } from "./lib/financeEngine";
+import { calcularDRE, categoriesById, getMonthlyDreSeries, pctDelta, type FinanceCategoryLike, type DreResult } from "./lib/financeEngine";
 import { apiFetch } from "../../lib/apiClient";
 
 type Periodo = "mensal" | "trimestral" | "semestral" | "anual" | "personalizado";
@@ -103,14 +103,6 @@ export default function FinanceiroDRE() {
   const entriesPendentesCount = serverSummary?.entriesPendentesCount ?? entriesDoPeriodo.filter(e => e.status !== "Pago").length;
 
   const fmt = (v: number) => formatCurrency(v);
-
-  // % de variação vs. período anterior — null quando não dá pra calcular
-  // (base zerada), pra nunca mostrar um "+Infinity%" sem sentido.
-  const pctDelta = (atual: number, anterior: number): number | null => {
-    if (anterior === 0) return atual === 0 ? null : null;
-    return round1(((atual - anterior) / Math.abs(anterior)) * 100);
-  };
-  const round1 = (n: number) => Math.round(n * 10) / 10;
 
   const receitaDeltaPct = pctDelta(dre.receitaBruta, dreAnterior.receitaBruta);
   const lucroDeltaPct = pctDelta(dre.lucroLiquido, dreAnterior.lucroLiquido);

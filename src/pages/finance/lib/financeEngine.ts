@@ -240,6 +240,16 @@ export interface DreResult {
 
 const MONTH_NAMES_SHORT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
+/** % de variação de `atual` vs. `anterior` — `null` quando não há base pra
+ * comparar (mês/período anterior zerado), pra nunca mostrar um "+Infinity%"
+ * ou um número inventado. Usado por todo KPI com "vs. período anterior" do
+ * módulo Financeiro (DRE, Central de Relatórios...) — uma única fórmula,
+ * pro mesmo par de números nunca dar percentuais diferentes em telas diferentes. */
+export function pctDelta(atual: number, anterior: number): number | null {
+  if (anterior === 0) return null;
+  return Math.round(((atual - anterior) / Math.abs(anterior)) * 1000) / 10;
+}
+
 export interface MonthlyDrePoint {
   key: string; // 'YYYY-MM'
   label: string;
