@@ -71,7 +71,7 @@ export function LeadCard({
   setSelectedLead, handleTransferToComercial, handleExportIAResume,
   setWebhookModalLead, currentPipeline,
 }: LeadCardProps) {
-  const { products, squads, proposals, proposalItems, avgWonTicket } = useData();
+  const { products, squads, proposals, proposalItems } = useData();
   const { formatCurrency } = useLocalization();
 
   const isDragging    = draggedLeadId === item.id;
@@ -134,7 +134,9 @@ export function LeadCard({
   // que nunca reservou) — em vez de "R$ 0" (parece erro/dado quebrado), mostra
   // o ticket médio dos negócios Fechado do tenant como ESTIMATIVA, marcada com
   // "~" e estilo diferenciado. Não é valor real — só um sinal de potencial.
-  const isEstimated = !hasRealValue && (estimateFromInterest > 0 || avgWonTicket > 0);
+  // Sem valor real e sem produto de interesse o card mostra R$ 0 — nada de "ticket médio"
+  // inventado (o "~R$ 149,33" em leads novos parecia um valor negativo/errado).
+  const isEstimated = !hasRealValue && estimateFromInterest > 0;
   const interestValue = leadInterestEstimate(item, proposals as any[], products as any[]);
   const displayValue = interestValue !== null
     ? formatCurrency(interestValue)
@@ -144,9 +146,7 @@ export function LeadCard({
       ? formatCurrency(Number(linkedProposalValue))
       : estimateFromInterest > 0
         ? `~${formatCurrency(estimateFromInterest)}`
-        : isEstimated
-          ? `~${formatCurrency(avgWonTicket)}`
-          : 'R$ 0';
+        : 'R$ 0';
 
   const leadSquad = (squads as any[]).find(s =>
     (s.membros || []).some((m: string) => m === item.seller || m === item.sellerId)
