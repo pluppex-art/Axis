@@ -48,6 +48,84 @@ import { DEFAULT_META_CONFIG, DEFAULT_GOOGLE_CONFIG, DEFAULT_PAYMENT_CONFIG, DEF
 // Integration Categories
 type IntegrationCategory = "todas" | "anuncios" | "mensageria" | "pagamentos" | "automacoes" | "email" | "dados";
 
+type MaxDataConfig = typeof DEFAULT_MAXDATA_CONFIG;
+
+/** Modal de uma conexão Max Data (a mesma tela serve às duas APIs: notas fiscais e estoque). */
+function MaxDataConnectionModal({
+  title, subtitle, config, setConfig, onClose, onToggleConnected,
+}: {
+  title: string;
+  subtitle: string;
+  config: MaxDataConfig;
+  setConfig: React.Dispatch<React.SetStateAction<MaxDataConfig>>;
+  onClose: () => void;
+  onToggleConnected: () => void;
+}) {
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      maxWidth="max-w-xl"
+      title={
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+            <Database className="w-5 h-5 text-violet-400" />
+          </div>
+          <div>
+            <h3 className="text-base font-black text-[var(--color-text-primary)]">{title}</h3>
+            <p className="text-xs text-[var(--color-text-muted)]">{subtitle}</p>
+          </div>
+        </div>
+      }
+      footer={
+        <div className="flex justify-between items-center w-full">
+          <Badge variant={config.connected ? "success" : "neutral"} dot dotPulse={config.connected}>
+            {config.connected ? "Conectada" : "Desconectada"}
+          </Badge>
+          <Button onClick={() => { toast.success("Configuração salva."); onClose(); }}>Fechar</Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <Alert variant="info" title="Conexão pronta, comportamento a definir">
+          Deixe a conexão pronta: URL da API, chave e o ID da base deste cliente. O envio e a leitura de dados
+          ainda não estão ligados — entram quando a API for mapeada. Os campos são salvos automaticamente e a
+          chave nunca aparece em relatórios nem em links compartilhados.
+        </Alert>
+        <FormField label="URL da API" required hint="Ex.: https://api.maxdata.com.br">
+          <Input type="text" value={config.apiUrl} onChange={(e) => setConfig((p) => ({ ...p, apiUrl: e.target.value }))} placeholder="https://" />
+        </FormField>
+        <FormField label="Chave de API" required hint="Fica guardada neste ambiente">
+          <Input type="password" autoComplete="off" value={config.apiKey} onChange={(e) => setConfig((p) => ({ ...p, apiKey: e.target.value }))} />
+        </FormField>
+        <FormField label="ID do cliente/base na Max Data" required hint="Identifica qual base é deste cliente">
+          <Input type="text" value={config.clientId} onChange={(e) => setConfig((p) => ({ ...p, clientId: e.target.value }))} />
+        </FormField>
+        <FormField label="Ambiente">
+          <select
+            value={config.environment}
+            onChange={(e) => setConfig((p) => ({ ...p, environment: e.target.value as "sandbox" | "production" }))}
+            className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer"
+          >
+            <option value="production">Produção</option>
+            <option value="sandbox">Sandbox / testes</option>
+          </select>
+        </FormField>
+        <FormField label="Observações">
+          <Input type="text" value={config.notes} onChange={(e) => setConfig((p) => ({ ...p, notes: e.target.value }))} />
+        </FormField>
+        <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-[var(--color-border-default)] p-3">
+          <div>
+            <p className="text-xs font-bold text-[var(--color-text-primary)]">Marcar como conectada</p>
+            <p className="text-[11px] text-[var(--color-text-muted)]">Requer URL, chave e ID da base preenchidos.</p>
+          </div>
+          <Switch checked={config.connected} onCheckedChange={onToggleConnected} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export function ConfigIntegracoesApps() {
   const navigate = useNavigate();
   const { setWhatsappWebhookUrl, appSettings, appSettingsLoaded, saveAppSetting, globalWebhooks } = useData();
@@ -67,6 +145,7 @@ export function ConfigIntegracoesApps() {
   const [googleConfig, setGoogleConfig] = useState(DEFAULT_GOOGLE_CONFIG);
   const [paymentConfig, setPaymentConfig] = useState(DEFAULT_PAYMENT_CONFIG);
   const [maxdataConfig, setMaxdataConfig] = useState(DEFAULT_MAXDATA_CONFIG);
+  const [maxdataEstoqueConfig, setMaxdataEstoqueConfig] = useState(DEFAULT_MAXDATA_CONFIG);
   const [customIntegrations, setCustomIntegrations] = useState<any[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -146,6 +225,7 @@ export function ConfigIntegracoesApps() {
       });
     }
     if (appSettings.integracoes_maxdata) setMaxdataConfig({ ...DEFAULT_MAXDATA_CONFIG, ...appSettings.integracoes_maxdata });
+    if (appSettings.integracoes_maxdata_estoque) setMaxdataEstoqueConfig({ ...DEFAULT_MAXDATA_CONFIG, ...appSettings.integracoes_maxdata_estoque });
     if (appSettings.integracoes_custom) setCustomIntegrations(appSettings.integracoes_custom);
     setHydrated(true);
   }, [appSettings, appSettingsLoaded, hydrated]);
@@ -179,16 +259,27 @@ export function ConfigIntegracoesApps() {
     if (hydrated) saveAppSetting("integracoes_maxdata", maxdataConfig);
   }, [maxdataConfig, hydrated]);
 
-  const handleToggleMaxdataConnected = () => {
-    const next = !maxdataConfig.connected;
-    if (next && (!maxdataConfig.apiUrl.trim() || !maxdataConfig.apiKey.trim() || !maxdataConfig.clientId.trim())) {
+  useEffect(() => {
+    if (hydrated) saveAppSetting("integracoes_maxdata_estoque", maxdataEstoqueConfig);
+  }, [maxdataEstoqueConfig, hydrated]);
+
+  const toggleMaxdata = (
+    cfg: MaxDataConfig,
+    setCfg: React.Dispatch<React.SetStateAction<MaxDataConfig>>,
+    modalId: string,
+    label: string
+  ) => {
+    const next = !cfg.connected;
+    if (next && (!cfg.apiUrl.trim() || !cfg.apiKey.trim() || !cfg.clientId.trim())) {
       toast.error("Preencha a URL da API, a chave e o ID da base antes de marcar como conectada.");
-      setSelectedConfigModal("maxdata");
+      setSelectedConfigModal(modalId);
       return;
     }
-    setMaxdataConfig((prev) => ({ ...prev, connected: next }));
-    toast[next ? "success" : "info"](next ? "Max Data marcada como conectada." : "Max Data desconectada.");
+    setCfg((prev) => ({ ...prev, connected: next }));
+    toast[next ? "success" : "info"](next ? `${label} marcada como conectada.` : `${label} desconectada.`);
   };
+  const handleToggleMaxdataConnected = () => toggleMaxdata(maxdataConfig, setMaxdataConfig, "maxdata", "Max Data — Notas fiscais");
+  const handleToggleMaxdataEstoqueConnected = () => toggleMaxdata(maxdataEstoqueConfig, setMaxdataEstoqueConfig, "maxdata-estoque", "Max Data — Estoque");
 
   const [whatsappProviderStatus, setWhatsappProviderStatus] = useState<{ provider: "simulator" | "waha"; configured: boolean } | null>(null);
 
@@ -467,12 +558,12 @@ export function ConfigIntegracoesApps() {
       },
       {
         id: "maxdata",
-        name: "Max Data",
+        name: "Max Data — Notas fiscais",
         category: "dados" as IntegrationCategory,
         icon: Database,
         iconBg: "bg-violet-500/10 text-violet-400 border-violet-500/20",
         description:
-          "Base de dados de clientes. A conexão fica pronta aqui (URL da API, chave e ID da base deste cliente); a importação e o enriquecimento de dados ainda não estão ligados — entram quando a API da Max Data for definida.",
+          "API que recebe e valida as notas fiscais de entrada. A conexão fica pronta aqui (URL, chave e ID da base); o envio das notas ainda não está ligado — entra quando a API for mapeada.",
         connected: maxdataConfig.connected,
         statusText: maxdataConfig.connected ? "Conectado" : maxdataConfig.apiUrl ? "Credenciais Preenchidas" : "Não Conectado",
         statusVariant: (maxdataConfig.connected ? "success" : maxdataConfig.apiUrl ? "info" : "neutral") as any,
@@ -480,6 +571,22 @@ export function ConfigIntegracoesApps() {
         highlightInfo: maxdataConfig.clientId ? `Base: ${maxdataConfig.clientId}` : "Requer URL, chave e ID da base",
         onConfigure: () => setSelectedConfigModal("maxdata"),
         onToggle: handleToggleMaxdataConnected,
+      },
+      {
+        id: "maxdata-estoque",
+        name: "Max Data — Estoque",
+        category: "dados" as IntegrationCategory,
+        icon: Database,
+        iconBg: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+        description:
+          "API de estoque: recebe a entrada dos produtos depois que a nota é validada. A conexão fica pronta aqui; a sincronização de estoque ainda não está ligada — entra quando a API for mapeada.",
+        connected: maxdataEstoqueConfig.connected,
+        statusText: maxdataEstoqueConfig.connected ? "Conectado" : maxdataEstoqueConfig.apiUrl ? "Credenciais Preenchidas" : "Não Conectado",
+        statusVariant: (maxdataEstoqueConfig.connected ? "success" : maxdataEstoqueConfig.apiUrl ? "info" : "neutral") as any,
+        badgeText: maxdataEstoqueConfig.connected ? maxdataEstoqueConfig.environment.toUpperCase() : "Disponível",
+        highlightInfo: maxdataEstoqueConfig.clientId ? `Base: ${maxdataEstoqueConfig.clientId}` : "Requer URL, chave e ID da base",
+        onConfigure: () => setSelectedConfigModal("maxdata-estoque"),
+        onToggle: handleToggleMaxdataEstoqueConnected,
       },
       {
         id: "n8n",
@@ -538,7 +645,7 @@ export function ConfigIntegracoesApps() {
     }));
 
     return [...list, ...customList];
-  }, [metaConfig, googleConfig, instances, paymentConfig, maxdataConfig, customIntegrations, globalWebhooks, appSettings]);
+  }, [metaConfig, googleConfig, instances, paymentConfig, maxdataConfig, maxdataEstoqueConfig, customIntegrations, globalWebhooks, appSettings]);
 
   // Filtered integrations based on Category and Search Query
   const filteredIntegrations = useMemo(() => {
@@ -961,67 +1068,25 @@ export function ConfigIntegracoesApps() {
       {/* MODAL DEDICADO: GOOGLE ADS & ANALYTICS */}
       {/* ========================================================================= */}
       {selectedConfigModal === "maxdata" && (
-        <Modal
-          isOpen={true}
+        <MaxDataConnectionModal
+          title="Max Data — Notas fiscais"
+          subtitle="API que recebe e valida as notas fiscais de entrada"
+          config={maxdataConfig}
+          setConfig={setMaxdataConfig}
           onClose={() => setSelectedConfigModal(null)}
-          maxWidth="max-w-xl"
-          title={
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-                <Database className="w-5 h-5 text-violet-400" />
-              </div>
-              <div>
-                <h3 className="text-base font-black text-[var(--color-text-primary)]">Configuração Max Data</h3>
-                <p className="text-xs text-[var(--color-text-muted)]">Conexão com a base de dados de clientes</p>
-              </div>
-            </div>
-          }
-          footer={
-            <div className="flex justify-between items-center w-full">
-              <Badge variant={maxdataConfig.connected ? "success" : "neutral"} dot dotPulse={maxdataConfig.connected}>
-                {maxdataConfig.connected ? "Conectada" : "Desconectada"}
-              </Badge>
-              <Button onClick={() => { toast.success("Configuração da Max Data salva."); setSelectedConfigModal(null); }}>Fechar</Button>
-            </div>
-          }
-        >
-          <div className="space-y-4">
-            <Alert variant="info" title="Conexão pronta, comportamento a definir">
-              Deixe a conexão pronta: URL da API, chave e o ID da base deste cliente. A importação e o enriquecimento
-              de dados ainda não estão ligados — entram quando a API da Max Data for definida. Os campos são salvos
-              automaticamente e a chave nunca aparece em relatórios nem em links compartilhados.
-            </Alert>
-            <FormField label="URL da API" required hint="Ex.: https://api.maxdata.com.br">
-              <Input type="text" value={maxdataConfig.apiUrl} onChange={(e) => setMaxdataConfig((p) => ({ ...p, apiUrl: e.target.value }))} placeholder="https://" />
-            </FormField>
-            <FormField label="Chave de API" required hint="Fica guardada neste ambiente">
-              <Input type="password" autoComplete="off" value={maxdataConfig.apiKey} onChange={(e) => setMaxdataConfig((p) => ({ ...p, apiKey: e.target.value }))} />
-            </FormField>
-            <FormField label="ID do cliente/base na Max Data" required hint="Identifica qual base é deste cliente">
-              <Input type="text" value={maxdataConfig.clientId} onChange={(e) => setMaxdataConfig((p) => ({ ...p, clientId: e.target.value }))} />
-            </FormField>
-            <FormField label="Ambiente">
-              <select
-                value={maxdataConfig.environment}
-                onChange={(e) => setMaxdataConfig((p) => ({ ...p, environment: e.target.value as "sandbox" | "production" }))}
-                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer"
-              >
-                <option value="production">Produção</option>
-                <option value="sandbox">Sandbox / testes</option>
-              </select>
-            </FormField>
-            <FormField label="Observações">
-              <Input type="text" value={maxdataConfig.notes} onChange={(e) => setMaxdataConfig((p) => ({ ...p, notes: e.target.value }))} />
-            </FormField>
-            <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-[var(--color-border-default)] p-3">
-              <div>
-                <p className="text-xs font-bold text-[var(--color-text-primary)]">Marcar como conectada</p>
-                <p className="text-[11px] text-[var(--color-text-muted)]">Requer URL, chave e ID da base preenchidos.</p>
-              </div>
-              <Switch checked={maxdataConfig.connected} onCheckedChange={handleToggleMaxdataConnected} />
-            </div>
-          </div>
-        </Modal>
+          onToggleConnected={handleToggleMaxdataConnected}
+        />
+      )}
+
+      {selectedConfigModal === "maxdata-estoque" && (
+        <MaxDataConnectionModal
+          title="Max Data — Estoque"
+          subtitle="API de estoque: recebe a entrada dos produtos"
+          config={maxdataEstoqueConfig}
+          setConfig={setMaxdataEstoqueConfig}
+          onClose={() => setSelectedConfigModal(null)}
+          onToggleConnected={handleToggleMaxdataEstoqueConnected}
+        />
       )}
 
       {selectedConfigModal === "google-ads" && (

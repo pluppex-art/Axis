@@ -159,6 +159,8 @@ import TestDrives from "./pages/automotivo/TestDrives";
 import PainelVarejo from "./pages/varejo/PainelVarejo";
 import FornecedoresVarejo from "./pages/varejo/FornecedoresVarejo";
 import ComprasVarejo from "./pages/varejo/ComprasVarejo";
+import NotasEntrada from "./pages/varejo/NotasEntrada";
+import NotaEntradaDetalhe from "./pages/varejo/NotaEntradaDetalhe";
 import PedidosVarejo from "./pages/varejo/PedidosVarejo";
 
 import ProfissionaisClinica from "./pages/clinica/ProfissionaisClinica";
@@ -416,6 +418,8 @@ function AppContent() {
             <Route path="pedidos" element={<PedidosVarejo />} />
             <Route path="estoque" element={<VarejoEstoque />} />
             <Route path="compras" element={<ComprasVarejo />} />
+            <Route path="notas-entrada" element={<NotasEntrada />} />
+            <Route path="notas-entrada/:id" element={<NotaEntradaDetalhe />} />
             <Route path="fornecedores" element={<FornecedoresVarejo />} />
           </Route>
 

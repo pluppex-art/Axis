@@ -172,6 +172,7 @@ export const navSections = [
       { name: "Controle de Estoque", path: "/app/varejo/estoque", icon: Boxes },
       { name: "Fornecedores", path: "/app/varejo/fornecedores", icon: Truck },
       { name: "Pedidos de Compra", path: "/app/varejo/compras", icon: ClipboardList },
+      { name: "Notas de Entrada", path: "/app/varejo/notas-entrada", icon: FileText },
     ],
   },
   {

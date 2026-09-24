@@ -10,7 +10,7 @@
  * "definido / não definido"; e ao regravar, segredo vazio MANTÉM o existente.
  */
 
-export type IntegrationId = "maxdata" | "meta" | "google" | "mercadopago" | "stripe" | "asaas";
+export type IntegrationId = "maxdata" | "maxdata_estoque" | "meta" | "google" | "mercadopago" | "stripe" | "asaas";
 export type IntegrationFieldKind = "text" | "secret" | "url" | "select";
 
 export interface IntegrationField {
@@ -79,7 +79,16 @@ const ENV = ["sandbox", "production"];
 
 export const INTEGRATION_DEFS: IntegrationDef[] = [
   {
-    id: "maxdata", label: "Max Data", settingsKey: "integracoes_maxdata",
+    id: "maxdata", label: "Max Data — Notas fiscais", settingsKey: "integracoes_maxdata",
+    fields: [
+      { prop: "apiUrl", label: "URL da API", kind: "url", required: true, placeholder: "https://api.maxdata.com.br" },
+      { prop: "apiKey", label: "Chave de API", kind: "secret", required: true },
+      { prop: "clientId", label: "ID do cliente/base na Max Data", kind: "text", required: true, help: "Identifica qual base é deste cliente." },
+      { prop: "environment", label: "Ambiente", kind: "select", options: ENV },
+    ],
+  },
+  {
+    id: "maxdata_estoque", label: "Max Data — Estoque", settingsKey: "integracoes_maxdata_estoque",
     fields: [
       { prop: "apiUrl", label: "URL da API", kind: "url", required: true, placeholder: "https://api.maxdata.com.br" },
       { prop: "apiKey", label: "Chave de API", kind: "secret", required: true },
@@ -142,7 +151,8 @@ const asObject = (v: any): Record<string, any> => (v && typeof v === "object" &&
 
 function defaultConfigFor(def: IntegrationDef): Record<string, any> {
   switch (def.id) {
-    case "maxdata": return { ...DEFAULT_MAXDATA_CONFIG };
+    case "maxdata":
+    case "maxdata_estoque": return { ...DEFAULT_MAXDATA_CONFIG };
     case "meta": return { ...DEFAULT_META_CONFIG, trackedEvents: { ...DEFAULT_META_CONFIG.trackedEvents } };
     case "google": return { ...DEFAULT_GOOGLE_CONFIG };
     default: return { ...DEFAULT_PAYMENT_CONFIG[def.nested!] };
