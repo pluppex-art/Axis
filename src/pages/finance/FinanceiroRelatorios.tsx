@@ -11,7 +11,10 @@ import {
 } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
-import { resultadoAtualDoMes, saldoDaConta, transferenciasDaConta, isInMonth, categoriesById, getMonthlyDreSeries, pctDelta, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
+import { saldoDaConta, transferenciasDaConta, categoriesById, getMonthlyDreSeries, pctDelta, type FinanceEntryLike, type FinanceCategoryLike } from "./lib/financeEngine";
+import { parseEntryDate } from "./lib/financeDates";
+import { useFinanceiroFiltro } from "./FinanceiroFilterContext";
+import { FinanceiroFilterBar } from "./components/FinanceiroFilterBar";
 import { cn } from "../../lib/utils";
 
 interface ReportLink { title: string; href: string; icon: LucideIcon; }
@@ -83,42 +86,50 @@ const EXTRAS: ReportLink[] = [
 export default function FinanceiroRelatorios() {
   const { financeEntries, financeBankAccounts, financeTransfers, financeCategories } = useData();
   const { formatCurrency } = useLocalization();
+  const { dataInicio, dataFim, label: periodoLabel } = useFinanceiroFiltro();
 
   const catMap = useMemo(() => categoriesById(financeCategories as FinanceCategoryLike[]), [financeCategories]);
   const monthlySeries = useMemo(() => getMonthlyDreSeries(financeEntries as FinanceEntryLike[], catMap, 6), [financeEntries, catMap]);
 
+  // KPIs seguem o filtro global de período (barra no topo) — comparados
+  // contra o período anterior de MESMA duração, imediatamente antes, pra
+  // "Últimos 7 dias" comparar com os 7 dias anteriores, "Mês Atual" com o
+  // mês anterior, etc., sem depender de calendário fixo.
   const kpis = useMemo(() => {
-    const now = new Date();
-    const y = now.getFullYear(), m = now.getMonth();
-    const prevRef = new Date(y, m - 1, 1);
-    const py = prevRef.getFullYear(), pm = prevRef.getMonth();
+    const duracaoMs = dataFim.getTime() - dataInicio.getTime();
+    const prevFim = new Date(dataInicio.getTime() - 1);
+    const prevInicio = new Date(prevFim.getTime() - duracaoMs);
 
-    const sumReceita = (yy: number, mm: number) => (financeEntries as FinanceEntryLike[]).filter(e => e.type === "Receber" && e.status === "Pago" && isInMonth(e.date, yy, mm)).reduce((s, e) => s + e.value, 0);
-    const sumDespesa = (yy: number, mm: number) => (financeEntries as FinanceEntryLike[]).filter(e => e.type === "Pagar" && e.status === "Pago" && isInMonth(e.date, yy, mm)).reduce((s, e) => s + e.value, 0);
+    const inRange = (e: FinanceEntryLike, start: Date, end: Date) => {
+      const d = parseEntryDate(e.date);
+      return !!d && d >= start && d <= end;
+    };
+    const sum = (type: "Receber" | "Pagar", start: Date, end: Date) =>
+      (financeEntries as FinanceEntryLike[]).filter(e => e.type === type && e.status === "Pago" && inRange(e, start, end)).reduce((s, e) => s + e.value, 0);
 
-    const receitaMes = sumReceita(y, m);
-    const despesaMes = sumDespesa(y, m);
-    const receitaMesAnterior = sumReceita(py, pm);
-    const despesaMesAnterior = sumDespesa(py, pm);
-    const resultadoMes = resultadoAtualDoMes(financeEntries as FinanceEntryLike[], now);
-    const resultadoMesAnterior = resultadoAtualDoMes(financeEntries as FinanceEntryLike[], prevRef);
+    const receitaPeriodo = sum("Receber", dataInicio, dataFim);
+    const despesaPeriodo = sum("Pagar", dataInicio, dataFim);
+    const receitaAnterior = sum("Receber", prevInicio, prevFim);
+    const despesaAnterior = sum("Pagar", prevInicio, prevFim);
+    const resultadoPeriodo = receitaPeriodo - despesaPeriodo;
+    const resultadoAnterior = receitaAnterior - despesaAnterior;
     const saldoEmContas = (financeBankAccounts as any[]).filter(c => !c.arquivada).reduce((s, conta) => {
       const entriesDaConta = (financeEntries as FinanceEntryLike[]).filter((e: any) => e.conta_bancaria_id === conta.id);
       const { recebidas, enviadas } = transferenciasDaConta(financeTransfers as any[], conta.id);
       return s + saldoDaConta({ saldoInicial: conta.saldo_inicial, sinalSaldoInicial: conta.sinal_saldo_inicial, entriesDaConta, transferenciasRecebidasPagas: recebidas, transferenciasEnviadasPagas: enviadas });
     }, 0);
     return {
-      receitaMes, despesaMes, resultadoMes, saldoEmContas,
-      receitaDeltaPct: pctDelta(receitaMes, receitaMesAnterior),
-      despesaDeltaPct: pctDelta(despesaMes, despesaMesAnterior),
-      resultadoDeltaPct: pctDelta(resultadoMes, resultadoMesAnterior),
+      receitaPeriodo, despesaPeriodo, resultadoPeriodo, saldoEmContas,
+      receitaDeltaPct: pctDelta(receitaPeriodo, receitaAnterior),
+      despesaDeltaPct: pctDelta(despesaPeriodo, despesaAnterior),
+      resultadoDeltaPct: pctDelta(resultadoPeriodo, resultadoAnterior),
     };
-  }, [financeEntries, financeBankAccounts, financeTransfers]);
+  }, [financeEntries, financeBankAccounts, financeTransfers, dataInicio, dataFim]);
 
   const kpiCards: FinanceiroKpiCard[] = [
-    { label: "Receitas do Mês", value: kpis.receitaMes, format: "currency", deltaPct: kpis.receitaDeltaPct, deltaGoodWhenUp: true, icon: TrendingUp, href: "/app/financeiro/receitas" },
-    { label: "Despesas do Mês", value: kpis.despesaMes, format: "currency", deltaPct: kpis.despesaDeltaPct, deltaGoodWhenUp: false, icon: TrendingDown, href: "/app/financeiro/despesas" },
-    { label: "Resultado do Mês", value: kpis.resultadoMes, format: "currency", deltaPct: kpis.resultadoDeltaPct, deltaGoodWhenUp: true, danger: kpis.resultadoMes < 0, icon: Scale, href: "/app/financeiro/dre" },
+    { label: `Receitas (${periodoLabel})`, value: kpis.receitaPeriodo, format: "currency", deltaPct: kpis.receitaDeltaPct, deltaGoodWhenUp: true, icon: TrendingUp, href: "/app/financeiro/receitas" },
+    { label: `Despesas (${periodoLabel})`, value: kpis.despesaPeriodo, format: "currency", deltaPct: kpis.despesaDeltaPct, deltaGoodWhenUp: false, icon: TrendingDown, href: "/app/financeiro/despesas" },
+    { label: `Resultado (${periodoLabel})`, value: kpis.resultadoPeriodo, format: "currency", deltaPct: kpis.resultadoDeltaPct, deltaGoodWhenUp: true, danger: kpis.resultadoPeriodo < 0, icon: Scale, href: "/app/financeiro/dre" },
     { label: "Saldo em Contas", value: kpis.saldoEmContas, format: "currency", deltaPct: null, deltaGoodWhenUp: null, danger: kpis.saldoEmContas < 0, icon: Wallet, href: "/app/financeiro/bancos" },
   ];
 
@@ -131,6 +142,7 @@ export default function FinanceiroRelatorios() {
       breadcrumb={[{ label: "Financeiro", path: "/app/financeiro/dashboard" }, { label: "Central de Relatórios" }]}
     >
       <div className="space-y-8 max-w-[1700px] mx-auto pb-12">
+        <FinanceiroFilterBar />
         <FinanceiroKPIs cards={kpiCards} />
 
         <Card className="p-6">

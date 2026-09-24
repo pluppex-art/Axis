@@ -11,6 +11,9 @@ import { useLocalization } from "../../contexts/LocalizationContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { useIbgeLocalidades } from "../../lib/ibgeLocalidades";
 import { StatCell, StatCellRow } from "./components/StatCell";
+import { FinanceiroFilterBar } from "./components/FinanceiroFilterBar";
+import { useFinanceiroFiltro } from "./FinanceiroFilterContext";
+import { parseEntryDate } from "./lib/financeDates";
 
 type Tipo = "CLIENTE" | "FORNECEDOR" | "FUNCIONARIO";
 const TIPO_LABEL: Record<Tipo, string> = { CLIENTE: "Cliente", FORNECEDOR: "Fornecedor", FUNCIONARIO: "Funcionário" };
@@ -40,6 +43,7 @@ const emptyForm = {
 export default function FinanceiroContatos() {
   const { clienteBase, addClienteBase, updateClienteBase, deleteClienteBase, financeEntries } = useData();
   const { formatCurrency } = useLocalization();
+  const { dataInicio, dataFim, label: periodoLabel } = useFinanceiroFiltro();
   const contatos = clienteBase as Contato[];
 
   const [aba, setAba] = useState<"todos" | Tipo>("todos");
@@ -64,17 +68,20 @@ export default function FinanceiroContatos() {
 
   const semTipo = contatos.filter(c => !c.tipos || c.tipos.length === 0);
 
-  // Só entra aqui o que já foi de fato pago/recebido e está vinculado a um
-  // contato real (contato_id) — nunca soma lançamento avulso sem vínculo,
-  // pra não misturar "total por contato" com o total geral do financeiro.
+  // Só entra aqui o que já foi de fato pago/recebido, dentro do período do
+  // filtro global (barra no topo), e está vinculado a um contato real
+  // (contato_id) — nunca soma lançamento avulso sem vínculo, pra não
+  // misturar "total por contato" com o total geral do financeiro.
   const totaisPorContato = useMemo(() => {
     const map = new Map<string, number>();
     for (const e of financeEntries as any[]) {
       if (e.status !== "Pago" || !e.contato_id) continue;
+      const d = parseEntryDate(e.date);
+      if (!d || d < dataInicio || d > dataFim) continue;
       map.set(e.contato_id, (map.get(e.contato_id) || 0) + e.value);
     }
     return map;
-  }, [financeEntries]);
+  }, [financeEntries, dataInicio, dataFim]);
 
   const financeiroKpis = useMemo(() => {
     const clientes = contatos.filter(c => c.tipos?.includes("CLIENTE"));
@@ -160,9 +167,10 @@ export default function FinanceiroContatos() {
       actions={<Button onClick={openNew} className="h-9 px-4 text-xs font-medium gap-1.5"><Plus className="w-3.5 h-3.5" /> Novo Contato</Button>}
     >
       <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
+        <FinanceiroFilterBar />
         <StatCellRow>
-          <StatCell label="Total Recebido de Clientes" value={formatCurrency(financeiroKpis.totalRecebido)} icon={TrendingUp} tone="success" hint="Lançamentos pagos, vinculados a um cliente" />
-          <StatCell label="Total Pago a Fornecedores" value={formatCurrency(financeiroKpis.totalPago)} icon={TrendingDown} tone={financeiroKpis.totalPago > 0 ? "danger" : "neutral"} hint="Lançamentos pagos, vinculados a um fornecedor" />
+          <StatCell label={`Recebido de Clientes (${periodoLabel})`} value={formatCurrency(financeiroKpis.totalRecebido)} icon={TrendingUp} tone="success" hint="Lançamentos pagos, vinculados a um cliente" />
+          <StatCell label={`Pago a Fornecedores (${periodoLabel})`} value={formatCurrency(financeiroKpis.totalPago)} icon={TrendingDown} tone={financeiroKpis.totalPago > 0 ? "danger" : "neutral"} hint="Lançamentos pagos, vinculados a um fornecedor" />
         </StatCellRow>
 
         {topContatosChart.length > 0 && (

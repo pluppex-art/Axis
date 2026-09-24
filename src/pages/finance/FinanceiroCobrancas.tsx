@@ -15,6 +15,9 @@ import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { FinanceiroFilterBar } from "./components/FinanceiroFilterBar";
+import { useFinanceiroFiltro } from "./FinanceiroFilterContext";
+import { parseEntryDate } from "./lib/financeDates";
 
 const PAGE_SIZE = 50;
 
@@ -22,6 +25,7 @@ export default function FinanceiroCobrancas() {
   const { financeEntries, addFinanceEntry, updateFinanceEntry, deleteFinanceEntry, appSettings } = useData();
   const { user, activeTenantName } = useAuth();
   const { formatCurrency } = useLocalization();
+  const { dataInicio, dataFim, label: periodoLabel } = useFinanceiroFiltro();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [showModal, setShowModal] = useState(false);
@@ -54,18 +58,26 @@ export default function FinanceiroCobrancas() {
       }));
   }, [financeEntries]);
 
+  // KPIs seguem o filtro global de período (barra no topo), por vencimento
+  // — a tabela abaixo continua mostrando TODAS as cobranças (busca/status é
+  // pra achar uma específica, não pra recortar o panorama geral).
   const cobrancasKpis = useMemo(() => {
-    const liquidadas = cobrancas.filter(c => c.status === "Liquidada");
-    const pendentes = cobrancas.filter(c => c.status === "Pendente");
+    const doPeriodo = cobrancas.filter(c => {
+      const d = parseEntryDate(c.vencimento);
+      return !!d && d >= dataInicio && d <= dataFim;
+    });
+    const liquidadas = doPeriodo.filter(c => c.status === "Liquidada");
+    const pendentes = doPeriodo.filter(c => c.status === "Pendente");
     return {
-      valorTotal: cobrancas.reduce((s, c) => s + c.valor, 0),
+      valorTotal: doPeriodo.reduce((s, c) => s + c.valor, 0),
       valorLiquidado: liquidadas.reduce((s, c) => s + c.valor, 0),
       valorPendente: pendentes.reduce((s, c) => s + c.valor, 0),
       countLiquidadas: liquidadas.length,
       countPendentes: pendentes.length,
-      countPix: cobrancas.filter(c => c.metodo === "Pix").length,
+      countPix: doPeriodo.filter(c => c.metodo === "Pix").length,
+      count: doPeriodo.length,
     };
-  }, [cobrancas]);
+  }, [cobrancas, dataInicio, dataFim]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -229,10 +241,14 @@ export default function FinanceiroCobrancas() {
         </div>
       }
     >
-      {/* KPIs */}
+      <div className="mb-4">
+        <FinanceiroFilterBar />
+      </div>
+
+      {/* KPIs — recortadas pelo filtro de período acima (vencimento) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { icon: Receipt, label: "Total Emitido", val: formatCurrency(cobrancasKpis.valorTotal), hint: `${cobrancas.length} cobrança(s)`, color: "text-blue-500" },
+          { icon: Receipt, label: `Emitido (${periodoLabel})`, val: formatCurrency(cobrancasKpis.valorTotal), hint: `${cobrancasKpis.count} cobrança(s)`, color: "text-blue-500" },
           { icon: CheckCircle2, label: "Liquidadas", val: formatCurrency(cobrancasKpis.valorLiquidado), hint: `${cobrancasKpis.countLiquidadas} cobrança(s)`, color: "text-emerald-500" },
           { icon: Clock, label: "Pendentes", val: formatCurrency(cobrancasKpis.valorPendente), hint: `${cobrancasKpis.countPendentes} cobrança(s)`, color: "text-amber-500" },
           { icon: QrCode, label: "Cobranças Pix", val: cobrancasKpis.countPix, hint: "por quantidade", color: "text-indigo-500" },

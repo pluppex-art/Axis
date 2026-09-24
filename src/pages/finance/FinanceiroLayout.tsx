@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { SectionSidebar, type SectionNavGroup } from "../../components/layout/SectionSidebar";
 import { NovaOperacaoModal } from "./components/NovaOperacaoModal";
+import { FinanceiroFilterProvider } from "./FinanceiroFilterContext";
 
 const groups: SectionNavGroup[] = [
   {
@@ -129,7 +130,9 @@ export default function FinanceiroLayout() {
 
   return (
     <SectionSidebar heading="Financeiro" subheading="Gestão Financeira" groups={groups}>
-      <Outlet />
+      <FinanceiroFilterProvider>
+        <Outlet />
+      </FinanceiroFilterProvider>
 
       {mostrarFab && (
         <button

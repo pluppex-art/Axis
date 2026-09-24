@@ -9,11 +9,18 @@ import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { StatCell, StatCellRow } from "./components/StatCell";
+import { FinanceiroFilterBar } from "./components/FinanceiroFilterBar";
+import { useFinanceiroFiltro } from "./FinanceiroFilterContext";
 import { cn } from "../../lib/utils";
+
+function toLocalISODate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export default function FinanceiroTransferencias() {
   const { financeTransfers, addFinanceTransfer, updateFinanceTransfer, deleteFinanceTransfer, financeBankAccounts } = useData();
   const { formatCurrency } = useLocalization();
+  const { dataInicio, dataFim, label: periodoLabel } = useFinanceiroFiltro();
 
   const contasAtivas = useMemo(() => (financeBankAccounts as any[]).filter(c => !c.arquivada), [financeBankAccounts]);
   const contaNome = (id: string) => contasAtivas.find(c => c.id === id)?.nome || (financeBankAccounts as any[]).find(c => c.id === id)?.nome || "—";
@@ -80,13 +87,15 @@ export default function FinanceiroTransferencias() {
   const ordenadas = [...(financeTransfers as any[])].sort((a, b) => (b.data_pagamento || "").localeCompare(a.data_pagamento || ""));
 
   const kpis = useMemo(() => {
-    const now = new Date();
-    const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const inicioStr = toLocalISODate(dataInicio);
+    const fimStr = toLocalISODate(dataFim);
     const transfers = financeTransfers as any[];
-    const totalMes = transfers.filter(t => t.pago && (t.data_pagamento || "").startsWith(mesAtual)).reduce((s, t) => s + t.valor, 0);
+    const totalPeriodo = transfers
+      .filter(t => t.pago && t.data_pagamento >= inicioStr && t.data_pagamento <= fimStr)
+      .reduce((s, t) => s + t.valor, 0);
     const pendentes = transfers.filter(t => !t.pago);
-    return { totalMes, totalPendente: pendentes.reduce((s, t) => s + t.valor, 0), countPendentes: pendentes.length, count: transfers.length };
-  }, [financeTransfers]);
+    return { totalPeriodo, totalPendente: pendentes.reduce((s, t) => s + t.valor, 0), countPendentes: pendentes.length, count: transfers.length };
+  }, [financeTransfers, dataInicio, dataFim]);
 
   return (
     <PageContainer
@@ -100,9 +109,10 @@ export default function FinanceiroTransferencias() {
       }
     >
       <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
+        <FinanceiroFilterBar />
         {ordenadas.length > 0 && (
           <StatCellRow>
-            <StatCell label="Transferido no Mês" value={formatCurrency(kpis.totalMes)} icon={Repeat} hint="Já concluídas" />
+            <StatCell label={`Transferido (${periodoLabel})`} value={formatCurrency(kpis.totalPeriodo)} icon={Repeat} hint="Já concluídas" />
             <StatCell label="Pendentes" value={formatCurrency(kpis.totalPendente)} icon={Clock} tone={kpis.countPendentes > 0 ? "warning" : "neutral"} hint={`${kpis.countPendentes} transferência(s)`} />
             <StatCell label="Total de Transferências" value={kpis.count} icon={Layers} />
           </StatCellRow>
