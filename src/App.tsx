@@ -36,6 +36,9 @@ import Produtos from "./pages/operative/Produtos";
 import Indicadores from "./pages/operative/Indicadores";
 import RelatoriosExecutivos from "./pages/crm/RelatoriosExecutivos";
 import Contracts from "./pages/crm/Contracts";
+import Implementacoes from "./pages/crm/Implementacoes";
+import ImplementacaoDetalhe from "./pages/crm/ImplementacaoDetalhe";
+import ImplementacaoRelatorio from "./pages/crm/ImplementacaoRelatorio";
 import Messaging from "./pages/crm/Messaging";
 import Automations from "./pages/marketing/Automations";
 import AdminSaaS from "./pages/admin/AdminSaaS";
@@ -245,6 +248,9 @@ function AppContent() {
             <Route path="oportunidades" element={<Oportunidades />} />
             <Route path="propostas" element={<Propostas />} />
             <Route path="contratos" element={<Contracts />} />
+            <Route path="implementacoes" element={<Implementacoes />} />
+            <Route path="implementacoes/:id" element={<ImplementacaoDetalhe />} />
+            <Route path="implementacoes/:id/relatorio" element={<ImplementacaoRelatorio />} />
             <Route path="atividades" element={<Atividades />} />
             <Route path="follow-ups" element={<FollowUps />} />
             <Route path="importacao" element={<CRMImportacao />} />

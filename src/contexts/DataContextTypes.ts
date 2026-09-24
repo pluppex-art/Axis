@@ -242,6 +242,11 @@ export interface DataContextType {
   financeBudgets: any[];
   upsertFinanceBudget: (categoryId: string, mes: string, valorOrcado: number) => Promise<void>;
   deleteFinanceBudget: (id: string) => Promise<boolean>;
+  /** Implantação por cliente fechado — CRM > Implementações (formulário em src/lib/implementationForm.ts). */
+  implementations: any[];
+  addImplementation: (item: any) => Promise<any>;
+  updateImplementation: (id: string, updates: any) => Promise<void>;
+  deleteImplementation: (id: string) => Promise<boolean>;
   financeBankAccounts: any[];
   addFinanceBankAccount: (conta: any) => Promise<any>;
   updateFinanceBankAccount: (id: string, updates: any) => Promise<void>;

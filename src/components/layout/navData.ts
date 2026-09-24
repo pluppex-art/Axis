@@ -74,6 +74,7 @@ export const navSections = [
       { name: "Leads & Pipeline", path: "/app/crm/pipeline", icon: Columns3 },
       { name: "Propostas Comerciais", path: "/app/crm/propostas", icon: FileText },
       { name: "Base de Clientes", path: "/app/crm/clientes", icon: Users },
+      { name: "Implementações", path: "/app/crm/implementacoes", icon: ClipboardList },
     ],
   },
   {

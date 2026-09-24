@@ -749,6 +749,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [nichos, setNichos] = useState<any[]>([]);
   const [financeCategories, setFinanceCategories] = useState<any[]>([]);
   const [financeBudgets, setFinanceBudgets] = useState<any[]>([]);
+  const [implementations, setImplementations] = useState<any[]>([]);
   const [financeBankAccounts, setFinanceBankAccounts] = useState<any[]>([]);
   const [financeTransfers, setFinanceTransfers] = useState<any[]>([]);
   const [financeCentrosCusto, setFinanceCentrosCusto] = useState<any[]>([]);
@@ -865,6 +866,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'nichos' }, () => debouncedRefetch('nichos', fetchNichos))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_categories' }, () => debouncedRefetch('finance_categories', () => fetchTableData('finance_categories', setFinanceCategories)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_budgets' }, () => debouncedRefetch('finance_budgets', () => fetchTableData('finance_budgets', setFinanceBudgets)))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'implementations' }, () => debouncedRefetch('implementations', () => fetchTableData('implementations', setImplementations)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_bank_accounts' }, () => debouncedRefetch('finance_bank_accounts', () => fetchTableData('finance_bank_accounts', setFinanceBankAccounts)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transfers' }, () => debouncedRefetch('finance_transfers', () => fetchTableData('finance_transfers', setFinanceTransfers)))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_centros_custo' }, () => debouncedRefetch('finance_centros_custo', () => fetchTableData('finance_centros_custo', setFinanceCentrosCusto)))
@@ -986,6 +988,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     reconciledWonLeadIdsRef.current.clear();
     setFinanceCategories([]);
     setFinanceBudgets([]);
+    setImplementations([]);
     setFinanceBankAccounts([]);
     setFinanceCentrosCusto([]);
     setFinanceAttachments([]);
@@ -1279,6 +1282,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       { name: 'finance_attachments', promise: fetchAllRowsForTenant('finance_attachments', tenantId), apply: (res) => { if (res.data) setFinanceAttachments(res.data); } },
       { name: 'finance_categories', promise: fetchAllRowsForTenant('finance_categories', tenantId), apply: (res) => { if (res.data) setFinanceCategories(res.data); } },
       { name: 'finance_budgets', promise: fetchAllRowsForTenant('finance_budgets', tenantId), apply: (res) => { if (res.data) setFinanceBudgets(res.data); } },
+      { name: 'implementations', promise: fetchAllRowsForTenant('implementations', tenantId), apply: (res) => { if (res.data) setImplementations(res.data); } },
       { name: 'marketing_automations', promise: fetchAllRowsForTenant('marketing_automations', tenantId), apply: (res) => { if (res.data) setMarketingAutomations(res.data); } },
       { name: 'marketing_forms', promise: fetchAllRowsForTenant('marketing_forms', tenantId), apply: (res) => { if (res.data) setMarketingForms(res.data); } },
       { name: 'marketing_content', promise: fetchAllRowsForTenant('marketing_content', tenantId, (q: any) => q.is('deleted_at', null)), apply: (res) => { if (res.data) setMarketingContent(res.data); } },
@@ -2446,6 +2450,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const nichoCrud = createCrudHelper('nichos', setNichos);
   const financeCategoryCrud = createCrudHelper('finance_categories', setFinanceCategories);
   const financeBudgetCrud = createCrudHelper('finance_budgets', setFinanceBudgets);
+  const implementationCrud = createCrudHelper('implementations', setImplementations);
   // `finance_budgets` tem um índice único (tenant_id, category_id, mes) — um
   // `add()` puro quebraria com conflito se o usuário já tinha orçado aquela
   // categoria nesse mês. Decide update/add pelo estado local (já carregado
@@ -2934,6 +2939,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       financeBudgets,
       upsertFinanceBudget,
       deleteFinanceBudget: financeBudgetCrud.del,
+      implementations,
+      addImplementation: implementationCrud.add,
+      updateImplementation: implementationCrud.update,
+      deleteImplementation: implementationCrud.del,
       financeBankAccounts,
       addFinanceBankAccount: financeBankAccountCrud.add,
       updateFinanceBankAccount: financeBankAccountCrud.update,
