@@ -93,9 +93,11 @@ export function ProfileSection({
   // `lead.value` pode ter historicamente: número puro (nosso cálculo) ou
   // string formatada "R$ X,XX" (leads criados pelo NewLeadModal).
   const displayValue = useMemo(() => {
-    const estimate = leadInterestEstimate(lead, proposals as any[], catalogProducts as any[]);
-    return estimate !== null ? formatCurrency(estimate) : formatCurrency(parseCurrencyBR(lead?.value));
-  }, [lead, proposals, catalogProducts, formatCurrency]);
+    // Versão ao vivo do lead (o `lead` da prop é um retrato da abertura do modal).
+    const liveLead = (allLeads as any[]).find((l: any) => l.id === lead?.id) ?? lead;
+    const estimate = leadInterestEstimate(liveLead, proposals as any[], catalogProducts as any[]);
+    return estimate !== null ? formatCurrency(estimate) : formatCurrency(parseCurrencyBR(liveLead?.value));
+  }, [lead, allLeads, proposals, catalogProducts, formatCurrency]);
 
   // Valor do Produto: referência de catálogo (preço cheio, sem desconto) dos
   // itens de uma proposta REAL deste lead — um número DIFERENTE do valor da

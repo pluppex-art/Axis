@@ -33,7 +33,7 @@ interface LeadDetailsModalProps {
 }
 
 export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProps) {
-  const { updateLead, leadActivities, proposals, products } = useData();
+  const { updateLead, leadActivities, proposals, products, leads: allLeads } = useData();
   const { formatCurrency } = useLocalization();
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState("informacoes");
@@ -134,10 +134,13 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
   // produtos vinculados em vez de lead.value — ignorava quantidade/desconto/valor realmente
   // fechado (mesmo bug corrigido no "Total de Ganhos" do Pipeline, ver usePipeline.ts).
   // lead.value já é a fonte de verdade, sincronizada com a proposta aceita.
-  const interestEstimate = leadInterestEstimate(lead, proposals as any[], products as any[]);
+  // `lead` chega por prop (um retrato de quando o modal abriu) — marcar/desmarcar produto de
+  // interesse muda o lead no contexto, então o valor do cabeçalho lê a versão AO VIVO de lá.
+  const liveLead = (allLeads as any[]).find((l: any) => l.id === lead.id) ?? lead;
+  const interestEstimate = leadInterestEstimate(liveLead, proposals as any[], products as any[]);
   const formattedValue = interestEstimate !== null
     ? formatCurrency(interestEstimate)
-    : formatLeadValueBRL(lead?.value ?? value, formatCurrency);
+    : formatLeadValueBRL(liveLead?.value ?? value, formatCurrency);
   const initials = ((companyName || leadName || "LD").substring(0, 2)).toUpperCase();
 
   const moveToStage = (stg: any) => {
