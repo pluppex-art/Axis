@@ -24,7 +24,7 @@ const NICHES = [
   "Clínica",
   "Agronegócio",
   "Varejo",
-  "Concessionária",
+  "Automotivo",
   "Parceira Geral",
 ];
 

@@ -27,8 +27,8 @@ export function OnboardingWizard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
 
-  // Desativado por ora: DEMO_PRESETS cobre só 4 nichos (Apple/Solar/Clínica/
-  // Imobiliária), bem menos que os nichos reais suportados no restante do
+  // Desativado por ora: DEMO_PRESETS cobre só 5 nichos (Varejo/Solar/Clínica/
+  // Imobiliária/Automotivo), bem menos que os nichos reais suportados no restante do
   // app (ver NICHES em NovoTenantModal.tsx) — mostrar a lista incompleta
   // como se fosse definitiva confundia o onboarding. Reativar quando os
   // presets cobrirem todos os nichos.

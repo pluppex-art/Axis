@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, ArrowRight, ArrowLeft, Zap, Home, Heart, GraduationCap, Briefcase, Rocket, ShieldCheck, Smartphone, AlertTriangle } from 'lucide-react';
+import { Check, ArrowRight, ArrowLeft, Zap, Home, Heart, GraduationCap, Briefcase, Rocket, ShieldCheck, ShoppingBag, Car, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../lib/apiClient';
 
 const niches: Record<string, any> = {
-  "mia-6": {
+  spy: {
     name: "S.P.Y. Core Systems",
     title: "Implante o S.P.Y. na Sua Empresa",
     subtitle: "Automatize processos, integre a Aurora e escale a sua operação de vendas de ponta a ponta.",
@@ -23,18 +23,33 @@ const niches: Record<string, any> = {
       { id: 'q8', type: 'input', subtype: 'tel', title: "Qual o seu WhatsApp corporativo?", placeholder: "(11) 99999-9999" },
     ]
   },
-  apple: {
-    name: "Revenda Premium Apple",
-    title: "Escale a Venda dos Seus Devices",
-    subtitle: "Estruture sua operação, fidelize clientes e escale seu faturamento de forma inteligente.",
-    icon: Smartphone,
+  varejo: {
+    name: "Varejo",
+    title: "Venda Mais no Seu Varejo",
+    subtitle: "Estoque, PDV e vendas no mesmo lugar, com clientes que voltam.",
+    icon: ShoppingBag,
+    color: "amber",
+    bgGradient: "from-amber-900 to-slate-900",
+    questions: [
+      { id: 'q1', type: 'choice', title: "Qual é o formato da sua operação?", options: ["Loja física", "E-commerce", "Loja física + online", "Atacado / distribuição"] },
+      { id: 'q2', type: 'choice', title: "Quantos pedidos você atende por mês?", options: ["Até 100", "100 a 500", "500 a 2.000", "Mais de 2.000"] },
+      { id: 'q3', type: 'choice', title: "O que mais trava o seu crescimento hoje?", options: ["Controle de estoque", "Fluxo de caixa", "Atendimento e pós-venda", "Captar novos clientes"] },
+      { id: 'q4', type: 'input', subtype: 'text', title: "Qual o nome do seu negócio?", placeholder: "Nome da loja / empresa" },
+      { id: 'q5', type: 'input', subtype: 'tel', title: "Qual o seu WhatsApp para enviarmos uma estratégia grátis?", placeholder: "(11) 99999-9999" },
+    ]
+  },
+  automotivo: {
+    name: "Automotivo",
+    title: "Venda Mais Veículos",
+    subtitle: "Estoque, avaliação de usados, consignação e test-drives organizados num só sistema.",
+    icon: Car,
     color: "slate",
     bgGradient: "from-slate-900 to-black",
     questions: [
-      { id: 'q1', type: 'choice', title: "Qual é o carro-chefe da sua operação hoje?", options: ["iPhones Seminovos", "iPhones Lacrados", "MacBooks & iPads", "Acessórios e Assistência"] },
-      { id: 'q2', type: 'choice', title: "Qual o seu volume atual de vendas por mês?", options: ["Iniciando (Até 10 aparelhos)", "Crescendo (10 a 50 aparelhos)", "Escalando (50 a 150 aparelhos)", "Alta Escala (+150 aparelhos)"] },
-      { id: 'q3', type: 'choice', title: "O que mais trava o seu crescimento hoje?", options: ["Gestão de Estoque e Compras", "Falta de Leads Qualificados", "Baixa Conversão no WhatsApp", "Organização da Equipe"] },
-      { id: 'q4', type: 'input', subtype: 'text', title: "Qual o nome do seu negócio?", placeholder: "Ex: iStore Premium" },
+      { id: 'q1', type: 'choice', title: "Qual é o perfil da sua operação?", options: ["Concessionária", "Multimarcas / seminovos", "Consignação", "Motos"] },
+      { id: 'q2', type: 'choice', title: "Quantos veículos você vende por mês?", options: ["Até 10", "10 a 30", "30 a 100", "Mais de 100"] },
+      { id: 'q3', type: 'choice', title: "O que mais trava o seu crescimento hoje?", options: ["Captação de estoque", "Avaliação e troca de usados", "Follow-up de leads", "Controle financeiro"] },
+      { id: 'q4', type: 'input', subtype: 'text', title: "Qual o nome da sua loja?", placeholder: "Nome da loja / empresa" },
       { id: 'q5', type: 'input', subtype: 'tel', title: "Qual o seu WhatsApp para enviarmos uma estratégia grátis?", placeholder: "(11) 99999-9999" },
     ]
   },
@@ -107,8 +122,9 @@ export function InteractiveForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Fallback to 'apple' if invalid niche
-  const formConfig = niches[niche || ''] || niches['apple'];
+  // Nicho desconhecido cai no formulário padrão do próprio S.P.Y.
+  const activeNiche = niches[niche || ''] ? (niche as string) : 'spy';
+  const formConfig = niches[activeNiche];
   const totalSteps = formConfig.questions.length;
   const currentQuestion = formConfig.questions[currentStep];
 
@@ -343,7 +359,7 @@ export function InteractiveForm() {
                     value={inputValue}
                     onChange={(e) => {
                       let val = e.target.value;
-                      if (currentQuestion.id === 'q3' && niche === 'mia-6') {
+                      if (currentQuestion.id === 'q3' && activeNiche === 'spy') {
                         val = val.replace(/\D/g, '');
                         let formatted = val;
                         if (val.length > 2) formatted = `${val.slice(0, 2)}.${val.slice(2)}`;

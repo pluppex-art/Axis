@@ -91,7 +91,8 @@ export default function LandingPage() {
                   DEMOS_CAPTAÇÃO <ChevronRight className="w-3 h-3 rotate-90" />
                </span>
                <div className="absolute top-full left-0 mt-4 bg-[#0F172A]/90 backdrop-blur-xl border border-white/10 rounded-2xl p-3 w-64 shadow-2xl opacity-0 translate-y-4 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto transition-all duration-300 z-[200]">
-                  <Link to="/f/apple" className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white rounded-xl transition-colors font-medium">🍏 Revendas Apple</Link>
+                  <Link to="/f/varejo" className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white rounded-xl transition-colors font-medium">🛒 Varejo</Link>
+                  <Link to="/f/automotivo" className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white rounded-xl transition-colors font-medium">🚗 Automotivo</Link>
                   <Link to="/f/solar" className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white rounded-xl transition-colors font-medium">⚡ Energia Solar</Link>
                   <Link to="/f/imobiliaria" className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white rounded-xl transition-colors font-medium">🏢 Imobiliárias</Link>
                   <Link to="/f/clinica" className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white rounded-xl transition-colors font-medium">🏥 Clínicas Saúde</Link>
@@ -102,7 +103,7 @@ export default function LandingPage() {
 
           <div className="flex items-center shrink-0 gap-2 sm:gap-4 pl-4 lg:pl-12">
             <Link to="/login" className="px-2 sm:px-4 py-2 sm:py-3 text-[9px] sm:text-xs font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all hover:-translate-y-1">Acessar</Link>
-            <Link to="/f/mia-6">
+            <Link to="/f/spy">
               <Button className="bg-[#F8FAFC] hover:bg-white text-black rounded-lg sm:rounded-[1.5rem] px-3 py-2.5 sm:px-8 sm:py-5 h-auto font-black uppercase tracking-widest text-[8px] sm:text-[11px] shadow-2xl shadow-blue-600/20 active:scale-95 transition-all shrink-0">
                 Implantar
               </Button>

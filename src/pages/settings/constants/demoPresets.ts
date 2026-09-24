@@ -1,14 +1,14 @@
-import { Smartphone, Sun, Activity, Building } from "lucide-react";
+import { ShoppingBag, Car, Sun, Activity, Building } from "lucide-react";
 
 export const DEMO_PRESETS = [
   {
-    id: "apple_tech",
-    niche: "Tecnologia",
-    name: "Revenda Apple & Projetos Tech",
-    description: "Foco comercial em conversão de hardware premium, upgrades de aparelhos (trade-in), leads de alto ticket e fluxos de atendimento pelo WhatsApp.",
-    icon: Smartphone,
-    color: "#06B6D4",
-    bgAccent: "bg-cyan-500/10 border-cyan-500/20 text-cyan-400",
+    id: "varejo_retail",
+    niche: "Varejo",
+    name: "Varejo & Loja",
+    description: "Foco em PDV, controle de estoque, compras de fornecedores e recompra de clientes, com financeiro integrado.",
+    icon: ShoppingBag,
+    color: "#F59E0B",
+    bgAccent: "bg-amber-500/10 border-amber-500/20 text-amber-400",
     modules: {
       crm: true,
       educacao: false,
@@ -20,11 +20,11 @@ export const DEMO_PRESETS = [
       bi: true,
     },
     stages: [
-      { id: '1', name: "Lead Apple Recebido", color: "#06B6D4", textClass: "text-[#06B6D4]", bgClass: "bg-[#06B6D4]/10", borderClass: "border-[#06B6D4]/20", type: 'comercial' },
-      { id: '2', name: "Triagem SDR / WhatsApp", color: "#6366F1", textClass: "text-indigo-400", bgClass: "bg-indigo-500/10", borderClass: "border-indigo-500/20", type: 'comercial' },
-      { id: '3', name: "Teste de Aparelho / Avaliação", color: "#8B5CF6", textClass: "text-[#8B5CF6]", bgClass: "bg-[#8B5CF6]/10", borderClass: "border-[#8B5CF6]/20", type: 'comercial' },
-      { id: '4', name: "Proposta de Trade-in & Valores", color: "#F59E0B", textClass: "text-amber-400", bgClass: "bg-amber-500/10", borderClass: "border-amber-500/20", type: 'comercial' },
-      { id: '5', name: "Venda Concluída (Closer)", color: "#10B981", textClass: "text-emerald-400", bgClass: "bg-emerald-500/10", borderClass: "border-emerald-500/20", type: 'comercial' },
+      { id: '1', name: "Novo Contato / Pedido", color: "#06B6D4", textClass: "text-[#06B6D4]", bgClass: "bg-[#06B6D4]/10", borderClass: "border-[#06B6D4]/20", type: 'comercial' },
+      { id: '2', name: "Orçamento / Carrinho", color: "#6366F1", textClass: "text-indigo-400", bgClass: "bg-indigo-500/10", borderClass: "border-indigo-500/20", type: 'comercial' },
+      { id: '3', name: "Negociação & Pagamento", color: "#8B5CF6", textClass: "text-[#8B5CF6]", bgClass: "bg-[#8B5CF6]/10", borderClass: "border-[#8B5CF6]/20", type: 'comercial' },
+      { id: '4', name: "Separação & Entrega", color: "#F59E0B", textClass: "text-amber-400", bgClass: "bg-amber-500/10", borderClass: "border-amber-500/20", type: 'comercial' },
+      { id: '5', name: "Venda Concluída / Pós-venda", color: "#10B981", textClass: "text-emerald-400", bgClass: "bg-emerald-500/10", borderClass: "border-emerald-500/20", type: 'comercial' },
     ],
   },
   {
@@ -104,5 +104,31 @@ export const DEMO_PRESETS = [
       { id: '4', name: "Análise de Crédito / Pasta", color: "#F59E0B", textClass: "text-amber-400", bgClass: "bg-amber-500/10", borderClass: "border-amber-500/20", type: 'comercial' },
       { id: '5', name: "Dono Recebeu / Chaves", color: "#10B981", textClass: "text-emerald-400", bgClass: "bg-emerald-500/10", borderClass: "border-emerald-500/20", type: 'comercial' },
     ],
-  }
+  },
+  {
+    id: "automotivo_dealer",
+    niche: "Automotivo",
+    name: "Concessionária & Multimarcas",
+    description: "Estoque de veículos, avaliação de usados, consignação, trocas e test-drives com funil de vendas e financiamento.",
+    icon: Car,
+    color: "#64748B",
+    bgAccent: "bg-slate-500/10 border-slate-500/20 text-slate-300",
+    modules: {
+      crm: true,
+      educacao: false,
+      clinica: false,
+      financeiro: true,
+      marketing: true,
+      engajamento: true,
+      rh: true,
+      bi: true,
+    },
+    stages: [
+      { id: '1', name: "Lead / Interesse no Veículo", color: "#06B6D4", textClass: "text-[#06B6D4]", bgClass: "bg-[#06B6D4]/10", borderClass: "border-[#06B6D4]/20", type: 'comercial' },
+      { id: '2', name: "Test-Drive Agendado", color: "#6366F1", textClass: "text-indigo-400", bgClass: "bg-indigo-500/10", borderClass: "border-indigo-500/20", type: 'comercial' },
+      { id: '3', name: "Avaliação do Usado / Troca", color: "#8B5CF6", textClass: "text-[#8B5CF6]", bgClass: "bg-[#8B5CF6]/10", borderClass: "border-[#8B5CF6]/20", type: 'comercial' },
+      { id: '4', name: "Proposta & Financiamento", color: "#F59E0B", textClass: "text-amber-400", bgClass: "bg-amber-500/10", borderClass: "border-amber-500/20", type: 'comercial' },
+      { id: '5', name: "Veículo Entregue", color: "#10B981", textClass: "text-emerald-400", bgClass: "bg-emerald-500/10", borderClass: "border-emerald-500/20", type: 'comercial' },
+    ],
+  },
 ];
