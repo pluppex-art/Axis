@@ -38,6 +38,8 @@ import {
   Layers,
   HelpCircle,
   Database,
+  Truck,
+  ShoppingCart,
 } from "lucide-react";
 import { useData } from "../../../../contexts/DataContext";
 import { useAuth } from "../../../../contexts/AuthContext";
@@ -45,9 +47,10 @@ import { toast } from "sonner";
 import { NovaIntegracaoModal } from "../../../../components/ui/modals/settings/NovaIntegracaoModal";
 import { apiFetch } from "../../../../lib/apiClient";
 import { DEFAULT_META_CONFIG, DEFAULT_GOOGLE_CONFIG, DEFAULT_PAYMENT_CONFIG, DEFAULT_MAXDATA_CONFIG } from "../../../../lib/tenantIntegrations";
+import { INTEGRATION_CATALOG, catalogHasAnyValue, catalogMissingRequired, type CatalogIntegration, type CatalogValues } from "../../../../lib/integrationCatalog";
 
 // Integration Categories
-type IntegrationCategory = "todas" | "anuncios" | "mensageria" | "pagamentos" | "automacoes" | "email" | "dados";
+type IntegrationCategory = "todas" | "anuncios" | "mensageria" | "pagamentos" | "automacoes" | "email" | "dados" | "crm" | "erp" | "ecommerce" | "produtividade" | "logistica";
 
 type MaxDataConfig = typeof DEFAULT_MAXDATA_CONFIG;
 
@@ -178,6 +181,94 @@ function MaxDataConnectionModal({
   );
 }
 
+const CATALOG_CATEGORY_STYLE: Record<string, { icon: any; iconBg: string }> = {
+  anuncios: { icon: Globe, iconBg: "bg-pink-500/10 text-pink-400 border-pink-500/20" },
+  mensageria: { icon: MessageSquare, iconBg: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
+  pagamentos: { icon: CreditCard, iconBg: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" },
+  email: { icon: Send, iconBg: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
+  crm: { icon: Layers, iconBg: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
+  erp: { icon: Server, iconBg: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  ecommerce: { icon: ShoppingCart, iconBg: "bg-lime-500/10 text-lime-500 border-lime-500/20" },
+  produtividade: { icon: Zap, iconBg: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  logistica: { icon: Truck, iconBg: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
+};
+
+/** Modal genérico do catálogo: mesma tela pra qualquer serviço, montada a partir dos campos dele. */
+function CatalogIntegrationModal({
+  def, values, onChange, onClose, onToggleReady,
+}: {
+  def: CatalogIntegration;
+  values: CatalogValues;
+  onChange: (patch: CatalogValues) => void;
+  onClose: () => void;
+  onToggleReady: () => void;
+}) {
+  const style = CATALOG_CATEGORY_STYLE[def.category];
+  const Icon = style.icon;
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      maxWidth="max-w-xl"
+      title={
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-xl border flex items-center justify-center ${style.iconBg}`}>
+            <Icon className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-black text-[var(--color-text-primary)]">{def.name}</h3>
+            <p className="text-xs text-[var(--color-text-muted)]">Cadastro de credenciais</p>
+          </div>
+        </div>
+      }
+      footer={
+        <div className="flex justify-between items-center w-full">
+          <Badge variant={values.connected ? "success" : "neutral"} dot>{values.connected ? "Credenciais prontas" : "Não marcada"}</Badge>
+          <Button onClick={onClose}>Fechar</Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <Alert variant="info" title="Só credenciais, por enquanto">
+          Guarda com segurança as credenciais deste serviço neste ambiente (salvas automaticamente). O SPY ainda
+          <strong> não sincroniza dados</strong> com {def.name} — o cadastro deixa tudo pronto para quando a conexão for ligada.
+        </Alert>
+        {def.fields.map((f) => (
+          <FormField key={f.prop} label={f.label} required={f.required} hint={f.help}>
+            {f.kind === "select" ? (
+              <select
+                value={values[f.prop] ?? f.options?.[0] ?? ""}
+                onChange={(e) => onChange({ [f.prop]: e.target.value })}
+                className="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs cursor-pointer"
+              >
+                {f.options?.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <Input
+                type={f.kind === "secret" ? "password" : "text"}
+                autoComplete="off"
+                value={values[f.prop] ?? ""}
+                placeholder={f.placeholder}
+                onChange={(e) => onChange({ [f.prop]: e.target.value })}
+              />
+            )}
+          </FormField>
+        ))}
+        <FormField label="Observações">
+          <Input type="text" value={values.notes ?? ""} onChange={(e) => onChange({ notes: e.target.value })} />
+        </FormField>
+        <div className="flex items-center justify-between rounded-[var(--radius-control)] border border-[var(--color-border-default)] p-3">
+          <div>
+            <p className="text-xs font-bold text-[var(--color-text-primary)]">Marcar credenciais como prontas</p>
+            <p className="text-[11px] text-[var(--color-text-muted)]">Requer os campos obrigatórios preenchidos.</p>
+          </div>
+          <Switch checked={!!values.connected} onCheckedChange={onToggleReady} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export function ConfigIntegracoesApps() {
   const navigate = useNavigate();
   const { activeTenantId } = useAuth();
@@ -199,6 +290,7 @@ export function ConfigIntegracoesApps() {
   const [paymentConfig, setPaymentConfig] = useState(DEFAULT_PAYMENT_CONFIG);
   const [maxdataConfig, setMaxdataConfig] = useState(DEFAULT_MAXDATA_CONFIG);
   const [maxdataEstoqueConfig, setMaxdataEstoqueConfig] = useState(DEFAULT_MAXDATA_CONFIG);
+  const [catalogConfig, setCatalogConfig] = useState<Record<string, CatalogValues>>({});
   const [customIntegrations, setCustomIntegrations] = useState<any[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -279,6 +371,7 @@ export function ConfigIntegracoesApps() {
     }
     if (appSettings.integracoes_maxdata) setMaxdataConfig({ ...DEFAULT_MAXDATA_CONFIG, ...appSettings.integracoes_maxdata });
     if (appSettings.integracoes_maxdata_estoque) setMaxdataEstoqueConfig({ ...DEFAULT_MAXDATA_CONFIG, ...appSettings.integracoes_maxdata_estoque });
+    if (appSettings.integracoes_catalogo && typeof appSettings.integracoes_catalogo === "object") setCatalogConfig(appSettings.integracoes_catalogo);
     if (appSettings.integracoes_custom) setCustomIntegrations(appSettings.integracoes_custom);
     setHydrated(true);
   }, [appSettings, appSettingsLoaded, hydrated]);
@@ -315,6 +408,26 @@ export function ConfigIntegracoesApps() {
   useEffect(() => {
     if (hydrated) saveAppSetting("integracoes_maxdata_estoque", maxdataEstoqueConfig);
   }, [maxdataEstoqueConfig, hydrated]);
+
+  useEffect(() => {
+    if (hydrated) saveAppSetting("integracoes_catalogo", catalogConfig);
+  }, [catalogConfig, hydrated]);
+
+  const updateCatalog = (id: string, patch: CatalogValues) =>
+    setCatalogConfig((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
+
+  const toggleCatalogReady = (def: CatalogIntegration) => {
+    const cur = catalogConfig[def.id];
+    const next = !cur?.connected;
+    const missing = catalogMissingRequired(def, cur);
+    if (next && missing.length > 0) {
+      toast.error(`Falta preencher: ${missing.join(", ")}.`);
+      setSelectedConfigModal(`cat-${def.id}`);
+      return;
+    }
+    updateCatalog(def.id, { connected: next });
+    toast[next ? "success" : "info"](next ? `${def.name}: credenciais marcadas como prontas.` : `${def.name}: desmarcada.`);
+  };
 
   const toggleMaxdata = (
     cfg: MaxDataConfig,
@@ -697,8 +810,35 @@ export function ConfigIntegracoesApps() {
       },
     }));
 
-    return [...list, ...customList];
-  }, [metaConfig, googleConfig, instances, paymentConfig, maxdataConfig, maxdataEstoqueConfig, customIntegrations, globalWebhooks, appSettings]);
+    const catalogList = INTEGRATION_CATALOG.map((def) => {
+      const cfg = catalogConfig[def.id];
+      const style = CATALOG_CATEGORY_STYLE[def.category];
+      const missing = catalogMissingRequired(def, cfg);
+      const hasAny = catalogHasAnyValue(def, cfg);
+      const ready = !!cfg?.connected;
+      return {
+        id: `cat-${def.id}`,
+        name: def.name,
+        category: def.category as IntegrationCategory,
+        icon: style.icon,
+        iconBg: style.iconBg,
+        description: def.description,
+        connected: ready,
+        credentialOnly: true,
+        statusText: ready ? "Credenciais prontas" : hasAny ? "Incompleta" : "Não configurada",
+        statusVariant: (ready ? "success" : hasAny ? "info" : "neutral") as any,
+        badgeText: "Só credenciais",
+        highlightInfo: ready ? "Credenciais salvas" : missing.length > 0 ? `Falta: ${missing[0]}${missing.length > 1 ? ` +${missing.length - 1}` : ""}` : "Pronta para marcar",
+        configureLabel: "Configurar",
+        toggleOnLabel: "Marcar pronta",
+        toggleOffLabel: "Desmarcar",
+        onConfigure: () => setSelectedConfigModal(`cat-${def.id}`),
+        onToggle: () => toggleCatalogReady(def),
+      };
+    });
+
+    return [...list, ...customList, ...catalogList] as any[];
+  }, [metaConfig, googleConfig, instances, paymentConfig, maxdataConfig, maxdataEstoqueConfig, customIntegrations, globalWebhooks, appSettings, catalogConfig]);
 
   // Filtered integrations based on Category and Search Query
   const filteredIntegrations = useMemo(() => {
@@ -715,6 +855,11 @@ export function ConfigIntegracoesApps() {
       return true;
     });
   }, [allIntegrations, activeCategory, searchQuery]);
+
+  const realIntegrations = allIntegrations.filter((i) => !i.credentialOnly);
+  const connectedReal = realIntegrations.filter((i) => i.connected).length;
+  const catalogTotal = allIntegrations.length - realIntegrations.length;
+  const catalogReady = allIntegrations.filter((i) => i.credentialOnly && i.connected).length;
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -739,20 +884,22 @@ export function ConfigIntegracoesApps() {
         </div>
       </div>
 
-      {/* Resumo: quantas integrações estão de fato conectadas */}
-      <div className="flex items-center gap-4 rounded-[var(--radius-panel)] border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] p-4">
-        <div className="flex-1">
+      {/* Resumo: integrações REAIS conectadas x catálogo de credenciais */}
+      <div className="rounded-[var(--radius-panel)] border border-[var(--color-border-default)] bg-[var(--color-surface-elevated)] p-4 space-y-3">
+        <div>
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span className="font-semibold text-[var(--color-text-primary)]">Integrações conectadas</span>
-            <span className="tabular-nums font-bold text-[var(--color-text-primary)]">{allIntegrations.filter((i) => i.connected).length} de {allIntegrations.length}</span>
+            <span className="tabular-nums font-bold text-[var(--color-text-primary)]">{connectedReal} de {realIntegrations.length}</span>
           </div>
           <div className="w-full h-1.5 rounded-full bg-[var(--color-surface-sunken)] overflow-hidden">
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-              style={{ width: `${allIntegrations.length === 0 ? 0 : Math.round((allIntegrations.filter((i) => i.connected).length / allIntegrations.length) * 100)}%` }}
-            />
+            <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${realIntegrations.length === 0 ? 0 : Math.round((connectedReal / realIntegrations.length) * 100)}%` }} />
           </div>
         </div>
+        <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
+          Catálogo com <strong>{catalogTotal} serviços</strong> ({catalogReady} com credenciais prontas). Os marcados como
+          <span className="mx-1 px-1.5 py-0.5 rounded bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[10px] font-bold uppercase text-[var(--color-text-faint)]">Só credenciais</span>
+          guardam o cadastro com segurança, mas <strong>ainda não sincronizam dados</strong> — cada conexão é ligada de verdade integração por integração.
+        </p>
       </div>
 
       {/* Filter Tabs & Search Bar */}
@@ -766,6 +913,11 @@ export function ConfigIntegracoesApps() {
             { id: "automacoes", label: "Automações & Webhooks" },
             { id: "email", label: "E-mail & SMTP" },
             { id: "dados", label: "Dados & Bases" },
+            { id: "crm", label: "CRM & Marketing" },
+            { id: "erp", label: "ERP & Fiscal" },
+            { id: "ecommerce", label: "E-commerce" },
+            { id: "produtividade", label: "Produtividade" },
+            { id: "logistica", label: "Logística" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -864,7 +1016,7 @@ export function ConfigIntegracoesApps() {
                       className="flex-1 text-xs font-bold gap-1.5"
                     >
                       <Settings className="w-3.5 h-3.5" />
-                      Configurar & Testar
+                      {(item as any).configureLabel || "Configurar & Testar"}
                     </Button>
                     <Button
                       variant="ghost"
@@ -876,7 +1028,7 @@ export function ConfigIntegracoesApps() {
                           : "text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10"
                       }`}
                     >
-                      {item.connected ? "Desconectar" : "Conectar"}
+                      {item.connected ? (item as any).toggleOffLabel || "Desconectar" : (item as any).toggleOnLabel || "Conectar"}
                     </Button>
                   </div>
                 </div>
@@ -1120,6 +1272,19 @@ export function ConfigIntegracoesApps() {
       {/* ========================================================================= */}
       {/* MODAL DEDICADO: GOOGLE ADS & ANALYTICS */}
       {/* ========================================================================= */}
+      {selectedConfigModal?.startsWith("cat-") && (() => {
+        const def = INTEGRATION_CATALOG.find((c) => `cat-${c.id}` === selectedConfigModal);
+        return def ? (
+          <CatalogIntegrationModal
+            def={def}
+            values={catalogConfig[def.id] || {}}
+            onChange={(patch) => updateCatalog(def.id, patch)}
+            onClose={() => setSelectedConfigModal(null)}
+            onToggleReady={() => toggleCatalogReady(def)}
+          />
+        ) : null;
+      })()}
+
       {selectedConfigModal === "maxdata" && (
         <MaxDataConnectionModal
           title="Max Data — Notas fiscais"
