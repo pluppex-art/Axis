@@ -13,10 +13,11 @@ import { createGoogleCalendarRouter } from "./server/googleCalendar.js";
 import { getWhatsAppProvider, getActiveProviderName, isWahaConfigured } from "./server/whatsappProvider.js";
 import { cacheGet, cacheSet, redisHealthCheck } from "./server/redisClient.js";
 import { assertSafeHttpUrl, assertSafeSmtpTarget } from "./server/ssrfGuard.js";
+import { readTenantSnapshot } from "./server/implementationSync.js";
 import {
   allFields as implAllFields, applyPatch as implApplyPatch, computeProgress as implComputeProgress,
   findField as implFindField, pendingFields as implPendingFields, sanitizePatch as implSanitizePatch,
-  coerceFieldValue as implCoerceFieldValue, IMPLEMENTATION_SECTIONS,
+  coerceFieldValue as implCoerceFieldValue, applyTenantSnapshot as implApplyTenantSnapshot, IMPLEMENTATION_SECTIONS,
 } from "./src/lib/implementationForm.js";
 import nodemailer from "nodemailer";
 
@@ -2496,6 +2497,34 @@ app.patch("/api/public-implementation/:token", async (req, res) => {
   const { error } = await supabaseService!.from("implementations").update(update).eq("id", impl.id);
   if (error) return res.status(500).json({ error: "Não foi possível salvar." });
   return res.json({ ok: true, rejected, data: implClientData(merged) });
+});
+
+// ── Implementação: puxar dados do ambiente SPY que o cliente já tem ─────────
+// Só MASTER (equipe da plataforma) — lê outro tenant com service role. A
+// implementação precisa ser acessível pelo próprio solicitante (RLS) antes de
+// qualquer leitura cruzada. Nunca copia senha nem chave/token (ver
+// server/implementationSync.ts); só preenche campo vazio e sobe status.
+app.post("/api/implementations/:id/sync-tenant", requireUser, requireMaster, async (req: any, res) => {
+  if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." });
+  const tenantId = String(req.body?.tenantId || "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId)) return res.status(400).json({ error: "tenantId inválido." });
+
+  const { data: impl } = await req.supabase.from("implementations").select("id, tenant_id, data").eq("id", req.params.id).maybeSingle();
+  if (!impl) return res.status(404).json({ error: "Implementação não encontrada." });
+  if (impl.tenant_id === tenantId) return res.status(400).json({ error: "Escolha o ambiente do CLIENTE, não o da sua própria empresa." });
+
+  try {
+    const snapshot = await readTenantSnapshot(supabaseService, tenantId);
+    if (!snapshot) return res.status(404).json({ error: "Ambiente do cliente não encontrado." });
+    const { data, filled, statusRaised } = implApplyTenantSnapshot(impl.data || {}, snapshot);
+    const syncedAt = new Date().toISOString();
+    const { error } = await req.supabase.from("implementations").update({ data, linked_tenant_id: tenantId, last_synced_at: syncedAt }).eq("id", impl.id);
+    if (error) return res.status(500).json({ error: "Não foi possível salvar a sincronização." });
+    return res.json({ ok: true, tenantName: snapshot.tenantName, data, syncedAt, filled, statusRaised, usuarios: snapshot.users.length });
+  } catch (err: any) {
+    console.error("[sync-tenant]", err?.message);
+    return res.status(500).json({ error: "Falha ao ler o ambiente do cliente." });
+  }
 });
 
 // ── Public Proposal Authenticated Fetch with Full Multi-Tenant Branding ─────

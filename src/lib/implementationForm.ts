@@ -309,3 +309,129 @@ export function applyPatch(data: ImplData, clean: Record<string, any>): ImplData
   }
   return next;
 }
+
+// ── Puxar dados do ambiente SPY que o cliente já tem ────────────────────────
+//
+// O servidor lê o ambiente (tenant) do cliente e monta um TenantSnapshot SÓ com
+// o que é seguro: nunca senha (password_hash), nunca chave/token de
+// integração — só identificadores públicos (ID do pixel, número, host) e
+// booleanos "conectado". Esta função decide o que cada dado vira no formulário.
+//
+// Regras: (1) resposta que uma pessoa já digitou NUNCA é sobrescrita — só
+// campo vazio é preenchido; (2) status de integração só SOBE (Pendente →
+// Em andamento → Concluída), nunca desce nem toca em "Não se aplica"; (3)
+// checklist só é marcado, nunca desmarcado.
+
+export interface TenantSnapshot {
+  tenantName: string;
+  empresa?: { razaoSocial?: string; nomeFantasia?: string; cnpj?: string; endereco?: string; website?: string } | null;
+  users: { name?: string; email?: string; role?: string; is_tenant_admin?: boolean; phone?: string | null }[];
+  whatsapp: { phone?: string | null; connected: boolean }[];
+  meta?: { pixelId?: string; accountId?: string; connected?: boolean } | null;
+  google?: { customerId?: string; measurementId?: string; connected?: boolean } | null;
+  payments: { name: "Mercado Pago" | "Stripe" | "Asaas"; connected: boolean }[];
+  smtp?: { server?: string; user?: string } | null;
+  stages: string[];
+  auroraActive: number;
+}
+
+const STATUS_RANK: Record<string, number> = { "": 0, Pendente: 0, "Em andamento": 1, "Concluída": 2 };
+
+export function applyTenantSnapshot(current: ImplData, snap: TenantSnapshot): { data: ImplData; filled: string[]; statusRaised: string[] } {
+  const data: ImplData = { ...(current || {}) };
+  const filled: string[] = [];
+  const statusRaised: string[] = [];
+  const labelOf = (id: string) => {
+    const f = allFields().find(x => x.id === id);
+    return f ? `${f.group ? f.group + " — " : ""}${f.label}` : id;
+  };
+
+  const fill = (id: string, value: any) => {
+    if (value === undefined || value === null || value === "") return;
+    const cur = data[id];
+    const has = typeof cur === "string" ? cur.trim() !== "" : cur !== undefined && cur !== null;
+    if (has) return;
+    data[id] = value;
+    filled.push(labelOf(id));
+  };
+  const raise = (id: string, to: "Em andamento" | "Concluída") => {
+    const cur = String(data[id] ?? "");
+    if (cur === "Não se aplica") return;
+    if ((STATUS_RANK[to] ?? 0) <= (STATUS_RANK[cur] ?? 0)) return;
+    data[id] = to;
+    statusRaised.push(labelOf(id));
+  };
+  const check = (id: string) => {
+    if (data[id] === true) return;
+    data[id] = true;
+    statusRaised.push(labelOf(id));
+  };
+
+  const e = snap.empresa || {};
+  fill("razao_social", e.razaoSocial);
+  fill("nome_fantasia", e.nomeFantasia || snap.tenantName);
+  fill("cnpj", e.cnpj);
+  fill("site", e.website);
+  fill("endereco", e.endereco);
+
+  const users = (snap.users || []).filter(u => u.email);
+  if (users.length > 0) {
+    const perfil = (u: TenantSnapshot["users"][number]) => (u.is_tenant_admin ? "Administrador" : u.role || "Usuário");
+    fill("qtd_usuarios", String(users.length));
+    fill("usuarios_lista", users.map(u => `${u.name || "Sem nome"} — ${u.email} — ${perfil(u)}`).join("\n"));
+    const admin = users.find(u => u.is_tenant_admin) || users[0];
+    fill("resp_nome", admin.name);
+    fill("resp_email", admin.email);
+    fill("resp_whatsapp", admin.phone || undefined);
+    check("chk_usuarios");
+  }
+
+  if (snap.whatsapp.length > 0) {
+    fill("whats_usa", true);
+    fill("whats_numero", snap.whatsapp.find(w => w.phone)?.phone || undefined);
+    raise("whats_status", snap.whatsapp.some(w => w.connected) ? "Concluída" : "Em andamento");
+  }
+
+  const m = snap.meta;
+  if (m && (m.pixelId || m.accountId)) {
+    fill("meta_usa", true);
+    fill("meta_conta_id", m.accountId);
+    fill("meta_pixel_id", m.pixelId);
+    raise("meta_status", m.connected ? "Concluída" : "Em andamento");
+  }
+
+  const g = snap.google;
+  if (g && (g.customerId || g.measurementId)) {
+    fill("google_usa", true);
+    fill("google_ads_id", g.customerId);
+    fill("google_ga4_id", g.measurementId);
+    raise("google_status", g.connected ? "Concluída" : "Em andamento");
+  }
+
+  const gateway = snap.payments.find(p => p.connected);
+  if (gateway) {
+    fill("pag_gateway", gateway.name);
+    fill("pag_conta_criada", true);
+    raise("pag_status", "Concluída");
+  }
+
+  if (snap.smtp?.server && snap.smtp?.user) {
+    fill("email_usa", true);
+    fill("email_provedor", snap.smtp.server);
+    fill("email_remetente", snap.smtp.user);
+    // Credenciais preenchidas não significa testado — não marca como concluída.
+    raise("email_status", "Em andamento");
+  }
+
+  if (snap.stages.length > 0) {
+    fill("etapas_funil", snap.stages.join(" → "));
+    check("chk_funil");
+  }
+
+  if (snap.auroraActive > 0) {
+    fill("ia_usar", true);
+    raise("ia_status", "Concluída");
+  }
+
+  return { data, filled, statusRaised };
+}

@@ -11,6 +11,8 @@ import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { ImplementationProgressBar } from "../../components/implementacao/ImplementationProgressBar";
 import { ImplementationSectionForm } from "../../components/implementacao/ImplementationFormFields";
 import { useData } from "../../contexts/DataContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { TenantLinkCard } from "../../components/implementacao/TenantLinkCard";
 import { cn } from "../../lib/utils";
 import {
   IMPLEMENTATION_SECTIONS, IMPLEMENTATION_STATUSES, IMPLEMENTATION_STATUS_TONE, computeProgress,
@@ -24,6 +26,7 @@ export default function ImplementacaoDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { implementations, clienteBase, updateImplementation, deleteImplementation, updateClienteBase } = useData();
+  const { user } = useAuth();
 
   const impl = (implementations as any[]).find((i) => i.id === id);
   const cliente = impl ? (clienteBase as any[]).find((c) => c.id === impl.cliente_id) : null;
@@ -193,6 +196,18 @@ export default function ImplementacaoDetalhe() {
             </div>
           )}
         </Card>
+
+        {user?.isMaster && (
+          <TenantLinkCard
+            implementationId={impl.id}
+            clienteNome={cliente?.name || ""}
+            linkedTenantId={impl.linked_tenant_id}
+            lastSyncedAt={impl.last_synced_at}
+            beforeSync={flush}
+            onSynced={async (patch) => { setData(patch.data); await updateImplementation(impl.id, patch); }}
+            onUnlink={() => updateImplementation(impl.id, { linked_tenant_id: null })}
+          />
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-4">
           <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible">
