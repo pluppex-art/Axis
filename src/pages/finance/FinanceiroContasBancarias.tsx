@@ -4,11 +4,13 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
-import { Plus, Star, Pencil, Trash2, Archive, ArchiveRestore, Landmark, Repeat } from "lucide-react";
+import { Plus, Star, Pencil, Trash2, Archive, ArchiveRestore, Landmark, Repeat, Wallet, BarChart3 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { StatCell, StatCellRow } from "./components/StatCell";
 import { saldoDaConta, transferenciasDaConta, type FinanceEntryLike } from "./lib/financeEngine";
 import { cn } from "../../lib/utils";
 
@@ -71,6 +73,13 @@ export default function FinanceiroContasBancarias() {
   const listaAtiva = contas.filter(c => !c.arquivada);
   const listaArquivada = contas.filter(c => c.arquivada);
   const listaExibida = aba === "ativas" ? listaAtiva : aba === "arquivadas" ? listaArquivada : contas;
+
+  const saldoTotalAtivas = useMemo(() => listaAtiva.reduce((s, c) => s + (saldoPorConta.get(c.id) ?? 0), 0), [listaAtiva, saldoPorConta]);
+  const contaPrincipal = useMemo(() => listaAtiva.find(c => c.is_principal) ?? null, [listaAtiva]);
+  const chartData = useMemo(
+    () => listaAtiva.map(c => ({ nome: c.nome, saldo: saldoPorConta.get(c.id) ?? 0 })).sort((a, b) => b.saldo - a.saldo),
+    [listaAtiva, saldoPorConta]
+  );
 
   const resetForm = () => {
     setNome(""); setTipo("CONTA_CORRENTE"); setSaldoInicial(""); setSinal("POSITIVO"); setEditingId(null);
@@ -145,6 +154,32 @@ export default function FinanceiroContasBancarias() {
       }
     >
       <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
+        <StatCellRow>
+          <StatCell label="Saldo Total (Contas Ativas)" value={formatCurrency(saldoTotalAtivas)} icon={Wallet} tone={saldoTotalAtivas < 0 ? "danger" : "neutral"} />
+          <StatCell label="Contas Ativas" value={listaAtiva.length} icon={Landmark} />
+          <StatCell label="Conta Principal" value={contaPrincipal ? contaPrincipal.nome : "—"} icon={Star} hint={contaPrincipal ? formatCurrency(saldoPorConta.get(contaPrincipal.id) ?? 0) : undefined} />
+        </StatCellRow>
+
+        {chartData.length > 1 && (
+          <Card className="p-6">
+            <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-[var(--color-text-faint)]" /> Saldo por Conta
+            </h3>
+            <div className="w-full" style={{ height: Math.max(120, chartData.length * 36) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="nome" type="category" stroke="var(--color-text-muted)" fontSize={11} width={110} tickLine={false} axisLine={false} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                  <Bar dataKey="saldo" radius={[0, 4, 4, 0]}>
+                    {chartData.map((entry, index) => <Cell key={index} fill={entry.saldo < 0 ? "var(--color-danger)" : "var(--color-primary-blue)"} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        )}
+
         <div className="flex items-center gap-1 bg-[var(--color-surface-sunken)] p-1 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)] w-fit">
           {([
             { id: "ativas", label: `Ativas (${listaAtiva.length})` },

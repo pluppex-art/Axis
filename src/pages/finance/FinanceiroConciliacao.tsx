@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { PageContainer } from "../../components/PageContainer";
 import { Button } from "../../components/ui/button";
 import {
@@ -6,6 +6,7 @@ import {
   Building2, ArrowRight, ShieldCheck, Sparkles, Check, X,
   ArrowDownLeft, ArrowUpRight
 } from "lucide-react";
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 import { Card } from "../../components/ui/card";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
@@ -136,6 +137,13 @@ export default function FinanceiroConciliacao() {
 
   const conciliados = extrato.filter(e => e.conciliado).length;
   const pendentes = extrato.filter(e => !e.conciliado).length;
+  const statusChartData = useMemo(
+    () => [
+      { name: "Conciliados", value: conciliados, fill: "#10b981" },
+      { name: "Pendentes", value: pendentes, fill: "#f59e0b" },
+    ].filter(d => d.value > 0),
+    [conciliados, pendentes]
+  );
 
   // Concilia comparando cada lançamento do extrato com os lançamentos
   // financeiros reais (mesmo valor, tolerância de 1 centavo, ainda não usado
@@ -252,7 +260,7 @@ export default function FinanceiroConciliacao() {
         <Button
           onClick={handleConciliarAuto}
           disabled={isProcessing || pendentes === 0}
-          className="h-9 px-4 text-xs font-bold gap-1.5 shadow-xs bg-[var(--color-primary-blue)] text-white hover:opacity-95"
+          className="h-9 px-4 text-xs font-bold gap-1.5 shadow-xs bg-[var(--color-primary-blue)] !text-white hover:opacity-95"
         >
           <Sparkles className="w-3.5 h-3.5" /> {isProcessing ? "Processando..." : "Conciliar Automaticamente (IA)"}
         </Button>
@@ -293,6 +301,23 @@ export default function FinanceiroConciliacao() {
           <p className="text-[10px] text-[var(--color-text-muted)] mt-1">Via upload de extrato CSV/OFX</p>
         </Card>
       </div>
+
+      {statusChartData.length > 0 && (
+        <Card className="p-4 bg-[var(--color-surface)] border border-[var(--color-border-default)] shadow-xs mb-6">
+          <h3 className="text-xs font-bold text-[var(--color-text-primary)] mb-2">Conciliados x Pendentes</h3>
+          <div className="h-40 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={statusChartData} dataKey="value" nameKey="name" innerRadius={35} outerRadius={60} paddingAngle={2}>
+                  {statusChartData.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
+                </Pie>
+                <Tooltip contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                <Legend wrapperStyle={{ fontSize: "11px" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
 
       {/* Upload Zone */}
       <div className="p-8 border-2 border-dashed border-[var(--color-border-default)] rounded-2xl bg-[var(--color-surface)] text-center mb-6 hover:border-[var(--color-primary-blue)] transition-colors">
@@ -372,7 +397,7 @@ export default function FinanceiroConciliacao() {
                     ) : (
                       <button
                         onClick={() => handleManualMatch(item.id)}
-                        className="px-2.5 py-1 rounded-lg bg-[var(--color-primary-blue)] hover:opacity-90 text-white text-[11px] font-bold transition-all inline-flex items-center gap-1"
+                        className="px-2.5 py-1 rounded-lg bg-[var(--color-primary-blue)] hover:opacity-90 !text-white text-[11px] font-bold transition-all inline-flex items-center gap-1"
                       >
                         Aprovar Match
                       </button>

@@ -4,10 +4,11 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
-import { Plus, ArrowRight, Trash2, CheckCircle2, Clock, Repeat } from "lucide-react";
+import { Plus, ArrowRight, Trash2, CheckCircle2, Clock, Repeat, Layers } from "lucide-react";
 import { useData } from "../../contexts/DataContext";
 import { useLocalization } from "../../contexts/LocalizationContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
+import { StatCell, StatCellRow } from "./components/StatCell";
 import { cn } from "../../lib/utils";
 
 export default function FinanceiroTransferencias() {
@@ -78,6 +79,15 @@ export default function FinanceiroTransferencias() {
 
   const ordenadas = [...(financeTransfers as any[])].sort((a, b) => (b.data_pagamento || "").localeCompare(a.data_pagamento || ""));
 
+  const kpis = useMemo(() => {
+    const now = new Date();
+    const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const transfers = financeTransfers as any[];
+    const totalMes = transfers.filter(t => t.pago && (t.data_pagamento || "").startsWith(mesAtual)).reduce((s, t) => s + t.valor, 0);
+    const pendentes = transfers.filter(t => !t.pago);
+    return { totalMes, totalPendente: pendentes.reduce((s, t) => s + t.valor, 0), countPendentes: pendentes.length, count: transfers.length };
+  }, [financeTransfers]);
+
   return (
     <PageContainer
       title="Transferências entre Contas"
@@ -90,6 +100,14 @@ export default function FinanceiroTransferencias() {
       }
     >
       <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
+        {ordenadas.length > 0 && (
+          <StatCellRow>
+            <StatCell label="Transferido no Mês" value={formatCurrency(kpis.totalMes)} icon={Repeat} hint="Já concluídas" />
+            <StatCell label="Pendentes" value={formatCurrency(kpis.totalPendente)} icon={Clock} tone={kpis.countPendentes > 0 ? "warning" : "neutral"} hint={`${kpis.countPendentes} transferência(s)`} />
+            <StatCell label="Total de Transferências" value={kpis.count} icon={Layers} />
+          </StatCellRow>
+        )}
+
         {ordenadas.length === 0 ? (
           <Card className="p-12 text-center">
             <Repeat className="w-8 h-8 text-[var(--color-text-faint)] mx-auto mb-3" />
