@@ -85,7 +85,6 @@ export function LeadCard({
   const timeIdleNum = Number(item.timeIdle) || 0;
 
   const linkedProducts = (products as any[]).filter(p => (item.productIds || []).includes(p.id));
-  const primaryProduct = linkedProducts[0] ?? null;
   // Produtos de Interesse: tag leve marcada na aba Produtos do lead (ver
   // ProductsSection.tsx), guardada à parte em customFields.produtosInteresseIds
   // — NUNCA em productIds (esse fica só pra produtos de uma venda real). Fonte
@@ -147,6 +146,19 @@ export function LeadCard({
       : estimateFromInterest > 0
         ? `~${formatCurrency(estimateFromInterest)}`
         : 'R$ 0';
+
+  // Tags de produto do card: seguem o estado ATUAL do lead — sem proposta = os produtos de
+  // interesse marcados (mudam ao marcar/desmarcar); com proposta = os produtos dos itens dela;
+  // só cai em `productIds` (legado) quando não há nem uma coisa nem outra.
+  const leadProposalIds = new Set((proposals as any[] || []).filter(p => p.lead_id === item.id).map(p => p.id));
+  const proposalProductIds = [...new Set(
+    (proposalItems as any[] || []).filter(pi => leadProposalIds.has(pi.proposal_id) && pi.product_id).map(pi => pi.product_id as string)
+  )];
+  const productTags: any[] = interestValue !== null
+    ? produtosInteresseIds.map(id => (products as any[]).find(p => p.id === id)).filter(Boolean)
+    : proposalProductIds.length > 0
+      ? proposalProductIds.map(id => (products as any[]).find(p => p.id === id)).filter(Boolean)
+      : linkedProducts.slice(0, 1);
 
   const leadSquad = (squads as any[]).find(s =>
     (s.membros || []).some((m: string) => m === item.seller || m === item.sellerId)
@@ -331,7 +343,7 @@ export function LeadCard({
         </div>
 
         {/* Tags + squad + product */}
-        {(tags.length > 0 || leadSquad || primaryProduct || clientName) && (
+        {(tags.length > 0 || leadSquad || productTags.length > 0 || clientName) && (
           <div className="flex flex-wrap gap-1">
             {clientName && (
               <span className="inline-flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-600 dark:text-cyan-400 uppercase tracking-wide">
@@ -355,10 +367,15 @@ export function LeadCard({
                 {tag}
               </span>
             ))}
-            {primaryProduct && (
-              <span className="inline-flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 uppercase tracking-wide">
+            {productTags.slice(0, 2).map((prod: any) => (
+              <span key={prod.id} className="inline-flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 uppercase tracking-wide">
                 <Package className="w-2.5 h-2.5 shrink-0" />
-                {primaryProduct.name}
+                {prod.name}
+              </span>
+            ))}
+            {productTags.length > 2 && (
+              <span className="text-[8px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400">
+                +{productTags.length - 2}
               </span>
             )}
           </div>
