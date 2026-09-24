@@ -1,3 +1,4 @@
+import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
 import {
@@ -483,12 +484,11 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">{title}</h1>
-          <p className="text-sm text-[var(--color-text-muted)]">{desc}</p>
-        </div>
+    <PageContainer
+      title={title}
+      description={desc}
+      breadcrumb={[{ label: "Financeiro", path: "/app/financeiro/dashboard" }, { label: title }]}
+      actions={
         <div className="flex items-center gap-2">
           <Button
             onClick={() => { setNewContaBancariaId(contaPrincipalId); setIsModalOpen(true); }}
@@ -504,8 +504,9 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
             <Download className="w-3.5 h-3.5" /> Exportar
           </Button>
         </div>
-      </div>
-
+      }
+    >
+      <div className="space-y-6">
       {kpis.kind === "pipeline" ? (
         <>
           <StatCellRow>
@@ -1400,6 +1401,7 @@ export default function GenericFinanceiroList({ title, desc, type, statusFilter,
         categoriasDoTipo={categoriasDoTipo}
         onConfirm={handleConfirmRateio}
       />
-    </div>
+      </div>
+    </PageContainer>
   );
 }

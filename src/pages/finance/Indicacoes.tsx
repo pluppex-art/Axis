@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
@@ -9,7 +10,7 @@ import { useLocalization } from "../../contexts/LocalizationContext";
 import { downloadCsv } from "../../lib/csvExport";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid } from "recharts";
 import {
-  Plus, X, Trash2, Download, Handshake, CheckCircle2, Clock, XCircle, DollarSign,
+  Plus, X, Trash2, Download, CheckCircle2, Clock, XCircle, DollarSign,
   UserPlus, Share2, Copy, ExternalLink, QrCode, Send, MessageCircle, Link, Check, Users, BarChart3
 } from "lucide-react";
 
@@ -311,17 +312,11 @@ export default function Indicacoes() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header Principal com os Dois Novos Botões em Destaque */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)] flex items-center gap-2">
-            <Handshake className="w-5 h-5 text-[var(--color-primary-blue)]" /> Programa de Indicações & Afiliados
-          </h1>
-          <p className="text-sm text-[var(--color-text-muted)]">
-            Cadastre afiliados, gere links rastreáveis com formulário para Instagram/WhatsApp e controle comissões.
-          </p>
-        </div>
+    <PageContainer
+      title="Indicações & Parcerias"
+      description="Cadastre afiliados, gere links rastreáveis com formulário para Instagram/WhatsApp e controle comissões."
+      breadcrumb={[{ label: "Financeiro", path: "/app/financeiro/dashboard" }, { label: "Indicações & Parcerias" }]}
+      actions={
         <div className="flex items-center gap-2 flex-wrap">
           {/* Botão 1 Solicitado: Cadastrar Afiliado */}
           <Button
@@ -346,8 +341,9 @@ export default function Indicacoes() {
             <Download className="w-3.5 h-3.5" /> Exportar
           </Button>
         </div>
-      </div>
-
+      }
+    >
+      <div className="space-y-6">
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-4 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] shadow-sm">
@@ -805,6 +801,7 @@ export default function Indicacoes() {
           </div>
         </form>
       </Modal>
-    </div>
+      </div>
+    </PageContainer>
   );
 }
