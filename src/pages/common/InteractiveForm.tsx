@@ -28,7 +28,7 @@ const niches: Record<string, any> = {
     title: "Venda Mais no Seu Varejo",
     subtitle: "Estoque, PDV e vendas no mesmo lugar, com clientes que voltam.",
     icon: ShoppingBag,
-    color: "amber",
+    color: "yellow",
     bgGradient: "from-amber-900 to-slate-900",
     questions: [
       { id: 'q1', type: 'choice', title: "Qual é o formato da sua operação?", options: ["Loja física", "E-commerce", "Loja física + online", "Atacado / distribuição"] },
