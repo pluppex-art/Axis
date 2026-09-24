@@ -61,3 +61,14 @@ export function handleMarkLead(params: {
   ]);
 }
 
+
+/** Estimativa a partir dos produtos de interesse: só vale enquanto o lead não tem valor real
+ * (lead.value zerado) nem proposta — depois disso o valor da proposta manda. */
+export function leadInterestEstimate(lead: any, proposals: any[], products: any[]): number {
+  if (!lead) return 0;
+  const raw = Number(String(lead.value ?? "0").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
+  if (raw > 0) return 0;
+  if ((proposals || []).some((p: any) => p.lead_id === lead.id)) return 0;
+  const ids: string[] = Array.isArray(lead.customFields?.produtosInteresseIds) ? lead.customFields.produtosInteresseIds : [];
+  return ids.reduce((sum, id) => sum + (Number((products || []).find((p: any) => p.id === id)?.price) || 0), 0);
+}

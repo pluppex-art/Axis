@@ -12,6 +12,7 @@ import { parseCurrencyBR } from "../../../lib/utils";
 import { getMRR } from "../../../lib/revenueMetrics";
 import { toast } from "sonner";
 import { ProfileDataForm } from "./ProfileDataForm";
+import { leadInterestEstimate } from "./LeadDetailsModal.helpers";
 
 interface ProfileSectionProps {
   lead: any;
@@ -73,7 +74,7 @@ export function ProfileSection({
   setAlterationLogs, updateLead,
 }: ProfileSectionProps) {
   const [cnpjFetching, setCnpjFetching] = useState(false);
-  const { leads: allLeads, colaboradores, addLeadActivity: addActivityCtx, proposals, proposalItems, contracts } = useData();
+  const { products: catalogProducts, leads: allLeads, colaboradores, addLeadActivity: addActivityCtx, proposals, proposalItems, contracts } = useData();
   const { formatCurrency } = useLocalization();
 
   const sellerOptions = useMemo(() => {
@@ -91,10 +92,10 @@ export function ProfileSection({
   // texto livre digitado aqui. `parseCurrencyBR` cobre os dois formatos que
   // `lead.value` pode ter historicamente: número puro (nosso cálculo) ou
   // string formatada "R$ X,XX" (leads criados pelo NewLeadModal).
-  const displayValue = useMemo(
-    () => formatCurrency(parseCurrencyBR(lead?.value)),
-    [lead?.value, formatCurrency]
-  );
+  const displayValue = useMemo(() => {
+    const estimate = leadInterestEstimate(lead, proposals as any[], catalogProducts as any[]);
+    return estimate > 0 ? `~${formatCurrency(estimate)}` : formatCurrency(parseCurrencyBR(lead?.value));
+  }, [lead, proposals, catalogProducts, formatCurrency]);
 
   // Valor do Produto: referência de catálogo (preço cheio, sem desconto) dos
   // itens de uma proposta REAL deste lead — um número DIFERENTE do valor da

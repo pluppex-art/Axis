@@ -9,7 +9,7 @@ import { Phone, Activity, TrendingUp, AlertTriangle, CalendarClock } from "lucid
 import { LeadDetailsModalTabs } from "./lead-details/LeadDetailsModal.constants";
 import { ReservasSection } from "./lead-details/ReservasSection";
 import { LeadDetailsTempCfg } from "./lead-details/LeadDetailsModal.constants";
-import { formatLeadValueBRL, safeParseTimeIdle, safeParseProbability } from "./lead-details/LeadDetailsModal.helpers";
+import { formatLeadValueBRL, leadInterestEstimate, safeParseTimeIdle, safeParseProbability } from "./lead-details/LeadDetailsModal.helpers";
 import { LeadDetailsModalFooter } from "./lead-details/LeadDetailsModal.Footer";
 import { LeadDetailsModalHero } from "./lead-details/LeadDetailsModalHero";
 
@@ -33,7 +33,7 @@ interface LeadDetailsModalProps {
 }
 
 export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProps) {
-  const { updateLead, leadActivities } = useData();
+  const { updateLead, leadActivities, proposals, products } = useData();
   const { formatCurrency } = useLocalization();
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState("informacoes");
@@ -134,7 +134,10 @@ export function LeadDetailsModal({ isOpen, onClose, lead }: LeadDetailsModalProp
   // produtos vinculados em vez de lead.value — ignorava quantidade/desconto/valor realmente
   // fechado (mesmo bug corrigido no "Total de Ganhos" do Pipeline, ver usePipeline.ts).
   // lead.value já é a fonte de verdade, sincronizada com a proposta aceita.
-  const formattedValue = formatLeadValueBRL(lead?.value ?? value, formatCurrency);
+  const interestEstimate = leadInterestEstimate(lead, proposals as any[], products as any[]);
+  const formattedValue = interestEstimate > 0
+    ? `~${formatCurrency(interestEstimate)}`
+    : formatLeadValueBRL(lead?.value ?? value, formatCurrency);
   const initials = ((companyName || leadName || "LD").substring(0, 2)).toUpperCase();
 
   const moveToStage = (stg: any) => {
