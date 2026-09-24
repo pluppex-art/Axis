@@ -67,7 +67,16 @@ export function ProductsSection({
     const next = interesseIds.includes(productId)
       ? interesseIds.filter((id) => id !== productId)
       : [...interesseIds, productId];
-    updateLead(leadId, { customFields: { ...(currentLead?.customFields || {}), produtosInteresseIds: next } });
+    // Enquanto não há proposta, o valor do lead (card do Kanban, cabeçalho, aba Info) é a soma
+    // dos preços dos produtos de interesse. Com proposta, o valor real dela manda (recalculado
+    // por createProposalWithItems/updateProposal), então aqui não mexe.
+    const hasProposal = (proposals || []).some((p: any) => p.lead_id === leadId);
+    const interestValue = next.reduce(
+      (sum, id) => sum + (Number(availableProducts.find((p) => p.id === id)?.price) || 0), 0);
+    updateLead(leadId, {
+      customFields: { ...(currentLead?.customFields || {}), produtosInteresseIds: next },
+      ...(hasProposal ? {} : { value: interestValue }),
+    });
   };
   const produtosInteresse = interesseIds
     .map((id) => availableProducts.find((p) => p.id === id))
