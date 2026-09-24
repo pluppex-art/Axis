@@ -2332,6 +2332,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return proposalId;
   };
 
+  // Acrescenta itens a uma proposta JÁ existente (botão de lápis na aba Produtos do
+  // lead) em vez de criar uma segunda proposta pro mesmo cliente. Soma `addedValor` ao
+  // valor da proposta e deixa updateProposal recalcular o valor do lead (soma de todas
+  // as propostas dele).
+  const addItemsToProposal = async (
+    proposalId: string,
+    itens: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null; frequency?: string | null }>,
+    addedValor: number,
+  ) => {
+    const prop = proposalsRef.current.find((p: any) => p.id === proposalId);
+    if (!prop) throw new Error('Proposta não encontrada.');
+    for (const item of itens) {
+      await proposalItemCrud.add({
+        id: crypto.randomUUID(),
+        proposal_id: proposalId,
+        product_id: item.productId || null,
+        product_name: item.descricao,
+        quantidade: item.quantidade,
+        preco_unitario: item.precoUnitario,
+        billing_type: item.billingType || 'recurring',
+        contract_months: item.contractMonths ?? null,
+        frequency: item.frequency ?? null,
+      });
+    }
+    await updateProposal(proposalId, { valor: (Number(prop.valor) || 0) + addedValor });
+  };
+
   // Excluir uma proposta precisa limpar TUDO que só existe por causa dela —
   // senão fica resíduo: valor "preso" no lead (achado real: lead do Murilo/
   // Geplan Contabilidade mostrando R$22.729 sem nenhuma proposta restante),
@@ -3021,6 +3048,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       deleteProposal,
       proposalItems,
       createProposalWithItems,
+      addItemsToProposal,
       syncAcceptedProposal,
       certificates,
       setCertificates,

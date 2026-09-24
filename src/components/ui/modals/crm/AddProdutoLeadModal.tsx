@@ -4,6 +4,7 @@ import {
   Receipt, Percent, DollarSign, Layers, TrendingUp, TrendingDown,
   CreditCard, Banknote, QrCode, FileText, Calendar, ArrowRightLeft,
   Repeat, CalendarClock, Info, Plus, Trash2, ShoppingCart,
+  Check, Package, Pencil, Lock,
 } from "lucide-react";
 import { Modal } from "../../modal";
 import { Button } from "../../button";
@@ -52,6 +53,9 @@ interface AddProdutoLeadModalProps {
   seller?: string;
   /** Pré-seleciona o produto ao abrir (clique num item da lista na aba Produtos). */
   initialProductId?: string;
+  /** Modo "editar proposta": os produtos escolhidos entram como itens DESTA proposta já
+   * existente (nunca cria uma segunda proposta pro mesmo lead). */
+  existingProposal?: { id: string; titulo?: string; status?: string } | null;
   /** Chamado depois que a venda é fechada com sucesso, pra quem chamou registrar no
    * histórico de alterações do lead (setAlterationLogs) sem esse modal precisar saber
    * desse detalhe. */
@@ -79,6 +83,48 @@ const inputClass =
 const sectionClass = "bg-[var(--color-surface-sunken)] p-3.5 rounded-xl border border-[var(--color-border-subtle)] space-y-3";
 const sectionTitleClass = "text-[10px] font-black uppercase tracking-widest text-[var(--color-text-muted)] flex items-center gap-1.5";
 
+/** Cartão de uma etapa do fluxo em sequência. Etapa futura = bloqueada (só o título);
+ * etapa concluída = resumo de uma linha clicável pra reabrir; etapa atual = conteúdo. */
+function StepShell({
+  n, title, icon: Icon, current, step, summary, onOpen, children,
+}: {
+  n: number; title: string; icon: any; current: number; step: number;
+  summary?: string; onOpen: () => void; children: React.ReactNode;
+}) {
+  const isActive = step === n;
+  const isDone = step > n;
+  const isLocked = step < n;
+  return (
+    <div className={cn(
+      "rounded-2xl border transition-all",
+      isActive ? "border-[var(--color-primary-blue)]/40 bg-[var(--color-surface-elevated)] shadow-sm" : "border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)]",
+      isLocked && "opacity-50",
+    )}>
+      <button
+        type="button"
+        disabled={isLocked || isActive}
+        onClick={onOpen}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left disabled:cursor-default"
+      >
+        <span className={cn(
+          "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0",
+          isDone ? "bg-emerald-500 !text-white" : isActive ? "bg-[var(--color-primary-blue)] !text-white" : "bg-[var(--color-border-default)] text-[var(--color-text-muted)]",
+        )}>
+          {isDone ? <Check className="w-3.5 h-3.5" /> : isLocked ? <Lock className="w-3 h-3" /> : n}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-[var(--color-text-primary)]">
+            <Icon className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> {title}
+          </span>
+          {isDone && summary && <span className="block text-[11px] text-[var(--color-text-muted)] truncate mt-0.5">{summary}</span>}
+        </span>
+        {isDone && <span className="text-[10px] font-bold text-[var(--color-primary-blue)] flex items-center gap-1 shrink-0"><Pencil className="w-3 h-3" /> Editar</span>}
+      </button>
+      {isActive && <div className="px-4 pb-4 space-y-3">{children}</div>}
+    </div>
+  );
+}
+
 /**
  * Substitui o antigo "Mini PDV" embutido inline no Lead Detalhes — mesmos campos de lá
  * (recorrência/vigência, implantação, desconto, composição comercial, forma de pagamento,
@@ -102,9 +148,10 @@ export function AddProdutoLeadModal({
   companyName,
   seller,
   initialProductId,
+  existingProposal,
   onDone,
 }: AddProdutoLeadModalProps) {
-  const { createProposalWithItems, addFinanceEntry, updateLead, addNotification, leads, resolveFinanceCategoryId } = useData();
+  const { createProposalWithItems, addItemsToProposal, addFinanceEntry, updateLead, addNotification, leads, resolveFinanceCategoryId } = useData();
   const { formatCurrency } = useLocalization();
 
   const [productId, setProductId] = useState("");
@@ -147,9 +194,15 @@ export function AddProdutoLeadModal({
   // "Concluir Venda" processa todos de uma vez numa única proposta com N itens.
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
+  // Fluxo em sequência: 1 Produto → 2 Cobrança → 3 Implantação & Desconto → 4 Pagamento.
+  // Cada etapa só aparece depois de "Continuar" na anterior; as já concluídas viram um
+  // resumo de uma linha (clicável pra reabrir).
+  const [step, setStep] = useState(1);
+
   useEffect(() => {
     if (!isOpen) return;
     setCartItems([]);
+    setStep(initialProductId ? 2 : 1);
     setProductId(initialProductId || "");
     setQuantity(1);
     setBillingTypeOverride(null);
@@ -251,6 +304,7 @@ export function AddProdutoLeadModal({
 
     // Reresta só a configuração DESTE produto — forma de pagamento, parcelas e 1º
     // vencimento continuam valendo pro próximo item (é a mesma venda/lead).
+    setStep(1);
     setProductId("");
     setQuantity(1);
     setBillingTypeOverride(null);
@@ -338,18 +392,25 @@ export function AddProdutoLeadModal({
 
       const totalValor = allItems.reduce((sum, ci) => sum + ci.sale.totalProjectedAmount, 0);
 
-      const proposalId = await createProposalWithItems({
-        titulo: `Proposta Comercial — ${clientName}`,
-        cliente: clientName,
-        valor: totalValor,
-        validade: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-        status: "Enviada",
-        vendedor: seller || "Consultor S.P.Y.",
-        leadId: leadId || null,
-        tipo: "itens",
-        conteudoTexto: null,
-        itens: items,
-      });
+      let proposalId: string;
+      if (existingProposal?.id) {
+        // Modo "editar proposta": acrescenta os itens na proposta que já existe.
+        await addItemsToProposal(existingProposal.id, items, totalValor);
+        proposalId = existingProposal.id;
+      } else {
+        proposalId = await createProposalWithItems({
+          titulo: `Proposta Comercial — ${clientName}`,
+          cliente: clientName,
+          valor: totalValor,
+          validade: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+          status: "Enviada",
+          vendedor: seller || "Consultor S.P.Y.",
+          leadId: leadId || null,
+          tipo: "itens",
+          conteudoTexto: null,
+          itens: items,
+        });
+      }
 
       const isInstantPayment = formaPagamento === "Dinheiro" || formaPagamento === "Pix" || formaPagamento === "Cartão de Débito";
 
@@ -423,6 +484,7 @@ export function AddProdutoLeadModal({
           scoreIA: 100,
           temperature: "quente",
           customFields: {
+            ...(existingProposal?.id ? (currentLead?.customFields || {}) : {}),
             tags: ["Venda", formaPagamento, `${allItems.length} produto${allItems.length > 1 ? "s" : ""}`],
             billingType: anyRecurring ? "recurring" : "one_time",
             totalProjectedAmount: totalValor,
@@ -441,16 +503,16 @@ export function AddProdutoLeadModal({
           : `${formatCurrency(allItems[0].sale.firstChargeAmount)}${allItems[0].sale.numberOfCycles > 1 ? ` (1ª de ${allItems[0].sale.numberOfCycles}x)` : ""} via ${formaPagamento}`);
 
       addNotification({
-        title: `🎉 Venda Concluída: ${clientName}`,
+        title: `🎉 ${existingProposal?.id ? "Proposta Atualizada" : "Venda Concluída"}: ${clientName}`,
         description: `${productNames} — ${resumoMsg}`,
         type: "success",
         link_url: "/app/crm/propostas",
       });
 
       toast.success("⚡ Venda concluída e automatizada!", {
-        description: `Proposta criada com ${allItems.length} item${allItems.length > 1 ? "s" : ""}, financeiro lançado e lead atualizado.`,
+        description: `${existingProposal?.id ? "Proposta atualizada com" : "Proposta criada com"} ${allItems.length} item${allItems.length > 1 ? "s" : ""}, financeiro lançado e lead atualizado.`,
       });
-      onDone?.(`⚡ ${productNames} — ${resumoMsg}: proposta gerada, financeiro lançado e lead atualizado.`);
+      onDone?.(`⚡ ${productNames} — ${resumoMsg}: ${existingProposal?.id ? "adicionado à proposta existente" : "proposta gerada"}, financeiro lançado e lead atualizado.`);
       onClose();
     } catch (err: any) {
       toast.error("Erro ao processar a venda: " + err?.message);
@@ -459,15 +521,57 @@ export function AddProdutoLeadModal({
     }
   };
 
+  const nextBtn = (label: string, onClick: () => void, disabled = false) => (
+    <div className="flex justify-end pt-1">
+      <Button type="button" onClick={onClick} disabled={disabled} className="h-9 px-4 text-xs font-bold gap-1.5">
+        {label} <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
+      </Button>
+    </div>
+  );
+
+  const billingLabel = isRecurring
+    ? `Recorrente · ${freqLabel.toLowerCase()} · ${sale.isOpenEnded ? "sem prazo" : `${durationMonths}m`} · ${formatCurrency(sale.cycleAmount)}/ciclo`
+    : `Cobrança única · ${installments === 1 ? "à vista" : `${installments}x`} · ${formatCurrency(sale.totalProjectedAmount)}`;
+  const extrasLabel = [
+    showImplToggle && implFee > 0 ? `Implantação ${formatCurrency(implFee)}` : "Sem implantação",
+    discountType !== "none" ? "com desconto" : "sem desconto",
+  ].join(" · ");
+  const paymentLabel = `${formaPagamento} · ${firstDueDate.toLocaleDateString("pt-BR")}`;
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Adicionar Produtos" maxWidth="max-w-2xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={existingProposal?.id ? "Editar Proposta — Adicionar Produtos" : "Adicionar Produtos"}
+      maxWidth="max-w-2xl"
+    >
       <div className="space-y-4 max-h-[75vh] overflow-y-auto scrollbar-thin pr-1">
+        {/* ── CONTEXTO: cliente + proposta de destino ── */}
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)] px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-text-faint)]">Cliente</p>
+            <p className="text-sm font-bold text-[var(--color-text-primary)] truncate">{companyName || leadName || "Cliente"}</p>
+          </div>
+          <div className="text-right min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-text-faint)]">Destino</p>
+            <p className="text-xs font-bold text-[var(--color-primary-blue)] truncate">
+              {existingProposal?.id ? `Proposta existente${existingProposal.status ? ` (${existingProposal.status})` : ""}` : "Nova proposta"}
+            </p>
+          </div>
+        </div>
+        {existingProposal?.id && (
+          <p className="text-[11px] text-[var(--color-text-muted)] flex items-start gap-1.5 -mt-2">
+            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            Os produtos escolhidos serão adicionados à proposta já enviada — nenhuma proposta nova é criada.
+          </p>
+        )}
+
         {/* ── CARRINHO DESTA PROPOSTA (produtos já adicionados) ── */}
         {cartItems.length > 0 && (
           <div className="bg-emerald-500/5 border border-emerald-500/25 rounded-xl p-3 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                <ShoppingCart className="w-3.5 h-3.5" /> Itens desta Proposta ({cartItems.length})
+                <ShoppingCart className="w-3.5 h-3.5" /> Produtos já adicionados ({cartItems.length})
               </span>
               <span className="text-[11px] font-mono font-black text-emerald-600 dark:text-emerald-400">
                 {formatCurrency(cartTotal)}
@@ -498,26 +602,30 @@ export function AddProdutoLeadModal({
           </div>
         )}
 
-        {/* ── 1. PRODUTO ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="sm:col-span-2">
-            <label className={labelClass}>Produto *</label>
-            <select value={productId} onChange={(e) => setProductId(e.target.value)} className={inputClass}>
-              <option value="">Selecione um produto...</option>
-              {availableProducts.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} — {formatCurrency(Number(p.price) || 0)}</option>
-              ))}
-            </select>
+        {/* ── ETAPA 1: PRODUTO ── */}
+        <StepShell n={1} title="Produto" icon={Package} current={step} step={step}
+          summary={product ? `${product.name} · ${quantity}x · ${formatCurrency(unitPrice)}` : undefined}
+          onOpen={() => setStep(1)}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className={labelClass}>Produto *</label>
+              <select value={productId} onChange={(e) => setProductId(e.target.value)} className={inputClass}>
+                <option value="">Selecione um produto...</option>
+                {availableProducts.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} — {formatCurrency(Number(p.price) || 0)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Quantidade</label>
+              <input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))} className={inputClass} />
+            </div>
           </div>
-          <div>
-            <label className={labelClass}>Quantidade</label>
-            <input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))} className={inputClass} />
-          </div>
-        </div>
+          {nextBtn("Continuar", () => setStep(2), !product)}
+        </StepShell>
 
-        {product && (
-          <>
-            {/* ── 2. COBRANÇA ── */}
+        {/* ── ETAPA 2: COBRANÇA ── */}
+        <StepShell n={2} title="Cobrança" icon={Repeat} current={step} step={step} summary={billingLabel} onOpen={() => setStep(2)}>
             <div>
               <label className={labelClass}>Tipo de cobrança</label>
               <div className="grid grid-cols-2 gap-2">
@@ -637,6 +745,11 @@ export function AddProdutoLeadModal({
               </div>
             )}
 
+          {nextBtn("Continuar", () => setStep(3))}
+        </StepShell>
+
+        {/* ── ETAPA 3: IMPLANTAÇÃO & DESCONTO ── */}
+        <StepShell n={3} title="Implantação & Desconto" icon={Wrench} current={step} step={step} summary={extrasLabel} onOpen={() => setStep(3)}>
             {/* ── 4. IMPLANTAÇÃO E DESCONTO ── */}
             <div className={sectionClass}>
               <span className={sectionTitleClass}><Wrench className="w-3.5 h-3.5 text-amber-500" /> Implantação & Desconto</span>
@@ -693,35 +806,11 @@ export function AddProdutoLeadModal({
               )}
             </div>
 
-            {/* ── COMPOSIÇÃO COMERCIAL & FINANCEIRA (visão do vendedor — custo/comissão/margem) ── */}
-            <div className={sectionClass}>
-              <div className="flex items-center justify-between">
-                <span className={sectionTitleClass}><Receipt className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Composição Comercial & Financeira</span>
-                <div className="flex items-center gap-2.5">
-                  <span className="flex items-center gap-1 text-emerald-600 font-mono font-bold text-[10px]"><Percent className="w-3 h-3" /> Margem: {marginPercent}%</span>
-                  <button type="button" onClick={() => setIsFinancialBreakdownOpen((v) => !v)} className="text-[var(--color-text-primary)]">
-                    {isFinancialBreakdownOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-              {isFinancialBreakdownOpen && (
-                <div className="grid grid-cols-3 gap-2 text-xs font-mono pt-1 animate-in fade-in">
-                  <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-[var(--color-border-subtle)] space-y-0.5">
-                    <span className="text-[9px] text-[var(--color-text-faint)] flex items-center gap-1 uppercase"><TrendingDown className="w-2.5 h-2.5" /> Custos</span>
-                    <span className="text-rose-500 font-bold text-[11px] block">{formatCurrency(totalCost)}</span>
-                  </div>
-                  <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-[var(--color-border-subtle)] space-y-0.5">
-                    <span className="text-[9px] text-[var(--color-text-faint)] flex items-center gap-1 uppercase"><Percent className="w-2.5 h-2.5" /> Comissão</span>
-                    <span className="text-amber-600 font-bold text-[11px] block">{formatCurrency(totalCommission)}</span>
-                  </div>
-                  <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-[var(--color-border-subtle)] space-y-0.5">
-                    <span className="text-[9px] text-[var(--color-text-faint)] flex items-center gap-1 uppercase"><TrendingUp className="w-2.5 h-2.5" /> Lucro</span>
-                    <span className="text-emerald-600 font-bold text-[11px] block">{formatCurrency(netProfit)}</span>
-                  </div>
-                </div>
-              )}
-            </div>
+          {nextBtn("Continuar", () => setStep(4))}
+        </StepShell>
 
+        {/* ── ETAPA 4: PAGAMENTO ── */}
+        <StepShell n={4} title="Pagamento & Resumo" icon={CreditCard} current={step} step={step} summary={paymentLabel} onOpen={() => setStep(4)}>
             {/* ── 5. PAGAMENTO ── */}
             <div className={sectionClass}>
               <span className={sectionTitleClass}><CreditCard className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Pagamento</span>
@@ -787,6 +876,35 @@ export function AddProdutoLeadModal({
               </div>
             </div>
 
+            {/* ── COMPOSIÇÃO COMERCIAL & FINANCEIRA (visão do vendedor — custo/comissão/margem) ── */}
+            <div className={sectionClass}>
+              <div className="flex items-center justify-between">
+                <span className={sectionTitleClass}><Receipt className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Composição Comercial & Financeira</span>
+                <div className="flex items-center gap-2.5">
+                  <span className="flex items-center gap-1 text-emerald-600 font-mono font-bold text-[10px]"><Percent className="w-3 h-3" /> Margem: {marginPercent}%</span>
+                  <button type="button" onClick={() => setIsFinancialBreakdownOpen((v) => !v)} className="text-[var(--color-text-primary)]">
+                    {isFinancialBreakdownOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+              {isFinancialBreakdownOpen && (
+                <div className="grid grid-cols-3 gap-2 text-xs font-mono pt-1 animate-in fade-in">
+                  <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-[var(--color-border-subtle)] space-y-0.5">
+                    <span className="text-[9px] text-[var(--color-text-faint)] flex items-center gap-1 uppercase"><TrendingDown className="w-2.5 h-2.5" /> Custos</span>
+                    <span className="text-rose-500 font-bold text-[11px] block">{formatCurrency(totalCost)}</span>
+                  </div>
+                  <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-[var(--color-border-subtle)] space-y-0.5">
+                    <span className="text-[9px] text-[var(--color-text-faint)] flex items-center gap-1 uppercase"><Percent className="w-2.5 h-2.5" /> Comissão</span>
+                    <span className="text-amber-600 font-bold text-[11px] block">{formatCurrency(totalCommission)}</span>
+                  </div>
+                  <div className="bg-[var(--color-surface-elevated)] p-2 rounded-lg border border-[var(--color-border-subtle)] space-y-0.5">
+                    <span className="text-[9px] text-[var(--color-text-faint)] flex items-center gap-1 uppercase"><TrendingUp className="w-2.5 h-2.5" /> Lucro</span>
+                    <span className="text-emerald-600 font-bold text-[11px] block">{formatCurrency(netProfit)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* ── 6. RESUMO FINANCEIRO (contextual) ── */}
             <div className="bg-[var(--color-primary-blue)]/5 border border-[var(--color-primary-blue)]/20 rounded-xl p-3.5 space-y-2.5">
               <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-primary-blue)] flex items-center gap-1.5">
@@ -830,35 +948,36 @@ export function AddProdutoLeadModal({
               <label className={labelClass}>Observação</label>
               <input value={detalhesPagamento} onChange={(e) => setDetalhesPagamento(e.target.value)} placeholder="Ex: Cartão Visa final 4022" className={inputClass} />
             </div>
-          </>
-        )}
+        </StepShell>
 
-        {/* ── 8. AÇÕES ── */}
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border-subtle)] sticky bottom-0 bg-[var(--color-surface-elevated)]">
+        {/* ── AÇÕES ── */}
+        <div className="flex items-center justify-between gap-2 pt-3 border-t border-[var(--color-border-subtle)] sticky bottom-0 bg-[var(--color-surface-elevated)]">
           <Button type="button" variant="outline" onClick={onClose} className="h-9 px-4 text-xs font-bold">
             Cancelar
           </Button>
-          {product && (
+          <div className="flex items-center gap-2">
+            {product && step >= 4 && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAddToCart}
+                disabled={saving}
+                title="Guarda este produto e volta pra etapa 1 pra escolher o próximo"
+                className="h-9 px-4 text-xs font-bold gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" /> Adicionar outro produto
+              </Button>
+            )}
             <Button
               type="button"
-              variant="outline"
-              onClick={handleAddToCart}
-              disabled={saving}
-              title="Adiciona este produto à proposta e libera o formulário pro próximo"
-              className="h-9 px-4 text-xs font-bold gap-1.5"
+              onClick={handleSubmit}
+              disabled={(!product && cartItems.length === 0) || saving}
+              className="h-9 px-5 text-xs font-bold gap-1.5"
             >
-              <Plus className="w-3.5 h-3.5" /> Adicionar Produto
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+              {saving ? "Processando..." : (existingProposal?.id ? "Salvar na Proposta" : "Concluir Venda & Automatizar Tudo")}
             </Button>
-          )}
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={(!product && cartItems.length === 0) || saving}
-            className="h-9 px-5 text-xs font-bold gap-1.5"
-          >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-            {saving ? "Processando..." : "Concluir Venda & Automatizar Tudo"}
-          </Button>
+          </div>
         </div>
       </div>
     </Modal>

@@ -336,6 +336,7 @@ export interface DataContextType {
     linkPdf?: string | null;
     itens?: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null }>;
   }) => Promise<string>;
+  addItemsToProposal: (proposalId: string, itens: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null; frequency?: string | null }>, addedValor: number) => Promise<void>;
   /** Sincroniza contrato + fatura pra uma proposta aceita (chamada tanto no momento
    * do aceite quanto pela reconciliação global — ver DataContext.tsx). Retorna
    * `true` quando criou um contrato novo, `false` quando já existia (ou só

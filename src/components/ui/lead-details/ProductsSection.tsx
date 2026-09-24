@@ -3,7 +3,7 @@ import { Card } from "../card";
 import { Button } from "../button";
 import { Badge } from "../badge";
 import { EmptyState } from "../empty-state";
-import { FileText, Plus, Edit3, Check, Package, Search, Tag, X, Info } from "lucide-react";
+import { FileText, Plus, Pencil, Edit3, Check, Package, Search, Tag, X, Info } from "lucide-react";
 import { toast } from "sonner";
 import { useData } from "../../../contexts/DataContext";
 import { useLocalization } from "../../../contexts/LocalizationContext";
@@ -43,6 +43,8 @@ export function ProductsSection({
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [prefillProductId, setPrefillProductId] = useState<string | undefined>(undefined);
+  // true = o modal acrescenta itens na proposta existente (lápis ao lado do status).
+  const [editingExistingProposal, setEditingExistingProposal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isWordModalOpen, setIsWordModalOpen] = useState(false);
   const [currentProposalData, setCurrentProposalData] = useState<PropostaEditorData | null>(null);
@@ -78,8 +80,9 @@ export function ProductsSection({
     );
   }, [availableProducts, searchTerm]);
 
-  const openAddModal = (productId?: string) => {
+  const openAddModal = (productId?: string, toExistingProposal = false) => {
     setPrefillProductId(productId);
+    setEditingExistingProposal(toExistingProposal);
     setIsAddModalOpen(true);
   };
 
@@ -170,12 +173,22 @@ export function ProductsSection({
               <FileText className={cn("w-3.5 h-3.5", isProposalAccepted ? "text-emerald-400" : "text-blue-400")} />
               Proposta Comercial Vinculada
             </span>
-            <Badge
-              variant={PROPOSAL_STATUS_VARIANT[existingProposal.status] || "secondary"}
-              className="text-[10px] font-bold px-2 py-0.5"
-            >
-              {existingProposal.status || "—"}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <Badge
+                variant={PROPOSAL_STATUS_VARIANT[existingProposal.status] || "secondary"}
+                className="text-[10px] font-bold px-2 py-0.5"
+              >
+                {existingProposal.status || "—"}
+              </Badge>
+              <button
+                type="button"
+                onClick={() => openAddModal(undefined, true)}
+                title="Editar proposta: adicionar produtos a esta mesma proposta"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -366,6 +379,7 @@ export function ProductsSection({
         onClose={() => setIsAddModalOpen(false)}
         availableProducts={availableProducts}
         initialProductId={prefillProductId}
+        existingProposal={editingExistingProposal && existingProposal ? { id: existingProposal.id, titulo: existingProposal.titulo, status: existingProposal.status } : null}
         leadId={leadId}
         leadName={leadName}
         companyName={companyName}
