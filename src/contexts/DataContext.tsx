@@ -2359,6 +2359,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await updateProposal(proposalId, { valor: (Number(prop.valor) || 0) + addedValor });
   };
 
+  // Troca itens de uma proposta existente: apaga `removeIds`, insere `itens` e ajusta o
+  // valor da proposta por `valorDelta` (o valor pode carregar desconto que as linhas não têm).
+  const replaceProposalItems = async (
+    proposalId: string,
+    removeIds: string[],
+    itens: Array<{ productId?: string | null; descricao: string; quantidade: number; precoUnitario: number; billingType?: 'recurring' | 'one_time'; contractMonths?: number | null; frequency?: string | null }>,
+    valorDelta: number,
+  ) => {
+    const prop = proposalsRef.current.find((p: any) => p.id === proposalId);
+    if (!prop) throw new Error('Proposta não encontrada.');
+    for (const id of removeIds) await proposalItemCrud.del(id);
+    for (const item of itens) {
+      await proposalItemCrud.add({
+        id: crypto.randomUUID(),
+        proposal_id: proposalId,
+        product_id: item.productId || null,
+        product_name: item.descricao,
+        quantidade: item.quantidade,
+        preco_unitario: item.precoUnitario,
+        billing_type: item.billingType || 'recurring',
+        contract_months: item.contractMonths ?? null,
+        frequency: item.frequency ?? null,
+      });
+    }
+    if (valorDelta !== 0) await updateProposal(proposalId, { valor: Math.max(0, (Number(prop.valor) || 0) + valorDelta) });
+  };
+
   // Edita itens que JÁ estão numa proposta (quantidade/preço) e/ou remove itens, e
   // ajusta o valor da proposta pela diferença (não recalcula do zero: o valor da
   // proposta pode carregar desconto/implantação que não estão nas linhas). Lançamentos
@@ -3077,6 +3104,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       createProposalWithItems,
       addItemsToProposal,
       editProposalItems,
+      replaceProposalItems,
       syncAcceptedProposal,
       certificates,
       setCertificates,

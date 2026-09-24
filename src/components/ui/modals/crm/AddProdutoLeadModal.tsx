@@ -13,7 +13,7 @@ import { useLocalization } from "../../../../contexts/LocalizationContext";
 import { cn } from "../../../../lib/utils";
 import { toast } from "sonner";
 import {
-  calculateSale, FREQUENCY_LABELS,
+  calculateSale, FREQUENCY_LABELS, cycleMonthsFor, OPEN_ENDED_BATCH_CYCLES,
   type Frequencia, type BillingType, type DiscountType,
 } from "../../../../lib/saleCalculator";
 
@@ -76,8 +76,22 @@ interface CartItem {
   durationMonths: number | null;
   isOpenEnded: boolean;
   implFee: number;
+  unitPrice: number;
   sale: ReturnType<typeof calculateSale>;
+  /** Modo edição: ids dos proposal_items que este item substitui + lançamentos financeiros ligados a ele. */
+  replaceItemIds?: string[];
+  replaceEntryIds?: string[];
+  replacePaid?: boolean;
+  oldAmount?: number;
 }
+
+/** Um produto que já está na proposta (linha do produto + linha de implantação, se houver). */
+interface ExistingGroup {
+  main: any;
+  setup: any | null;
+  ids: string[];
+}
+
 
 const labelClass = "text-[10px] font-bold uppercase text-[var(--color-text-muted)] mb-1 block";
 const inputClass =
@@ -88,14 +102,14 @@ const sectionTitleClass = "text-[10px] font-black uppercase tracking-widest text
 /** Cartão de uma etapa do fluxo em sequência. Etapa futura = bloqueada (só o título);
  * etapa concluída = resumo de uma linha clicável pra reabrir; etapa atual = conteúdo. */
 function StepShell({
-  n, title, icon: Icon, current, step, summary, onOpen, children,
+  n, title, icon: Icon, current, step, summary, onOpen, forceOpen, children,
 }: {
-  n: number; title: string; icon: any; current: number; step: number;
+  n: number; title: string; icon: any; current: number; step: number; forceOpen?: boolean;
   summary?: string; onOpen: () => void; children: React.ReactNode;
 }) {
-  const isActive = step === n;
-  const isDone = step > n;
-  const isLocked = step < n;
+  const isActive = forceOpen || step === n;
+  const isDone = !forceOpen && step > n;
+  const isLocked = !forceOpen && step < n;
   return (
     <div className={cn(
       "rounded-2xl border transition-all",
@@ -154,7 +168,7 @@ export function AddProdutoLeadModal({
   existingItems = [],
   onDone,
 }: AddProdutoLeadModalProps) {
-  const { createProposalWithItems, addItemsToProposal, editProposalItems, addFinanceEntry, updateLead, addNotification, leads, resolveFinanceCategoryId } = useData();
+  const { createProposalWithItems, replaceProposalItems, financeEntries, deleteFinanceEntry, addFinanceEntry, updateLead, addNotification, leads, resolveFinanceCategoryId } = useData();
   const { formatCurrency } = useLocalization();
 
   const [productId, setProductId] = useState("");
@@ -204,7 +218,10 @@ export function AddProdutoLeadModal({
 
   // Edição dos itens que já estão na proposta (modo lápis): quantidade/preço editáveis e
   // remoção. Só vira escrita no banco ao salvar.
-  const [itemEdits, setItemEdits] = useState<Record<string, { quantidade: string; preco: string }>>({});
+  const [editingGroup, setEditingGroup] = useState<ExistingGroup | null>(null);
+  const [unitPriceInput, setUnitPriceInput] = useState<string | null>(null);
+  // Grupos já editados e guardados (aguardando "Salvar na Proposta") — somem da lista de chips.
+  const [stagedGroupIds, setStagedGroupIds] = useState<string[]>([]);
   const [removedItemIds, setRemovedItemIds] = useState<string[]>([]);
   // Em modo edição as etapas de "novo produto" só aparecem depois de clicar no "+".
   const [addingNew, setAddingNew] = useState(false);
@@ -212,7 +229,9 @@ export function AddProdutoLeadModal({
   useEffect(() => {
     if (!isOpen) return;
     setCartItems([]);
-    setItemEdits({});
+    setEditingGroup(null);
+    setUnitPriceInput(null);
+    setStagedGroupIds([]);
     setAddingNew(false);
     setRemovedItemIds([]);
     setStep(initialProductId ? 2 : 1);
@@ -254,7 +273,7 @@ export function AddProdutoLeadModal({
   const showImplToggle = hasImplementation ?? implFee > 0;
 
   const discountValue = Math.max(0, parseFloat(discountInput) || 0);
-  const unitPrice = Number(product?.price) || 0;
+  const unitPrice = unitPriceInput !== null ? Math.max(0, parseFloat(unitPriceInput) || 0) : (Number(product?.price) || 0);
 
   // Estabiliza a referência do Date (senão `new Date(...)` inline recriaria um objeto novo
   // a cada render e invalidaria o useMemo de `sale` abaixo mesmo sem a data ter mudado).
@@ -296,6 +315,19 @@ export function AddProdutoLeadModal({
   // pro próximo produto. Desconto e composição comercial/margem são só do vendedor
   // decidindo o preço deste item — não precisam sobreviver no snapshot além do `sale`
   // já resolvido.
+  const editingMeta = editingGroup ? (() => {
+    const entries = (financeEntries || []).filter((e: any) =>
+      e.proposal_id === existingProposal?.id && String(e.description || "").includes(`| ${product?.name}`));
+    const linesTotal = (Number(editingGroup.main.quantidade) || 0) * (Number(editingGroup.main.preco_unitario) || 0)
+      + (Number(editingGroup.setup?.preco_unitario) || 0) * (Number(editingGroup.setup?.quantidade) || 0);
+    return {
+      replaceItemIds: editingGroup.ids,
+      replaceEntryIds: entries.map((e: any) => e.id as string),
+      replacePaid: entries.some((e: any) => e.status === "Pago"),
+      oldAmount: entries.length > 0 ? entries.reduce((sum: number, e: any) => sum + (Number(e.value) || 0), 0) : linesTotal,
+    };
+  })() : {};
+
   const handleAddToCart = () => {
     if (!product) {
       toast.error("Selecione um produto.");
@@ -310,14 +342,19 @@ export function AddProdutoLeadModal({
       durationMonths,
       isOpenEnded: sale.isOpenEnded,
       implFee: showImplToggle ? implFee : 0,
+      unitPrice,
       sale,
+      ...editingMeta,
     };
     setCartItems((prev) => [...prev, item]);
+    if (editingGroup) setStagedGroupIds((prev) => [...prev, editingGroup.main.id]);
     toast.success(`"${product.name}" adicionado à proposta.`);
 
     // Reresta só a configuração DESTE produto — forma de pagamento, parcelas e 1º
     // vencimento continuam valendo pro próximo item (é a mesma venda/lead).
     setStep(1);
+    setEditingGroup(null);
+    setUnitPriceInput(null);
     setProductId("");
     setQuantity(1);
     setBillingTypeOverride(null);
@@ -338,18 +375,82 @@ export function AddProdutoLeadModal({
 
   const cartTotal = cartItems.reduce((sum, ci) => sum + ci.sale.totalProjectedAmount, 0);
 
-  const pendingItemEdits = existingItems
-    .filter((it: any) => !removedItemIds.includes(it.id) && itemEdits[it.id])
-    .map((it: any) => ({
-      id: it.id as string,
-      quantidade: Math.max(1, parseFloat(itemEdits[it.id].quantidade) || 0),
-      preco_unitario: Math.max(0, parseFloat(itemEdits[it.id].preco) || 0),
-    }))
-    .filter((e) => {
-      const it = existingItems.find((x: any) => x.id === e.id);
-      return e.quantidade !== Number(it.quantidade) || e.preco_unitario !== Number(it.preco_unitario);
+  // Produtos que já estão na proposta, agrupados (linha do produto + linha de implantação).
+  const isSetupLine = (it: any) => String(it.product_name || "").startsWith("Taxa de Implantação");
+  const existingGroups: ExistingGroup[] = existingItems
+    .filter((it: any) => !isSetupLine(it))
+    .map((it: any) => {
+      const setup = existingItems.find((x: any) => isSetupLine(x) && x.product_id === it.product_id) || null;
+      return { main: it, setup, ids: [it.id, setup?.id].filter(Boolean) as string[] };
     });
-  const hasItemEdits = !!existingProposal?.id && (pendingItemEdits.length > 0 || removedItemIds.length > 0);
+  const removedGroups = existingGroups.filter((g) => removedItemIds.includes(g.main.id));
+  const hasItemEdits = !!existingProposal?.id && removedGroups.length > 0;
+  const groupLinesTotal = (g: ExistingGroup) =>
+    (Number(g.main.quantidade) || 0) * (Number(g.main.preco_unitario) || 0)
+    + (Number(g.setup?.quantidade) || 0) * (Number(g.setup?.preco_unitario) || 0);
+
+  // Carrega um produto já existente na proposta dentro das etapas, com os dados dele.
+  const loadGroup = (g: ExistingGroup) => {
+    const prod = availableProducts.find((pp) => pp.id === g.main.product_id);
+    if (!prod) {
+      toast.error("Esse produto não está mais no catálogo — dá pra removê-lo da proposta, mas não editar.");
+      return;
+    }
+    const rec = g.main.billing_type === "recurring";
+    const freq = ((g.main.frequency as Frequencia) || "mensal");
+    const openEnded = rec && g.main.contract_months == null;
+    const totalQty = Number(g.main.quantidade) || 1;
+    let qty = totalQty;
+    let customMonths = 1;
+    if (rec) {
+      if (freq === "personalizado") {
+        // O ciclo personalizado não é guardado no item: assume 1 unidade e deduz o ciclo pela vigência.
+        qty = 1;
+        customMonths = Math.max(1, Math.round((Number(g.main.contract_months) || totalQty) / Math.max(1, totalQty)));
+      } else {
+        const cycles = openEnded ? OPEN_ENDED_BATCH_CYCLES : Math.max(1, Math.round((Number(g.main.contract_months) || 1) / cycleMonthsFor(freq)));
+        qty = Math.max(1, Math.round(totalQty / cycles));
+      }
+    }
+    const entries = (financeEntries || []).filter((e: any) =>
+      e.proposal_id === existingProposal?.id && String(e.description || "").includes(`| ${prod.name}`));
+    setProductId(prod.id);
+    setQuantity(qty);
+    setBillingTypeOverride(rec ? "recurring" : "one_time");
+    setFrequency(freq);
+    setCustomCycleMonthsInput(String(customMonths));
+    setDurationOverride(rec && !openEnded ? Number(g.main.contract_months) : null);
+    setIsOpenEndedDuration(openEnded);
+    setCustomDurationDraft("");
+    setUnitPriceInput(String(Number(g.main.preco_unitario) || 0));
+    setHasImplementation(!!g.setup);
+    setImplementationFeeInput(g.setup ? String(Number(g.setup.preco_unitario) || 0) : null);
+    setDiscountType("none");
+    setDiscountInput("0");
+    if (entries.length > 0) {
+      const sorted = [...entries].sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
+      if (sorted[0].payment_method) setFormaPagamento(sorted[0].payment_method);
+      if (sorted[0].date) setFirstDueDateInput(String(sorted[0].date).slice(0, 10));
+      if (!rec) setInstallments(sorted.length);
+    }
+    setEditingGroup(g);
+    setAddingNew(false);
+  };
+
+  const cancelGroupEdit = () => {
+    setEditingGroup(null);
+    setUnitPriceInput(null);
+    setProductId("");
+    setQuantity(1);
+    setBillingTypeOverride(null);
+    setDurationOverride(null);
+    setIsOpenEndedDuration(false);
+    setHasImplementation(null);
+    setImplementationFeeInput(null);
+    setDiscountType("none");
+    setDiscountInput("0");
+    setStep(1);
+  };
 
   const handleSubmit = async () => {
     // O produto ainda configurado no formulário (se houver) entra na venda junto com o
@@ -367,7 +468,9 @@ export function AddProdutoLeadModal({
             durationMonths,
             isOpenEnded: sale.isOpenEnded,
             implFee: showImplToggle ? implFee : 0,
+            unitPrice,
             sale,
+            ...editingMeta,
           }]
         : []),
     ];
@@ -377,14 +480,13 @@ export function AddProdutoLeadModal({
     }
     setSaving(true);
     try {
-      if (existingProposal?.id && hasItemEdits) {
-        await editProposalItems(existingProposal.id, pendingItemEdits, removedItemIds);
-        if (allItems.length === 0) {
-          toast.success("Itens da proposta atualizados.", { description: "Os lançamentos financeiros já gerados não foram alterados." });
-          onDone?.("✏️ Itens da proposta editados.");
-          onClose();
-          return;
-        }
+      if (existingProposal?.id && allItems.length === 0) {
+        // Só remoções.
+        await replaceProposalItems(existingProposal.id, removedGroups.flatMap((g) => g.ids), [], -removedGroups.reduce((sum, g) => sum + groupLinesTotal(g), 0));
+        toast.success("Itens removidos da proposta.", { description: "Os lançamentos financeiros já gerados não foram alterados." });
+        onDone?.("✏️ Itens removidos da proposta.");
+        onClose();
+        return;
       }
       const clientName = companyName || leadName || "Cliente";
       // Vínculos reais que dá pra derivar sem inventar nada: category_id (o
@@ -400,7 +502,7 @@ export function AddProdutoLeadModal({
       const items: any[] = [];
       for (const ci of allItems) {
         const ciFreqLabel = FREQUENCY_LABELS[ci.frequency];
-        const ciUnitPrice = Number(ci.product.price) || 0;
+        const ciUnitPrice = ci.unitPrice;
         items.push({
           productId: ci.product.id,
           descricao: ci.isRecurring
@@ -429,8 +531,15 @@ export function AddProdutoLeadModal({
 
       let proposalId: string;
       if (existingProposal?.id) {
-        // Modo "editar proposta": acrescenta os itens na proposta que já existe.
-        await addItemsToProposal(existingProposal.id, items, totalValor);
+        // Modo "editar proposta": troca os itens editados/removidos e acrescenta os novos na
+        // proposta que já existe. O valor ajusta pela diferença (novo total − o que valia antes).
+        const oldReplaced = allItems.reduce((sum, ci) => sum + (ci.replaceItemIds ? (ci.oldAmount || 0) : 0), 0);
+        const removeIds = [
+          ...removedGroups.flatMap((g) => g.ids),
+          ...allItems.flatMap((ci) => ci.replaceItemIds || []),
+        ];
+        const removedTotal = removedGroups.reduce((sum, g) => sum + groupLinesTotal(g), 0);
+        await replaceProposalItems(existingProposal.id, removeIds, items, totalValor - oldReplaced - removedTotal);
         proposalId = existingProposal.id;
       } else {
         proposalId = await createProposalWithItems({
@@ -451,7 +560,15 @@ export function AddProdutoLeadModal({
 
       // Um grupo de cobrança (recurring_group_id / installment_group_id) POR PRODUTO —
       // nunca misturando ciclos de produtos diferentes no mesmo grupo.
+      let paidSkipped = 0;
       for (const ci of allItems) {
+        if (ci.replaceItemIds) {
+          // Produto editado: refaz as cobranças dele só se ainda não há nenhuma paga — nunca
+          // apaga dinheiro já recebido.
+          if (!ci.replaceEntryIds || ci.replaceEntryIds.length === 0) continue;
+          if (ci.replacePaid) { paidSkipped++; continue; }
+          for (const eid of ci.replaceEntryIds) await deleteFinanceEntry(eid);
+        }
         const groupId = crypto.randomUUID();
         if (ci.isRecurring) {
           // Recorrente: um lançamento POR CICLO, cada um com o valor do ciclo (nunca o
@@ -544,6 +661,9 @@ export function AddProdutoLeadModal({
         link_url: "/app/crm/propostas",
       });
 
+      if (paidSkipped > 0) {
+        toast.warning(`${paidSkipped} produto${paidSkipped > 1 ? "s" : ""} editado${paidSkipped > 1 ? "s" : ""} já ${paidSkipped > 1 ? "têm" : "tem"} cobrança paga — o financeiro dele${paidSkipped > 1 ? "s" : ""} não foi alterado.`);
+      }
       toast.success("⚡ Venda concluída e automatizada!", {
         description: `${existingProposal?.id ? "Proposta atualizada com" : "Proposta criada com"} ${allItems.length} item${allItems.length > 1 ? "s" : ""}, financeiro lançado e lead atualizado.`,
       });
@@ -556,9 +676,9 @@ export function AddProdutoLeadModal({
     }
   };
 
-  const showSteps = !existingProposal?.id || addingNew || cartItems.length > 0 || !!productId;
+  const showSteps = !existingProposal?.id || addingNew || cartItems.length > 0 || !!productId || !!editingGroup;
 
-  const nextBtn = (label: string, onClick: () => void, disabled = false) => (
+  const nextBtn = (label: string, onClick: () => void, disabled = false) => editingGroup ? null : (
     <div className="flex justify-end pt-1">
       <Button type="button" onClick={onClick} disabled={disabled} className="h-9 px-4 text-xs font-bold gap-1.5">
         {label} <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
@@ -583,83 +703,81 @@ export function AddProdutoLeadModal({
       maxWidth="max-w-2xl"
     >
       <div className="space-y-4 max-h-[75vh] overflow-y-auto scrollbar-thin pr-1">
-        {/* ── CONTEXTO: cliente + proposta de destino ── */}
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)] px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-text-faint)]">Cliente</p>
-            <p className="text-sm font-bold text-[var(--color-text-primary)] truncate">{companyName || leadName || "Cliente"}</p>
-          </div>
-          <div className="text-right min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-text-faint)]">Destino</p>
-            <p className="text-xs font-bold text-[var(--color-primary-blue)] truncate">
-              {existingProposal?.id ? `Proposta existente${existingProposal.status ? ` (${existingProposal.status})` : ""}` : "Nova proposta"}
-            </p>
-          </div>
-        </div>
-        {existingProposal?.id && (
-          <p className="text-[11px] text-[var(--color-text-muted)] flex items-start gap-1.5 -mt-2">
-            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            Os produtos escolhidos serão adicionados à proposta já enviada — nenhuma proposta nova é criada.
-          </p>
-        )}
-
-        {existingProposal?.id && (
-          <div className="rounded-2xl border border-blue-500/25 bg-blue-500/[0.04] p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" /> Produtos na proposta ({existingItems.length}) — edite abaixo
-              </span>
-              {existingProposal.valor !== undefined && (
-                <span className="text-[11px] font-mono font-black text-blue-500">{formatCurrency(Number(existingProposal.valor) || 0)}</span>
-              )}
+        {/* ── CONTEXTO: cliente + destino + produtos que já estão na proposta ── */}
+        <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)] px-4 py-3 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-text-faint)]">Cliente</p>
+              <p className="text-sm font-bold text-[var(--color-text-primary)] truncate">{companyName || leadName || "Cliente"}</p>
             </div>
-            {existingItems.length === 0 ? (
-              <p className="text-[11px] text-[var(--color-text-faint)]">Nenhum item registrado ainda.</p>
-            ) : existingItems.map((it: any) => {
-              const removed = removedItemIds.includes(it.id);
-              const ed = itemEdits[it.id] ?? { quantidade: String(it.quantidade ?? 1), preco: String(it.preco_unitario ?? 0) };
-              const setEd = (patch: Partial<{ quantidade: string; preco: string }>) =>
-                setItemEdits((prev) => ({ ...prev, [it.id]: { ...ed, ...patch } }));
-              const lineTotal = (parseFloat(ed.quantidade) || 0) * (parseFloat(ed.preco) || 0);
-              return (
-                <div key={it.id} className={cn("bg-[var(--color-surface-elevated)] border border-[var(--color-border-subtle)] rounded-xl p-2.5 space-y-2", removed && "opacity-50")}>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={cn("text-[11px] font-bold text-[var(--color-text-primary)] truncate", removed && "line-through")}>{it.product_name}</p>
-                    <button
-                      type="button"
-                      onClick={() => setRemovedItemIds((prev) => removed ? prev.filter((x) => x !== it.id) : [...prev, it.id])}
-                      title={removed ? "Desfazer remoção" : "Remover da proposta"}
-                      className="p-1.5 text-[var(--color-text-faint)] hover:text-danger hover:bg-danger/10 rounded-lg transition-colors shrink-0"
-                    >
-                      {removed ? <Plus className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                  {!removed && (
-                    <div className="grid grid-cols-3 gap-2 items-end">
-                      <div>
-                        <label className={labelClass}>Quantidade</label>
-                        <input type="number" min={1} value={ed.quantidade} onChange={(e) => setEd({ quantidade: e.target.value })} className={inputClass} />
-                      </div>
-                      <div>
-                        <label className={labelClass}>Valor unit. (R$)</label>
-                        <input type="number" min={0} step="0.01" value={ed.preco} onChange={(e) => setEd({ preco: e.target.value })} className={inputClass} />
-                      </div>
-                      <div className="text-right">
-                        <span className={labelClass}>Subtotal</span>
-                        <span className="text-xs font-mono font-black text-[var(--color-text-primary)]">{formatCurrency(lineTotal)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {existingItems.length > 0 && (
-              <p className="text-[10px] text-[var(--color-text-faint)] flex items-start gap-1">
-                <Info className="w-3 h-3 shrink-0 mt-0.5" /> Editar aqui ajusta a proposta; cobranças já lançadas no financeiro não são alteradas.
+            <div className="text-right min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-text-faint)]">Destino</p>
+              <p className="text-xs font-bold text-[var(--color-primary-blue)] truncate">
+                {existingProposal?.id ? `Proposta existente${existingProposal.status ? ` (${existingProposal.status})` : ""}` : "Nova proposta"}
               </p>
-            )}
+            </div>
           </div>
-        )}
+          {existingProposal?.id && (
+            <div className="border-t border-[var(--color-border-subtle)] pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-text-faint)]">
+                  Produtos na proposta ({existingGroups.length})
+                </p>
+                {existingProposal.valor !== undefined && (
+                  <span className="text-[11px] font-mono font-black text-[var(--color-primary-blue)]">{formatCurrency(Number(existingProposal.valor) || 0)}</span>
+                )}
+              </div>
+              {existingGroups.length === 0 ? (
+                <p className="text-[11px] text-[var(--color-text-faint)]">Nenhum item registrado ainda.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {existingGroups.map((g) => {
+                    const removed = removedItemIds.includes(g.main.id);
+                    const staged = stagedGroupIds.includes(g.main.id);
+                    const selected = editingGroup?.main.id === g.main.id;
+                    const label = String(g.main.product_name || "").replace(/\s*\(Assinatura.*$/, "");
+                    return (
+                      <div key={g.main.id} className={cn(
+                        "flex items-center rounded-xl border text-[11px] font-bold overflow-hidden",
+                        selected ? "border-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10" : "border-[var(--color-border-default)] bg-[var(--color-surface-elevated)]",
+                        removed && "opacity-50",
+                      )}>
+                        <button
+                          type="button"
+                          disabled={removed || staged}
+                          onClick={() => loadGroup(g)}
+                          title={staged ? "Já editado — salve a proposta para aplicar" : "Editar este produto nas etapas abaixo"}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[var(--color-text-primary)] disabled:cursor-default"
+                        >
+                          {staged ? <Check className="w-3 h-3 text-emerald-500" /> : <Pencil className="w-3 h-3 text-[var(--color-primary-blue)]" />}
+                          <span className={cn("max-w-[220px] truncate", removed && "line-through")}>{label}</span>
+                          {staged && <span className="text-[9px] text-emerald-600">editado</span>}
+                        </button>
+                        {!staged && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRemovedItemIds((prev) => removed ? prev.filter((x) => x !== g.main.id) : [...prev, g.main.id]);
+                              if (selected) cancelGroupEdit();
+                            }}
+                            title={removed ? "Desfazer remoção" : "Remover da proposta"}
+                            className="px-2 py-1.5 text-[var(--color-text-faint)] hover:text-danger hover:bg-danger/10 border-l border-[var(--color-border-subtle)]"
+                          >
+                            {removed ? <Plus className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <p className="text-[10px] text-[var(--color-text-faint)] flex items-start gap-1">
+                <Info className="w-3 h-3 shrink-0 mt-0.5" />
+                Clique num produto para editar tudo dele nas etapas abaixo. Cobranças já pagas no financeiro nunca são alteradas.
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* ── CARRINHO DESTA PROPOSTA (produtos já adicionados) ── */}
         {cartItems.length > 0 && (
@@ -708,14 +826,22 @@ export function AddProdutoLeadModal({
         )}
         {showSteps && (
           <div className="space-y-4">
+            {editingGroup && (
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/30 px-3 py-2">
+                <span className="text-[11px] font-bold text-[var(--color-primary-blue)] flex items-center gap-1.5">
+                  <Pencil className="w-3.5 h-3.5" /> Editando: {product?.name}
+                </span>
+                <button type="button" onClick={cancelGroupEdit} className="text-[10px] font-bold text-[var(--color-text-muted)] hover:underline">Cancelar edição</button>
+              </div>
+            )}
         {/* ── ETAPA 1: PRODUTO ── */}
-        <StepShell n={1} title="Produto" icon={Package} current={step} step={step}
+        <StepShell n={1} forceOpen={!!editingGroup} title="Produto" icon={Package} current={step} step={step}
           summary={product ? `${product.name} · ${quantity}x · ${formatCurrency(unitPrice)}` : undefined}
           onOpen={() => setStep(1)}>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div className="sm:col-span-2">
               <label className={labelClass}>Produto *</label>
-              <select value={productId} onChange={(e) => setProductId(e.target.value)} className={inputClass}>
+              <select value={productId} disabled={!!editingGroup} onChange={(e) => { setProductId(e.target.value); setUnitPriceInput(null); }} className={inputClass}>
                 <option value="">Selecione um produto...</option>
                 {availableProducts.map((p) => (
                   <option key={p.id} value={p.id}>{p.name} — {formatCurrency(Number(p.price) || 0)}</option>
@@ -726,12 +852,16 @@ export function AddProdutoLeadModal({
               <label className={labelClass}>Quantidade</label>
               <input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))} className={inputClass} />
             </div>
+            <div>
+              <label className={labelClass}>Valor unit. (R$)</label>
+              <input type="number" min={0} step="0.01" value={unitPriceInput ?? String(Number(product?.price) || 0)} onChange={(e) => setUnitPriceInput(e.target.value)} className={inputClass} />
+            </div>
           </div>
           {nextBtn("Continuar", () => setStep(2), !product)}
         </StepShell>
 
         {/* ── ETAPA 2: COBRANÇA ── */}
-        <StepShell n={2} title="Cobrança" icon={Repeat} current={step} step={step} summary={billingLabel} onOpen={() => setStep(2)}>
+        <StepShell n={2} forceOpen={!!editingGroup} title="Cobrança" icon={Repeat} current={step} step={step} summary={billingLabel} onOpen={() => setStep(2)}>
             <div>
               <label className={labelClass}>Tipo de cobrança</label>
               <div className="grid grid-cols-2 gap-2">
@@ -855,7 +985,7 @@ export function AddProdutoLeadModal({
         </StepShell>
 
         {/* ── ETAPA 3: IMPLANTAÇÃO & DESCONTO ── */}
-        <StepShell n={3} title="Implantação & Desconto" icon={Wrench} current={step} step={step} summary={extrasLabel} onOpen={() => setStep(3)}>
+        <StepShell n={3} forceOpen={!!editingGroup} title="Implantação & Desconto" icon={Wrench} current={step} step={step} summary={extrasLabel} onOpen={() => setStep(3)}>
             {/* ── 4. IMPLANTAÇÃO E DESCONTO ── */}
             <div className={sectionClass}>
               <span className={sectionTitleClass}><Wrench className="w-3.5 h-3.5 text-amber-500" /> Implantação & Desconto</span>
@@ -916,7 +1046,7 @@ export function AddProdutoLeadModal({
         </StepShell>
 
         {/* ── ETAPA 4: PAGAMENTO ── */}
-        <StepShell n={4} title="Pagamento & Resumo" icon={CreditCard} current={step} step={step} summary={paymentLabel} onOpen={() => setStep(4)}>
+        <StepShell n={4} forceOpen={!!editingGroup} title="Pagamento & Resumo" icon={CreditCard} current={step} step={step} summary={paymentLabel} onOpen={() => setStep(4)}>
             {/* ── 5. PAGAMENTO ── */}
             <div className={sectionClass}>
               <span className={sectionTitleClass}><CreditCard className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" /> Pagamento</span>
