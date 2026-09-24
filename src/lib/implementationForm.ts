@@ -199,12 +199,14 @@ const toProgress = (done: number, total: number): ImplProgress => ({
   done, total, percent: total === 0 ? 0 : Math.round((done / total) * 100),
 });
 
-/** Progresso geral e por seção — só campos com `track` contam. */
-export function computeProgress(data: ImplData): { overall: ImplProgress; sections: Record<string, ImplProgress> } {
+/** Progresso geral e por seção — só campos com `track` contam. Com `audience`,
+ * conta só os itens que aquele público enxerga (o cliente vê o progresso do
+ * que depende dele, não o checklist interno que ele nem tem acesso). */
+export function computeProgress(data: ImplData, audience?: ImplAudience): { overall: ImplProgress; sections: Record<string, ImplProgress> } {
   let done = 0, total = 0;
   const sections: Record<string, ImplProgress> = {};
   for (const s of IMPLEMENTATION_SECTIONS) {
-    const tracked = s.fields.filter(f => f.track);
+    const tracked = s.fields.filter(f => f.track && (!audience || f.audience === audience));
     const sDone = tracked.filter(f => isFieldDone(f, data)).length;
     sections[s.id] = toProgress(sDone, tracked.length);
     done += sDone;
@@ -224,4 +226,86 @@ export function pendingFields(data: ImplData, audience?: ImplAudience): { sectio
     }
   }
   return out;
+}
+
+// ── Validação / resolução de campo (usado pelo endpoint público e pela Aurora) ──
+
+const norm = (s: string) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+export const MAX_FIELD_TEXT = 2000;
+
+export function allFields(audience?: ImplAudience): ImplField[] {
+  return IMPLEMENTATION_SECTIONS.flatMap(s => s.fields).filter(f => !audience || f.audience === audience);
+}
+
+export type CoerceResult = { ok: true; value: any } | { ok: false; reason: string };
+
+/** Converte o valor cru (texto vindo do cliente ou de uma chamada da Aurora) pro tipo do campo. Vazio limpa a resposta. */
+export function coerceFieldValue(field: ImplField, raw: any): CoerceResult {
+  if (raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "")) return { ok: true, value: undefined };
+  if (field.type === "boolean") {
+    if (typeof raw === "boolean") return { ok: true, value: raw };
+    const n = norm(String(raw));
+    if (["sim", "s", "true", "1", "yes", "y"].includes(n)) return { ok: true, value: true };
+    if (["nao", "n", "false", "0", "no"].includes(n)) return { ok: true, value: false };
+    return { ok: false, reason: `"${field.label}" aceita só sim ou não.` };
+  }
+  if (field.type === "select") {
+    const opt = field.options?.find(o => norm(o) === norm(String(raw)));
+    return opt ? { ok: true, value: opt } : { ok: false, reason: `"${field.label}" aceita: ${field.options?.join(", ")}.` };
+  }
+  if (field.type === "date") {
+    const s = String(raw).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return { ok: true, value: s };
+    const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+    if (br) return { ok: true, value: `${br[3]}-${br[2]}-${br[1]}` };
+    return { ok: false, reason: `"${field.label}" precisa de uma data (AAAA-MM-DD ou DD/MM/AAAA).` };
+  }
+  return { ok: true, value: String(raw).trim().slice(0, MAX_FIELD_TEXT) };
+}
+
+export type FindFieldResult =
+  | { status: "found"; field: ImplField }
+  | { status: "ambiguous"; candidates: ImplField[] }
+  | { status: "none" };
+
+/** Acha um campo pelo id ou por um nome aproximado ("whatsapp número", "cnpj"). Só considera campos do público informado. */
+export function findField(query: string, audience: ImplAudience): FindFieldResult {
+  const q = norm(query);
+  if (!q) return { status: "none" };
+  const fields = allFields(audience);
+  const byId = fields.find(f => f.id === query.trim());
+  if (byId) return { status: "found", field: byId };
+  const full = (f: ImplField) => norm(`${f.group ? f.group + " " : ""}${f.label}`);
+  const exact = fields.filter(f => norm(f.label) === q || full(f) === q);
+  if (exact.length === 1) return { status: "found", field: exact[0] };
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const loose = fields.filter(f => tokens.every(t => full(f).includes(t)));
+  if (loose.length === 1) return { status: "found", field: loose[0] };
+  if (loose.length > 1) return { status: "ambiguous", candidates: loose.slice(0, 6) };
+  return { status: "none" };
+}
+
+/** Valida um patch {fieldId: valor} vindo de fora: só campos do público, valores coeridos. Retorna o patch limpo + o que foi recusado. */
+export function sanitizePatch(patch: Record<string, any>, audience: ImplAudience): { clean: Record<string, any>; rejected: { id: string; reason: string }[] } {
+  const clean: Record<string, any> = {};
+  const rejected: { id: string; reason: string }[] = [];
+  const byId = new Map(allFields(audience).map(f => [f.id, f]));
+  for (const [id, raw] of Object.entries(patch || {})) {
+    const field = byId.get(id);
+    if (!field) { rejected.push({ id, reason: "campo desconhecido ou não permitido" }); continue; }
+    const r = coerceFieldValue(field, raw);
+    if (r.ok === false) rejected.push({ id, reason: r.reason });
+    else clean[id] = r.value;
+  }
+  return { clean, rejected };
+}
+
+/** Aplica um patch limpo sobre os dados atuais (valor `undefined` remove a chave). */
+export function applyPatch(data: ImplData, clean: Record<string, any>): ImplData {
+  const next = { ...(data || {}) };
+  for (const [k, v] of Object.entries(clean)) {
+    if (v === undefined) delete next[k]; else next[k] = v;
+  }
+  return next;
 }

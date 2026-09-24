@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { FileText, Trash2, ClipboardList, ArrowLeft, Check, Loader2, PartyPopper } from "lucide-react";
+import { FileText, Trash2, ClipboardList, ArrowLeft, Check, Loader2, PartyPopper, Link2, Copy, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { Modal } from "../../components/ui/modal";
 import { EmptyState } from "../../components/ui/empty-state";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { ImplementationProgressBar } from "../../components/implementacao/ImplementationProgressBar";
@@ -32,6 +33,7 @@ export default function ImplementacaoDetalhe() {
   const [responsavel, setResponsavel] = useState("");
   const [activeSection, setActiveSection] = useState(IMPLEMENTATION_SECTIONS[0].id);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [linkOpen, setLinkOpen] = useState(false);
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<ImplData | null>(null);
@@ -48,6 +50,14 @@ export default function ImplementacaoDetalhe() {
       setResponsavel(impl.responsavel || "");
     }
   }, [impl]);
+
+  // Reflete mudanças feitas de fora (o cliente pelo link público, a Aurora) —
+  // só quando não há edição local pendente, pra nunca atropelar o que está sendo digitado.
+  useEffect(() => {
+    if (!impl || initializedFor.current !== impl.id || pending.current) return;
+    const incoming = impl.data || {};
+    setData((prev) => (JSON.stringify(prev) === JSON.stringify(incoming) ? prev : incoming));
+  }, [impl?.data]);
 
   const flush = useCallback(async () => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
@@ -102,6 +112,18 @@ export default function ImplementacaoDetalhe() {
     await updateImplementation(impl.id, patch);
   };
 
+  const clientLink = `${window.location.origin}/implantacao/${impl.share_token}`;
+  const copyText = async (text: string, okMsg: string) => {
+    try { await navigator.clipboard.writeText(text); toast.success(okMsg); } catch { toast.error("Não foi possível copiar."); }
+  };
+  const regenerateLink = async () => {
+    if (!(await confirmDialog({ title: "Gerar novo link", description: "O link atual deixa de funcionar imediatamente. Quem já recebeu precisará do novo." }))) return;
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    await updateImplementation(impl.id, { share_token: Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("") });
+    toast.success("Novo link gerado.");
+  };
+
   const handleDelete = async () => {
     if (!(await confirmDialog({ title: "Excluir implementação", description: `Excluir a implementação de "${cliente?.name || "este cliente"}"? Todas as respostas do formulário serão perdidas.` }))) return;
     await flush();
@@ -129,6 +151,7 @@ export default function ImplementacaoDetalhe() {
           >
             {IMPLEMENTATION_STATUSES.map((s) => <option key={s} value={s} className="text-[var(--color-text-primary)] bg-[var(--color-surface-elevated)]">{s}</option>)}
           </select>
+          <Button variant="outline" onClick={() => setLinkOpen(true)} className="h-9 px-4 text-xs font-medium gap-1.5"><Link2 className="w-3.5 h-3.5" /> Link do cliente</Button>
           <Link to={`/app/crm/implementacoes/${impl.id}/relatorio`}>
             <Button variant="outline" className="h-9 px-4 text-xs font-medium gap-1.5"><FileText className="w-3.5 h-3.5" /> Relatório</Button>
           </Link>
@@ -223,6 +246,33 @@ export default function ImplementacaoDetalhe() {
           </div>
         </div>
       </div>
+      <Modal
+        isOpen={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        title="Link do cliente"
+        description="O cliente preenche a parte dele (dados, contatos, IDs de integração) sem precisar de login. Status de integração, checklist e notas internas não aparecem."
+        maxWidth="max-w-lg"
+      >
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <input readOnly value={clientLink} onFocus={(e) => e.currentTarget.select()} className={cn(inputCls, "font-mono")} />
+            <Button onClick={() => copyText(clientLink, "Link copiado.")} className="h-9 px-3 text-xs font-medium gap-1.5 shrink-0"><Copy className="w-3.5 h-3.5" /> Copiar</Button>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => copyText(`Olá! Para agilizar a implantação, preencha este formulário no seu tempo — ele salva automaticamente e você pode voltar depois pelo mesmo link: ${clientLink}`, "Mensagem copiada — é só colar no WhatsApp.")}
+            className="h-9 px-4 text-xs font-medium gap-1.5 w-full"
+          >
+            <Copy className="w-3.5 h-3.5" /> Copiar mensagem pronta pro WhatsApp
+          </Button>
+          <div className="pt-3 border-t border-[var(--color-border-subtle)] flex items-center justify-between gap-3">
+            <p className="text-[11px] text-[var(--color-text-faint)]">Quem tem o link consegue preencher. Se vazou, gere outro.</p>
+            <button type="button" onClick={regenerateLink} className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-danger)] inline-flex items-center gap-1 cursor-pointer shrink-0">
+              <RefreshCw className="w-3 h-3" /> Gerar novo link
+            </button>
+          </div>
+        </div>
+      </Modal>
     </PageContainer>
   );
 }

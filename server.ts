@@ -13,6 +13,11 @@ import { createGoogleCalendarRouter } from "./server/googleCalendar.js";
 import { getWhatsAppProvider, getActiveProviderName, isWahaConfigured } from "./server/whatsappProvider.js";
 import { cacheGet, cacheSet, redisHealthCheck } from "./server/redisClient.js";
 import { assertSafeHttpUrl, assertSafeSmtpTarget } from "./server/ssrfGuard.js";
+import {
+  allFields as implAllFields, applyPatch as implApplyPatch, computeProgress as implComputeProgress,
+  findField as implFindField, pendingFields as implPendingFields, sanitizePatch as implSanitizePatch,
+  coerceFieldValue as implCoerceFieldValue, IMPLEMENTATION_SECTIONS,
+} from "./src/lib/implementationForm.js";
 import nodemailer from "nodemailer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -267,7 +272,9 @@ const publicLeadLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeader
 // Endpoints públicos sem auth: enumeração de tenant e aceite de proposta.
 const publicProposalLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
 const tenantThemeLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+const publicImplementationLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
 app.use("/api/public-proposal", publicProposalLimiter);
+app.use("/api/public-implementation", publicImplementationLimiter);
 app.use("/api/auth/tenant-theme", tenantThemeLimiter);
 app.use("/api/v1/leads", apiKeyLimiter);
 app.use("/api/v1/lead-activities", apiKeyLimiter);
@@ -2422,6 +2429,75 @@ app.get("/api/auth/tenant-theme", async (req, res) => {
   }
 });
 
+// ── Implementação: link público em que o CLIENTE preenche a parte dele ───────
+// Segurança = token aleatório (implementations.share_token, 24 bytes hex) +
+// service role, mesmo padrão de /api/public-proposal. O token NUNCA vale como
+// acesso a outro registro; só campos com audience "client" saem e entram por
+// aqui (status de integração, checklist de go-live e notas internas não).
+const implClientData = (data: Record<string, any>) => {
+  const ids = new Set(implAllFields("client").map(f => f.id));
+  return Object.fromEntries(Object.entries(data || {}).filter(([k]) => ids.has(k)));
+};
+
+async function loadImplementationByToken(token: string) {
+  if (!supabaseService) return { error: 503 as const };
+  if (!token || token.length < 32 || token.length > 128) return { error: 400 as const };
+  const { data: impl } = await supabaseService
+    .from("implementations")
+    .select("id, tenant_id, cliente_id, status, data, go_live_date, started_at")
+    .eq("share_token", token)
+    .maybeSingle();
+  if (!impl) return { error: 404 as const };
+  return { impl };
+}
+
+app.get("/api/public-implementation/:token", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const r = await loadImplementationByToken(req.params.token);
+  if ("error" in r) {
+    return res.status(r.error).json({ error: r.error === 503 ? "Servidor indisponível." : r.error === 400 ? "Link inválido." : "Link não encontrado ou expirado." });
+  }
+  const { impl } = r;
+  const [{ data: cliente }, { data: tenant }] = await Promise.all([
+    supabaseService!.from("clientes").select("name").eq("id", impl.cliente_id).maybeSingle(),
+    supabaseService!.from("tenants").select("name, primary_color").eq("id", impl.tenant_id).maybeSingle(),
+  ]);
+  return res.json({
+    clienteNome: cliente?.name || "Cliente",
+    tenant: { name: tenant?.name || "", primary_color: tenant?.primary_color || null },
+    status: impl.status,
+    goLiveDate: impl.go_live_date,
+    startedAt: impl.started_at,
+    data: implClientData(impl.data),
+    editable: impl.status !== "Concluída",
+  });
+});
+
+app.patch("/api/public-implementation/:token", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const r = await loadImplementationByToken(req.params.token);
+  if ("error" in r) {
+    return res.status(r.error).json({ error: r.error === 503 ? "Servidor indisponível." : r.error === 400 ? "Link inválido." : "Link não encontrado ou expirado." });
+  }
+  const { impl } = r;
+  if (impl.status === "Concluída") return res.status(409).json({ error: "Esta implementação já foi concluída e não recebe mais alterações." });
+
+  const fields = req.body?.fields;
+  if (!fields || typeof fields !== "object" || Array.isArray(fields) || Object.keys(fields).length > 100) {
+    return res.status(400).json({ error: "Envie { fields: { campo: valor } } com até 100 campos." });
+  }
+  const { clean, rejected } = implSanitizePatch(fields, "client");
+  if (Object.keys(clean).length === 0) return res.json({ ok: true, rejected, data: implClientData(impl.data) });
+
+  const merged = implApplyPatch(impl.data || {}, clean);
+  const update: Record<string, any> = { data: merged };
+  // O cliente respondeu — deixa de estar "aguardando" ele.
+  if (impl.status === "Aguardando cliente") update.status = "Em andamento";
+  const { error } = await supabaseService!.from("implementations").update(update).eq("id", impl.id);
+  if (error) return res.status(500).json({ error: "Não foi possível salvar." });
+  return res.json({ ok: true, rejected, data: implClientData(merged) });
+});
+
 // ── Public Proposal Authenticated Fetch with Full Multi-Tenant Branding ─────
 app.get("/api/public-proposal/:token", async (req, res) => {
   const { token } = req.params;
@@ -3329,7 +3405,78 @@ const AURORA_TOOLS = [
       required: ["lead_nome", "produto_nome"],
     },
   },
+  {
+    name: "consultar_implementacao",
+    description: "Consulta a implementação (implantação) de um cliente que já fechou: status, responsável, progresso, o que ainda falta preencher e as respostas já registradas do formulário. Use quando o usuário perguntar 'como está a implementação da Fulano', 'o que falta pra Fulano' ou antes de preencher algo, pra saber o que já existe.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: { cliente_nome: { type: Type.STRING, description: "Nome (ou parte do nome) do cliente, como aparece na Base de Clientes" } },
+      required: ["cliente_nome"],
+    },
+  },
+  {
+    name: "atualizar_implementacao",
+    description: "Preenche campos do formulário de implementação de um cliente (Implementações no CRM) a partir do que o usuário ditar — ex.: 'o WhatsApp da Fulano é 63 99999-0000', 'CNPJ e razão social da Beta são ...'. Envie TODOS os campos ditos numa única chamada, no array 'campos'. Só preenche campos que o CLIENTE responde (dados da empresa, responsáveis, CRM, IDs de integração, financeiro, Aurora); NÃO altera status de integração, checklist de go-live nem notas internas — isso é da equipe, no sistema. Nunca grave senhas ou tokens de acesso. Se o cliente ainda não tem implementação iniciada, avise que precisa iniciar em CRM > Implementações.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        cliente_nome: { type: Type.STRING, description: "Nome (ou parte do nome) do cliente, como aparece na Base de Clientes" },
+        campos: {
+          type: Type.ARRAY,
+          description: "Lista de campos a preencher",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              campo: { type: Type.STRING, description: "Nome do campo como no formulário, incluindo a integração quando houver (ex.: 'WhatsApp número que será conectado', 'CNPJ', 'Meta Ads ID do Pixel', 'Etapas do funil')" },
+              valor: { type: Type.STRING, description: "Valor. Para campos sim/não use 'sim' ou 'não'; para datas use DD/MM/AAAA" },
+            },
+            required: ["campo", "valor"],
+          },
+        },
+      },
+      required: ["cliente_nome", "campos"],
+    },
+  },
 ];
+
+// Tools que mexem em dado da equipe/implantação só valem no chat INTERNO
+// autenticado. No auto-reply do WhatsApp (conversa com cliente/lead externo,
+// sem sessão de usuário) elas ficam de fora — senão qualquer contato poderia
+// ler ou alterar a implantação de um cliente só citando o nome dele.
+const AURORA_INTERNAL_ONLY_TOOLS = new Set(["consultar_implementacao", "atualizar_implementacao"]);
+const AURORA_TOOLS_WHATSAPP = AURORA_TOOLS.filter((t) => !AURORA_INTERNAL_ONLY_TOOLS.has(t.name));
+
+// Resolve "Fulano" -> a implementação daquele cliente, sem chutar: pergunta
+// quando há mais de um candidato. `scoped` aplica o filtro de tenant.
+async function auroraFindImplementation(supabaseClient: any, scoped: (q: any) => any, clienteNome: string) {
+  const nome = String(clienteNome || "").trim();
+  if (!nome) return { erro: { sucesso: false, mensagem: "Informe o nome do cliente." } };
+  const { data: clientes, error: cErr } = await scoped(
+    supabaseClient.from("clientes").select("id, name").ilike("name", `%${nome}%`)
+  ).limit(8);
+  if (cErr) return { erro: { error: cErr.message } };
+  if (!clientes || clientes.length === 0) return { erro: { sucesso: false, mensagem: `Nenhum cliente encontrado com o nome "${nome}".` } };
+
+  const { data: impls, error: iErr } = await scoped(
+    supabaseClient.from("implementations").select("id, cliente_id, status, data, responsavel, go_live_date")
+      .in("cliente_id", clientes.map((c: any) => c.id))
+  );
+  if (iErr) return { erro: { error: iErr.message } };
+  if (!impls || impls.length === 0) {
+    return { erro: { sucesso: false, mensagem: `Encontrei ${clientes.map((c: any) => c.name).join(", ")}, mas nenhum tem implementação iniciada. O usuário precisa iniciar em CRM > Implementações.` } };
+  }
+  if (impls.length > 1) {
+    return {
+      erro: {
+        sucesso: false,
+        mensagem: `Mais de um cliente com implementação bate com "${nome}" — pergunte ao usuário qual é o certo.`,
+        candidatos: impls.map((i: any) => clientes.find((c: any) => c.id === i.cliente_id)?.name).filter(Boolean),
+      },
+    };
+  }
+  const impl = impls[0] as any;
+  return { impl, clienteNome: clientes.find((c: any) => c.id === impl.cliente_id)?.name || nome };
+}
 
 // `tenantId` é opcional pro caminho autenticado (req.supabase já escopa por
 // RLS) mas OBRIGATÓRIO na prática pro caminho novo do auto-reply do WhatsApp
@@ -3532,6 +3679,72 @@ async function runAuroraTool(name: string, args: any, supabaseClient: any, tenan
     };
   }
 
+  if (name === "consultar_implementacao") {
+    const found = await auroraFindImplementation(supabaseClient, scoped, args?.cliente_nome);
+    if ("erro" in found) return found.erro;
+    const { impl, clienteNome } = found;
+    const data = impl.data || {};
+    const geral = implComputeProgress(data);
+    const cliente = implComputeProgress(data, "client");
+    const respostas: Record<string, string> = {};
+    for (const f of implAllFields("client")) {
+      const v = data[f.id];
+      if (v === undefined || v === null || v === "") continue;
+      respostas[`${f.group ? f.group + " — " : ""}${f.label}`] = typeof v === "boolean" ? (v ? "Sim" : "Não") : String(v).slice(0, 200);
+    }
+    return {
+      sucesso: true,
+      cliente: clienteNome,
+      status: impl.status,
+      responsavel: impl.responsavel || null,
+      go_live_previsto: impl.go_live_date || null,
+      progresso_geral_percent: geral.overall.percent,
+      progresso_do_cliente_percent: cliente.overall.percent,
+      pendencias: implPendingFields(data).slice(0, 30).map(({ section, field }) => `${section.title} › ${field.group ? field.group + " — " : ""}${field.label}`),
+      respostas,
+    };
+  }
+
+  if (name === "atualizar_implementacao") {
+    const found = await auroraFindImplementation(supabaseClient, scoped, args?.cliente_nome);
+    if ("erro" in found) return found.erro;
+    const { impl, clienteNome } = found;
+    if (impl.status === "Concluída") return { sucesso: false, mensagem: `A implementação de ${clienteNome} já está concluída — reabra no CRM antes de alterar.` };
+
+    const campos = Array.isArray(args?.campos) ? args.campos.slice(0, 40) : [];
+    if (campos.length === 0) return { sucesso: false, mensagem: "Nenhum campo informado." };
+
+    const patch: Record<string, any> = {};
+    const aplicados: { campo: string; valor: any }[] = [];
+    const naoAplicados: { campo: string; motivo: string; opcoes?: string[] }[] = [];
+    for (const item of campos) {
+      const consulta = String(item?.campo || "");
+      const r = implFindField(consulta, "client");
+      if (r.status === "none") { naoAplicados.push({ campo: consulta, motivo: "Não achei esse campo no formulário (ou ele é interno da equipe)." }); continue; }
+      if (r.status === "ambiguous") {
+        naoAplicados.push({ campo: consulta, motivo: "Mais de um campo bate — pergunte qual.", opcoes: r.candidates.map(f => `${f.group ? f.group + " — " : ""}${f.label}`) });
+        continue;
+      }
+      const c = implCoerceFieldValue(r.field, item?.valor);
+      if (c.ok === false) { naoAplicados.push({ campo: consulta, motivo: c.reason }); continue; }
+      patch[r.field.id] = c.value;
+      aplicados.push({ campo: `${r.field.group ? r.field.group + " — " : ""}${r.field.label}`, valor: typeof c.value === "boolean" ? (c.value ? "Sim" : "Não") : c.value ?? "(limpo)" });
+    }
+    if (aplicados.length === 0) return { sucesso: false, mensagem: "Nenhum campo pôde ser aplicado.", nao_aplicados: naoAplicados };
+
+    const merged = implApplyPatch(impl.data || {}, patch);
+    const { error: updErr } = await scoped(supabaseClient.from("implementations").update({ data: merged }).eq("id", impl.id));
+    if (updErr) return { error: updErr.message };
+    return {
+      sucesso: true,
+      cliente: clienteNome,
+      atualizados: aplicados,
+      nao_aplicados: naoAplicados,
+      progresso_geral_percent: implComputeProgress(merged).overall.percent,
+      mensagem: `Atualizei ${aplicados.length} campo(s) da implementação de ${clienteNome}.`,
+    };
+  }
+
   return { error: `Ferramenta desconhecida: ${name}` };
 }
 
@@ -3569,7 +3782,7 @@ async function runAuroraAutoReply(tenantId: string, instanceId: string, contactI
     const first = await ai.models.generateContent({
       model: "gemini-3.6-flash",
       contents,
-      config: { systemInstruction, tools: [{ functionDeclarations: AURORA_TOOLS }] },
+      config: { systemInstruction, tools: [{ functionDeclarations: AURORA_TOOLS_WHATSAPP }] },
     });
 
     let replyText: string;
@@ -3577,7 +3790,9 @@ async function runAuroraAutoReply(tenantId: string, instanceId: string, contactI
     if (!call) {
       replyText = typeof first.text === "function" ? (first as any).text() : (first.text ?? "");
     } else {
-      const toolResult = await runAuroraTool(call.name, call.args, supabaseService, tenantId);
+      const toolResult = AURORA_INTERNAL_ONLY_TOOLS.has(call.name)
+        ? { error: "Ferramenta indisponível neste canal." }
+        : await runAuroraTool(call.name, call.args, supabaseService, tenantId);
       const second = await ai.models.generateContent({
         model: "gemini-3.6-flash",
         contents: [
@@ -3585,7 +3800,7 @@ async function runAuroraAutoReply(tenantId: string, instanceId: string, contactI
           { role: "model", parts: [{ functionCall: call }] },
           { role: "user", parts: [{ functionResponse: { name: call.name, response: toolResult } }] },
         ],
-        config: { systemInstruction, tools: [{ functionDeclarations: AURORA_TOOLS }] },
+        config: { systemInstruction, tools: [{ functionDeclarations: AURORA_TOOLS_WHATSAPP }] },
       });
       replyText = typeof second.text === "function" ? (second as any).text() : (second.text ?? "");
     }

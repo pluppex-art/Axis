@@ -38,7 +38,7 @@ const visibleFields = (fields: ImplField[], audience: "team" | "client") =>
 
 /** Resumo em texto puro (pra colar no WhatsApp/e-mail dos sócios ou do cliente). */
 export function buildReportText(p: ImplementationReportProps): string {
-  const { overall, sections } = computeProgress(p.data);
+  const { overall, sections } = computeProgress(p.data, p.audience === "client" ? "client" : undefined);
   const lines: string[] = [];
   lines.push(`IMPLEMENTAÇÃO — ${p.clienteNome}`);
   lines.push(`Status: ${p.status} · Progresso: ${overall.percent}% (${overall.done}/${overall.total})`);
@@ -60,7 +60,7 @@ export function buildReportText(p: ImplementationReportProps): string {
 }
 
 export function ImplementationReportView(p: ImplementationReportProps) {
-  const { overall, sections } = computeProgress(p.data);
+  const { overall, sections } = computeProgress(p.data, p.audience === "client" ? "client" : undefined);
   const pend = pendingFields(p.data, p.audience === "client" ? "client" : undefined);
 
   return (

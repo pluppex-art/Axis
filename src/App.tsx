@@ -168,6 +168,7 @@ import PlanosTratamento from "./pages/clinica/PlanosTratamento";
 import PortfolioCorretor from "./pages/imobiliario/PortfolioCorretor";
 import ImovelPublico from "./pages/imobiliario/ImovelPublico";
 import PropostaPublica from "./pages/public/PropostaPublica";
+import ImplementacaoPublica from "./pages/public/ImplementacaoPublica";
 import CatalogoPublico from "./pages/public/CatalogoPublico";
 import VarejoVendas from "./pages/varejo/Vendas";
 import VarejoEstoque from "./pages/varejo/Estoque";
@@ -546,6 +547,7 @@ function AppContent() {
 
         {/* Proposta pública com tracking — sem autenticação, acesso só via token */}
         <Route path="/proposta/:token" element={<PropostaPublica />} />
+        <Route path="/implantacao/:token" element={<ImplementacaoPublica />} />
 
         {/* Marketing/Capture Forms Hub */}
         <Route path="/f/:niche" element={<InteractiveForm />} />
