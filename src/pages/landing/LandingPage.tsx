@@ -337,7 +337,7 @@ export default function LandingPage() {
                      ))}
                   </div>
                </div>
-               <p className="text-[7px] sm:text-[8px] text-slate-800 uppercase font-black tracking-[0.3em] sm:tracking-[0.4em]">©MMXXVI_G-TECH_NEURAL_DIV • ALL_SYNC_VERIFIED_V.2.0.4</p>
+               <p className="text-[7px] sm:text-[8px] text-slate-800 uppercase font-black tracking-[0.3em] sm:tracking-[0.4em]">©MMXXVI_PLUPPEX_NEURAL_DIV • ALL_SYNC_VERIFIED_V.2.0.4</p>
             </div>
          </div>
       </footer>

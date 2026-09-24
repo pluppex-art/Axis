@@ -161,7 +161,7 @@ export function SystemAlertsModal({ isOpen, onClose, onAlertsChange }: SystemAle
             <div className="p-12 text-center flex flex-col items-center justify-center gap-3">
               <ShieldAlert className="w-10 h-10 text-[var(--color-text-faint)]" />
               <p className="text-sm font-bold text-[var(--color-text-muted)]">Nenhum alerta para o filtro selecionado</p>
-              <p className="text-xs text-[var(--color-text-faint)]">A infraestrutura do Axis está operando dentro dos parâmetros ideais.</p>
+              <p className="text-xs text-[var(--color-text-faint)]">A infraestrutura do SPY está operando dentro dos parâmetros ideais.</p>
             </div>
           ) : (
             filteredAlerts.map(alert => {

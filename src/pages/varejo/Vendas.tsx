@@ -137,9 +137,24 @@ function formatPrice(value: number) {
 }
 
 export default function VarejoVendas() {
-  const { products, setProducts, colaboradores } = useData();
+  const { products, setProducts, colaboradores, appSettings, appSettingsLoaded } = useData();
   const { user, activeTenantId } = useAuth();
   const tenantId = activeTenantId || "default";
+
+  // Dados oficiais da empresa do tenant ativo (mesma fonte de Configurações →
+  // Dados da Empresa, app_settings key "empresa_dados") — usados no cabeçalho
+  // do cupom térmico em vez de nome/CNPJ/endereço fixos. RLS + activeTenantId
+  // já garantem isolamento por tenant (mesmo mecanismo que ConfigEmpresaDados.tsx).
+  const empresaReceipt = useMemo(() => {
+    const dados = appSettings?.["empresa_dados"] as
+      | { razaoSocial?: string; nomeFantasia?: string; cnpj?: string; endereco?: string }
+      | undefined;
+    return {
+      nome: dados?.razaoSocial || dados?.nomeFantasia || "",
+      cnpj: dados?.cnpj || "",
+      endereco: dados?.endereco || "",
+    };
+  }, [appSettings]);
 
   const vendedoresDisponiveis = useMemo(() => {
     const nomes = (colaboradores || [])
@@ -2004,9 +2019,15 @@ export default function VarejoVendas() {
             {receiptTab === "termico" && (
               <div id="thermal-receipt" className="bg-white text-slate-900 rounded-xl p-4 font-mono text-xs shadow-inner space-y-2.5 border border-slate-200">
                 <div className="text-center border-b border-dashed border-slate-300 pb-2">
-                  <h2 className="text-sm font-black tracking-tight uppercase">AXIS VAREJO & COMÉRCIO LTDA</h2>
-                  <p className="text-[10px] text-slate-600">CNPJ: 12.345.678/0001-90</p>
-                  <p className="text-[10px] text-slate-600">Av. Paulista, 1000 - Bela Vista - SP</p>
+                  {!appSettingsLoaded ? (
+                    <p className="text-[10px] text-slate-500">Carregando dados da empresa...</p>
+                  ) : (
+                    <>
+                      <h2 className="text-sm font-black tracking-tight uppercase">{empresaReceipt.nome || "Não informado"}</h2>
+                      <p className="text-[10px] text-slate-600">CNPJ: {empresaReceipt.cnpj || "Não informado"}</p>
+                      <p className="text-[10px] text-slate-600">{empresaReceipt.endereco || "Não informado"}</p>
+                    </>
+                  )}
                   <p className="text-[9px] text-slate-500 mt-0.5 uppercase font-bold tracking-widest">
                     DOCUMENTO NÃO-FISCAL
                   </p>

@@ -55,7 +55,7 @@ const DEFAULT_STEPS: AutomationStep[] = [
     id: "s3",
     type: "email",
     title: "Apresentação & Material por E-mail",
-    subject: "Bem-vindo ao Axis — Seu material exclusivo",
+    subject: "Bem-vindo ao SPY — Seu material exclusivo",
     content: "Prezado(a) {nome},\n\nSegue o material completo com nossas soluções e tabela de investimento.\n\nAtenciosamente,\nEquipe Comercial",
   }
 ];

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Send, RefreshCw, Mic, Square } from "lucide-react";
+import { X, Send, Mic, Square } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { apiFetch } from "../../lib/apiClient";
 import { AuroraCore } from "./auroraCore/AuroraCore";
@@ -180,8 +180,16 @@ export function AuroraWidget() {
             {loading && (
               <div className="flex justify-start">
                 <div className="bg-white/[0.04] border border-white/[0.06] rounded-xl rounded-bl-sm px-3 py-2.5 flex items-center gap-1.5">
-                  <RefreshCw className="w-3 h-3 text-violet-400 animate-spin" />
-                  <span className="text-[10px] text-slate-500">Aurora está pensando...</span>
+                  <span className="flex items-center gap-0.5" aria-hidden="true">
+                    {[0, 150, 300].map((delay) => (
+                      <span
+                        key={delay}
+                        className="w-1 h-1 rounded-full bg-violet-400 animate-bounce motion-reduce:animate-none"
+                        style={{ animationDelay: `${delay}ms` }}
+                      />
+                    ))}
+                  </span>
+                  <span className="text-[10px] text-slate-500" role="status">Aurora está digitando...</span>
                 </div>
               </div>
             )}

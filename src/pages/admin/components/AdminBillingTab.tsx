@@ -245,7 +245,7 @@ export function AdminBillingTab({ revenueData, CustomTooltip }: AdminBillingTabP
               Estrutura de Planos do SaaS
             </h4>
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              Tabela de precificação do Axis CRM
+              Tabela de precificação do SPY CRM
             </p>
           </div>
 
