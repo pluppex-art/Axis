@@ -4,10 +4,13 @@ import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
 import { toast } from "sonner";
-import { Plus, Search, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Users, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
 import { useData } from "../../contexts/DataContext";
+import { useLocalization } from "../../contexts/LocalizationContext";
 import { confirmDialog } from "../../components/ui/confirm-dialog";
 import { useIbgeLocalidades } from "../../lib/ibgeLocalidades";
+import { StatCell, StatCellRow } from "./components/StatCell";
 
 type Tipo = "CLIENTE" | "FORNECEDOR" | "FUNCIONARIO";
 const TIPO_LABEL: Record<Tipo, string> = { CLIENTE: "Cliente", FORNECEDOR: "Fornecedor", FUNCIONARIO: "Funcionário" };
@@ -36,6 +39,7 @@ const emptyForm = {
 
 export default function FinanceiroContatos() {
   const { clienteBase, addClienteBase, updateClienteBase, deleteClienteBase, financeEntries } = useData();
+  const { formatCurrency } = useLocalization();
   const contatos = clienteBase as Contato[];
 
   const [aba, setAba] = useState<"todos" | Tipo>("todos");
@@ -59,6 +63,36 @@ export default function FinanceiroContatos() {
   }, [contatos, aba, busca]);
 
   const semTipo = contatos.filter(c => !c.tipos || c.tipos.length === 0);
+
+  // Só entra aqui o que já foi de fato pago/recebido e está vinculado a um
+  // contato real (contato_id) — nunca soma lançamento avulso sem vínculo,
+  // pra não misturar "total por contato" com o total geral do financeiro.
+  const totaisPorContato = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of financeEntries as any[]) {
+      if (e.status !== "Pago" || !e.contato_id) continue;
+      map.set(e.contato_id, (map.get(e.contato_id) || 0) + e.value);
+    }
+    return map;
+  }, [financeEntries]);
+
+  const financeiroKpis = useMemo(() => {
+    const clientes = contatos.filter(c => c.tipos?.includes("CLIENTE"));
+    const fornecedores = contatos.filter(c => c.tipos?.includes("FORNECEDOR"));
+    const totalRecebido = clientes.reduce((s, c) => s + (totaisPorContato.get(c.id) || 0), 0);
+    const totalPago = fornecedores.reduce((s, c) => s + (totaisPorContato.get(c.id) || 0), 0);
+    return { totalRecebido, totalPago };
+  }, [contatos, totaisPorContato]);
+
+  const topContatosChart = useMemo(() => {
+    if (aba !== "CLIENTE" && aba !== "FORNECEDOR") return [];
+    return contatos
+      .filter(c => c.tipos?.includes(aba))
+      .map(c => ({ nome: c.name, valor: totaisPorContato.get(c.id) || 0 }))
+      .filter(c => c.valor > 0)
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 8);
+  }, [contatos, aba, totaisPorContato]);
 
   const resetForm = () => { setForm(emptyForm); setEditingId(null); setFormError(""); };
 
@@ -126,6 +160,29 @@ export default function FinanceiroContatos() {
       actions={<Button onClick={openNew} className="h-9 px-4 text-xs font-medium gap-1.5"><Plus className="w-3.5 h-3.5" /> Novo Contato</Button>}
     >
       <div className="space-y-4 max-w-[1700px] mx-auto pb-12">
+        <StatCellRow>
+          <StatCell label="Total Recebido de Clientes" value={formatCurrency(financeiroKpis.totalRecebido)} icon={TrendingUp} tone="success" hint="Lançamentos pagos, vinculados a um cliente" />
+          <StatCell label="Total Pago a Fornecedores" value={formatCurrency(financeiroKpis.totalPago)} icon={TrendingDown} tone={financeiroKpis.totalPago > 0 ? "danger" : "neutral"} hint="Lançamentos pagos, vinculados a um fornecedor" />
+        </StatCellRow>
+
+        {topContatosChart.length > 0 && (
+          <Card className="p-6">
+            <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-[var(--color-text-faint)]" /> Top {aba === "CLIENTE" ? "Clientes (Recebido)" : "Fornecedores (Pago)"}
+            </h3>
+            <div className="w-full" style={{ height: Math.max(120, topContatosChart.length * 32) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topContatosChart} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="nome" type="category" stroke="var(--color-text-muted)" fontSize={11} width={120} tickLine={false} axisLine={false} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-control)" }} itemStyle={{ fontSize: "11px" }} />
+                  <Bar dataKey="valor" radius={[0, 4, 4, 0]} fill={aba === "CLIENTE" ? "var(--color-success)" : "var(--color-danger)"} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        )}
+
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1 bg-[var(--color-surface-sunken)] p-1 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)]">
             {([
