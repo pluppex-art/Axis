@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Menu, X, PanelLeftClose, PanelLeftOpen, ChevronDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
@@ -127,12 +127,23 @@ function SectionGroup({
 }) {
   const { t } = useLocalization();
   const GroupIcon = group.icon;
+  // Começa aberto (mesmo comportamento de antes) — só fecha quando o próprio
+  // usuário clica na setinha. Estado local por grupo, não precisa subir pro
+  // pai: cada SectionGroup (desktop e o dropdown mobile, que remonta
+  // independente) mantém o seu.
+  const [isOpen, setIsOpen] = useState(true);
   return (
     <div className="px-2 w-full mb-6 last:mb-0">
-      <div className="px-4 mb-2 flex items-center gap-2 text-[11px] font-bold text-[var(--color-text-faint)] uppercase tracking-widest">
-        {GroupIcon && <GroupIcon className="w-4 h-4" />}
-        <span>{t(group.title)}</span>
-      </div>
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="w-full px-4 mb-2 flex items-center gap-2 text-[11px] font-bold text-[var(--color-text-faint)] uppercase tracking-widest hover:text-[var(--color-text-muted)] transition-colors cursor-pointer"
+      >
+        {GroupIcon && <GroupIcon className="w-4 h-4 shrink-0" />}
+        <span className="flex-1 text-left">{t(group.title)}</span>
+        <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform duration-200", !isOpen && "-rotate-90")} />
+      </button>
+      {isOpen && (
       <div className="space-y-0.5 flex flex-col">
         {group.items.map((item) => {
           const active = isActive(item.path);
@@ -170,6 +181,7 @@ function SectionGroup({
           );
         })}
       </div>
+      )}
     </div>
   );
 }

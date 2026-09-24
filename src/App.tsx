@@ -52,6 +52,7 @@ import FinanceiroTransacoes from "./pages/finance/FinanceiroTransacoes";
 import FinanceiroCobrancas from "./pages/finance/FinanceiroCobrancas";
 import FinanceiroConciliacao from "./pages/finance/FinanceiroConciliacao";
 import FinanceiroCentrosCusto from "./pages/finance/FinanceiroCentrosCusto";
+import FinanceiroOrcamentos from "./pages/finance/FinanceiroOrcamentos";
 import FinanceiroDRE from "./pages/finance/FinanceiroDRE";
 import FinanceiroContasBancarias from "./pages/finance/FinanceiroContasBancarias";
 import FinanceiroTransferencias from "./pages/finance/FinanceiroTransferencias";
@@ -300,6 +301,12 @@ function AppContent() {
             <Route path="cobrancas" element={<FinanceiroCobrancas />} />
             <Route path="conciliacao" element={<FinanceiroConciliacao />} />
             <Route path="centros-custo" element={<FinanceiroCentrosCusto />} />
+            {/* Reaproveita o MESMO componente já usado em Configurações
+                (financeiro/categorias) — a página já existe, só não era
+                alcançável de dentro do módulo Financeiro (ficava escondida em
+                Configurações). Evita ter duas implementações da mesma coisa. */}
+            <Route path="plano-contas" element={<ConfigFinanceiroCategorias />} />
+            <Route path="orcamentos" element={<FinanceiroOrcamentos />} />
             <Route path="bancos" element={<FinanceiroContasBancarias />} />
             <Route path="transferencias" element={<FinanceiroTransferencias />} />
             <Route path="dre" element={<FinanceiroDRE />} />

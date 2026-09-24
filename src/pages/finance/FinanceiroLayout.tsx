@@ -74,8 +74,8 @@ const groups: SectionNavGroup[] = [
     icon: FolderTree,
     items: [
       { title: "Centros de Custo", path: "/app/financeiro/centros-custo", icon: Target },
-      { title: "Plano de Contas", path: "/app/financeiro/plano-contas", icon: FolderTree, soon: true },
-      { title: "Orçamentos", path: "/app/financeiro/orcamentos", icon: Target, soon: true },
+      { title: "Plano de Contas", path: "/app/financeiro/plano-contas", icon: FolderTree },
+      { title: "Orçamentos", path: "/app/financeiro/orcamentos", icon: Target },
       { title: "Contatos (Clientes & Fornecedores)", path: "/app/financeiro/contatos", icon: Users },
     ],
   },

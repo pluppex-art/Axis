@@ -238,6 +238,10 @@ export interface DataContextType {
    * pelos fluxos automáticos (AddProdutoLeadModal, aceite de proposta) pra
    * preencher `category_id` de verdade em vez de deixar nulo. */
   resolveFinanceCategoryId: (nome: string, tipo: 'Receita' | 'Despesa') => Promise<string | null>;
+  /** Orçamento planejado por categoria+mês ('YYYY-MM') — Financeiro > Orçamentos. */
+  financeBudgets: any[];
+  upsertFinanceBudget: (categoryId: string, mes: string, valorOrcado: number) => Promise<void>;
+  deleteFinanceBudget: (id: string) => Promise<boolean>;
   financeBankAccounts: any[];
   addFinanceBankAccount: (conta: any) => Promise<any>;
   updateFinanceBankAccount: (id: string, updates: any) => Promise<void>;
