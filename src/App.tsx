@@ -160,6 +160,8 @@ import PainelVarejo from "./pages/varejo/PainelVarejo";
 import FornecedoresVarejo from "./pages/varejo/FornecedoresVarejo";
 import ComprasVarejo from "./pages/varejo/ComprasVarejo";
 import NotasEntrada from "./pages/varejo/NotasEntrada";
+import OrdensServico from "./pages/operative/OrdensServico";
+import OrdemServicoDetalhe from "./pages/operative/OrdemServicoDetalhe";
 import NotaEntradaDetalhe from "./pages/varejo/NotaEntradaDetalhe";
 import PedidosVarejo from "./pages/varejo/PedidosVarejo";
 
@@ -275,6 +277,8 @@ function AppContent() {
           {/* Operações & Tarefas */}
           <Route path="tarefas" element={<Tarefas />} />
           <Route path="produtos" element={<Produtos />} />
+          <Route path="ordens-servico" element={<OrdensServico />} />
+          <Route path="ordens-servico/:id" element={<OrdemServicoDetalhe />} />
 
           {/* Inteligência & BI */}
           <Route path="indicadores" element={<Indicadores />} />
