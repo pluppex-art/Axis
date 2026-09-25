@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 import { LeadCard } from "./LeadCard";
 import { Task } from "../../../../types";
+import { leadInterestEstimate } from "../../../../components/ui/lead-details/LeadDetailsModal.helpers";
 import { useData } from "../../../../contexts/DataContext";
 import { useLocalization } from "../../../../contexts/LocalizationContext";
 
@@ -82,13 +83,14 @@ export function PipelineKanbanBoard({
   // dos produtos vinculados quando o lead genuinamente não tem valor nenhum
   // ainda (produto vinculado sem sincronização de valor completa).
   const getLeadValue = (l: any) => {
-    const raw = l.value ?? l.valor;
-    const parsed = parseCurrencyBR(raw);
+    // Sem proposta e com tags de interesse em uso: soma das tags (igual ao card).
+    const interest = leadInterestEstimate(l, proposals as any[], products as any[]);
+    if (interest !== null) return interest;
+    const parsed = parseCurrencyBR(l.value ?? l.valor);
     if (parsed > 0) return parsed;
-    const linkedProducts = (products as any[]).filter((p) => (l.productIds || []).includes(p.id));
-    if (linkedProducts.length > 0) {
-      return linkedProducts.reduce((s, p) => s + (Number(p.price) || 0), 0);
-    }
+    // SEM fallback pro preço de catálogo dos productIds: um lead ganho por R$ 0 (proposta aceita
+    // com valor 0) passava a contar o preço de tabela na coluna e o total da coluna deixava de
+    // bater com o "Total de Ganhos" do topo (que soma só `value`) — ex.: R$ 18.943 x R$ 17.946.
     const linkedProposal = (proposals as any[] || [])
       .filter((p) => p.lead_id === l.id)
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
