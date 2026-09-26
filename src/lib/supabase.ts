@@ -472,8 +472,8 @@ export async function createTenantAdmin(
   niche: string,
   adminEmail: string,
   adminPassword: string,
-  options?: { plan?: string; primaryColor?: string; timezone?: string; modules?: Record<string, boolean> }
-): Promise<{ success: boolean; error?: string }> {
+  options?: { plan?: string; primaryColor?: string; timezone?: string; modules?: Record<string, boolean>; implementationId?: string }
+): Promise<{ success: boolean; error?: string; tenantId?: string; empresaDadosSalvos?: boolean; vinculada?: boolean }> {
   if (!supabase) return { success: false, error: 'Não foi possível conectar ao servidor' };
   try {
     const session = await getSessionWithTimeout();
@@ -486,7 +486,7 @@ export async function createTenantAdmin(
     });
     const data = await res.json();
     if (!res.ok) return { success: false, error: data.error || 'Erro ao cadastrar empresa.' };
-    return { success: true };
+    return { success: true, tenantId: data.tenantId, empresaDadosSalvos: data.empresaDadosSalvos, vinculada: data.vinculada };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Erro desconhecido' };
   }

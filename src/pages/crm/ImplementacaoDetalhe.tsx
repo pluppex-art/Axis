@@ -13,6 +13,7 @@ import { ImplementationSectionForm } from "../../components/implementacao/Implem
 import { useData } from "../../contexts/DataContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { TenantLinkCard } from "../../components/implementacao/TenantLinkCard";
+import { CreateTenantCard } from "../../components/implementacao/CreateTenantCard";
 import { RemoteIntegrationsPanel } from "../../components/implementacao/RemoteIntegrationsPanel";
 import { syncImplementationTenant } from "../../lib/implementationTenantApi";
 import { cn } from "../../lib/utils";
@@ -34,6 +35,7 @@ export default function ImplementacaoDetalhe() {
   const cliente = impl ? (clienteBase as any[]).find((c) => c.id === impl.cliente_id) : null;
 
   const [data, setData] = useState<ImplData>({});
+  const [createdHere, setCreatedHere] = useState(false);
   const [notes, setNotes] = useState("");
   const [responsavel, setResponsavel] = useState("");
   const [activeSection, setActiveSection] = useState(IMPLEMENTATION_SECTIONS[0].id);
@@ -203,6 +205,21 @@ export default function ImplementacaoDetalhe() {
             </div>
           )}
         </Card>
+
+        {user?.isMaster && (!impl.linked_tenant_id || createdHere) && (
+          <CreateTenantCard
+            implementationId={impl.id}
+            data={data}
+            linked={!!impl.linked_tenant_id}
+            beforeCreate={flush}
+            // O servidor já gravou o vínculo; aqui só atualiza o estado local (e o carimbo de sincronização).
+            // `createdHere` mantém o cartão montado até fechar o modal que mostra o acesso (uma vez só).
+            onCreated={async (tenantId) => {
+              setCreatedHere(true);
+              await updateImplementation(impl.id, { linked_tenant_id: tenantId, last_synced_at: new Date().toISOString() });
+            }}
+          />
+        )}
 
         {user?.isMaster && (
           <TenantLinkCard

@@ -9,11 +9,14 @@ import { Button } from "../../../components/ui/button";
 import { createTenantAdmin, fetchSpyLicenseProducts, type SpyLicenseProduct } from "../../../lib/supabase";
 import { BRAND_COLORS } from "../../../lib/theme";
 import { toast } from "sonner";
+import { Copy } from "lucide-react";
 
 interface NovoTenantModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (result?: { tenantId?: string }) => void;
+  /** Modo implementação: nome/e-mail já preenchidos e o servidor cria a empresa + cadastro a partir dela. */
+  implementation?: { id: string; name: string; adminEmail: string };
 }
 
 const NICHES = [
@@ -78,7 +81,7 @@ const DEFAULT_COLOR = BRAND_COLORS[1].hex; // Azul — mesmo default da coluna t
 const labelClass = "text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block mb-1";
 const inputClass = "w-full bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text-primary)] focus:border-[var(--color-primary-blue)] focus:ring-1 focus:ring-[var(--color-primary-blue)] outline-none placeholder-[var(--color-text-faint)] font-medium";
 
-export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalProps) {
+export function NovoTenantModal({ isOpen, onClose, onCreated, implementation }: NovoTenantModalProps) {
   const [name, setName] = useState("");
   const [niche, setNiche] = useState(DEFAULT_NICHE);
   const [plan, setPlan] = useState("");
@@ -91,6 +94,8 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
   const [adminPasswordConfirm, setAdminPasswordConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Modo implementação: depois de criar, mostra o acesso UMA vez (a senha não fica salva em lugar nenhum).
+  const [created, setCreated] = useState<{ email: string; password: string; tenantId?: string; aviso?: string } | null>(null);
 
   const activeModuleCount = Object.values(modules).filter(Boolean).length;
 
@@ -107,7 +112,16 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
     return () => { cancelled = true; };
   }, [isOpen]);
 
+  // Abre já preenchido com os dados da implementação.
+  useEffect(() => {
+    if (!isOpen || !implementation) return;
+    setName(implementation.name);
+    setAdminEmail(implementation.adminEmail);
+    setCreated(null);
+  }, [isOpen, implementation?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const reset = () => {
+    setCreated(null);
     setName("");
     setNiche(DEFAULT_NICHE);
     setPlan(plans[0]?.value || "");
@@ -164,15 +178,29 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
         plan,
         primaryColor,
         modules,
+        ...(implementation ? { implementationId: implementation.id } : {}),
       });
+      if (implementation) {
+        // Aqui erro é erro: a equipe precisa saber se o acesso do cliente foi criado de verdade.
+        if (!res.success) { toast.error(res.error || "Não foi possível criar o ambiente do cliente."); return; }
+        const avisos = [
+          res.empresaDadosSalvos === false ? "os Dados da Empresa não foram gravados — preencha em Configurações" : "",
+          res.vinculada === false ? "a implementação não foi vinculada ao ambiente — vincule manualmente" : "",
+        ].filter(Boolean);
+        toast.success(`Ambiente de "${name}" criado.`);
+        setCreated({ email: adminEmail.trim(), password: adminPassword, tenantId: res.tenantId, aviso: avisos.length ? `Atenção: ${avisos.join("; ")}.` : undefined });
+        onCreated({ tenantId: res.tenantId });
+        return;
+      }
       if (!res.success) {
         toast.info(`Tenant "${name}" registrado no ambiente.`);
       } else {
         toast.success(`Tenant "${name}" provisionado com sucesso!`);
       }
-      onCreated();
+      onCreated({ tenantId: res.tenantId });
       handleClose();
     } catch {
+      if (implementation) { toast.error("Não foi possível criar o ambiente do cliente."); return; }
       toast.info(`Tenant "${name}" registrado no ambiente.`);
       onCreated();
       handleClose();
@@ -180,6 +208,30 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
       setLoading(false);
     }
   };
+
+  if (created) {
+    const loginUrl = `${window.location.origin}/login`;
+    const texto = `Acesso ao S.P.Y.\nEndereço: ${loginUrl}\nE-mail: ${created.email}\nSenha: ${created.password}`;
+    return (
+      <Modal isOpen={isOpen} onClose={handleClose} maxWidth="max-w-md" title="Ambiente criado — acesso do cliente"
+        footer={<div className="flex justify-end w-full"><Button type="button" onClick={handleClose}>Concluir</Button></div>}>
+        <div className="space-y-4">
+          <p className="text-xs text-[var(--color-text-muted)]">
+            O ambiente e o usuário administrador foram criados, e os Dados da Empresa já estão preenchidos. <strong>Guarde este acesso agora:</strong> a senha não fica salva em nenhum lugar e não aparece de novo.
+          </p>
+          <div className="rounded-xl border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] p-4 space-y-2 text-xs font-mono">
+            <p><span className="text-[var(--color-text-faint)]">Endereço:</span> {loginUrl}</p>
+            <p><span className="text-[var(--color-text-faint)]">E-mail:</span> {created.email}</p>
+            <p><span className="text-[var(--color-text-faint)]">Senha:</span> {created.password}</p>
+          </div>
+          <Button type="button" variant="outline" className="w-full gap-2" onClick={() => { navigator.clipboard?.writeText(texto).then(() => toast.success("Acesso copiado."), () => toast.error("Não foi possível copiar.")); }}>
+            <Copy className="w-3.5 h-3.5" /> Copiar acesso
+          </Button>
+          {created.aviso && <p className="text-xs text-amber-600">{created.aviso}</p>}
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -193,7 +245,7 @@ export function NovoTenantModal({ isOpen, onClose, onCreated }: NovoTenantModalP
           </div>
           <div>
             <h3 className="text-base font-black text-[var(--color-text-primary)]">
-              Provisionar Novo Tenant / Instância
+              {implementation ? "Criar ambiente do cliente" : "Provisionar Novo Tenant / Instância"}
             </h3>
             <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-text-muted)] mt-0.5">
               Multi-tenant corporativo com isolamento de dados RLS

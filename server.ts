@@ -15,6 +15,7 @@ import { cacheGet, cacheSet, redisHealthCheck } from "./server/redisClient.js";
 import { assertSafeHttpUrl, assertSafeSmtpTarget } from "./server/ssrfGuard.js";
 import { readTenantSnapshot } from "./server/implementationSync.js";
 import { registerTableComparisonRoutes } from "./server/tableComparison.js";
+import { buildEmpresaDados, tenantReadiness } from "./src/lib/implementationTenant.js";
 import { registerTableComparisonExportRoutes } from "./server/tableComparisonExport.js";
 import { registerTableComparisonResearchRoutes } from "./server/tableComparisonResearch.js";
 import { connFromConfig as maxConnFromConfig, maxdataAuth, maxdataGet, MaxDataError } from "./server/maxdataClient.js";
@@ -4321,7 +4322,7 @@ app.post("/api/admin/tenant-user/:userId/credentials", requireUser, requireMaste
 app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) => {
   if (!supabaseService) return res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY não configurada no servidor." });
 
-  const { tenantName, niche, adminEmail, adminPassword, plan, primaryColor, timezone, modules } = req.body ?? {};
+  const { tenantName, niche, adminEmail, adminPassword, plan, primaryColor, timezone, modules, implementationId } = req.body ?? {};
   if (!tenantName?.trim()) return res.status(400).json({ error: "Informe o nome da empresa." });
   if (!adminEmail?.trim()) return res.status(400).json({ error: "Informe o e-mail do administrador da empresa." });
   if (!adminPassword || adminPassword.length < 6) return res.status(400).json({ error: "A senha do administrador precisa ter pelo menos 6 caracteres." });
@@ -4339,6 +4340,22 @@ app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) 
         status: "Active",
         timezone: timezone?.trim() || "America/Sao_Paulo",
         primary_color: /^#[0-9A-Fa-f]{6}$/.test(primaryColor) ? primaryColor : "#2563EB",
+    // Criação a partir de uma implementação: a implementação (lida sob a RLS de quem pediu) é a
+    // fonte da verdade — o servidor revalida se os dados estão completos e monta o cadastro da
+    // empresa a partir dela; nada disso vem do corpo da requisição.
+    let impl: { id: string; data: Record<string, any> } | null = null;
+    if (implementationId !== undefined && implementationId !== null) {
+      if (typeof implementationId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(implementationId)) {
+        return res.status(400).json({ error: "implementationId inválido." });
+      }
+      const { data: found } = await req.supabase.from("implementations").select("id, data, linked_tenant_id").eq("id", implementationId).maybeSingle();
+      if (!found) return res.status(404).json({ error: "Implementação não encontrada." });
+      if (found.linked_tenant_id) return res.status(409).json({ error: "Esta implementação já está vinculada a um ambiente." });
+      const readiness = tenantReadiness(found.data || {});
+      if (!readiness.ready) return res.status(400).json({ error: `Dados da implementação incompletos: faltam ${readiness.missing.join(", ")}.` });
+      impl = { id: found.id, data: found.data || {} };
+    }
+
         modules: modules && typeof modules === "object"
           ? modules
           : { crm: true, sdr: false, advDashboard: false, financeiro: true, marketing: false, educacao: false, clinica: false, produtividade: true, rh: false, bi: false, engajamento: false },
@@ -4378,7 +4395,21 @@ app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) 
       return res.status(500).json({ error: "Erro ao criar o perfil do administrador." });
     }
 
-    res.json({ success: true });
+    // Implementação: grava o cadastro da empresa (Configurações › Dados da Empresa) e vincula.
+    let empresaDadosSalvos: boolean | undefined;
+    let vinculada: boolean | undefined;
+    if (impl) {
+      const { error: empresaError } = await supabaseService.from("app_settings")
+        .insert({ tenant_id: tenantData.id, key: "empresa_dados", value: buildEmpresaDados(impl.data) });
+      empresaDadosSalvos = !empresaError;
+      if (empresaError) console.error("[tenant-create] Falha ao gravar empresa_dados:", empresaError.message);
+      const { error: linkError } = await req.supabase.from("implementations")
+        .update({ linked_tenant_id: tenantData.id, last_synced_at: new Date().toISOString() }).eq("id", impl.id);
+      vinculada = !linkError;
+      if (linkError) console.error("[tenant-create] Falha ao vincular a implementação:", linkError.message);
+    }
+
+    res.json({ success: true, tenantId: tenantData.id, ...(impl ? { empresaDadosSalvos, vinculada } : {}) });
   } catch (err: any) {
     console.error("[tenant-create]", err?.message);
     res.status(500).json({ error: "Erro ao cadastrar empresa." });
