@@ -51,8 +51,11 @@ function FieldControl({ field, value, onChange }: { field: ImplField; value: any
   );
 }
 
-/** Campo com consulta pública (CNPJ → Receita, CEP → endereço). Só preenche campos VAZIOS: nunca
- * sobrescreve o que a pessoa já digitou. Se a consulta falhar, o preenchimento manual segue valendo. */
+/** Campo com consulta pública (CNPJ → Receita, CEP → endereço). Buscar é uma ação explícita: os dados
+ * da Receita/Correios SUBSTITUEM razão social, endereço e CEP (fonte oficial — um endereço antigo
+ * vindo do cadastro do lead não pode ficar). Nome fantasia só troca se a Receita tiver um; segmento
+ * só é preenchido se estiver vazio (o CNAE é genérico e o cliente pode ter descrito melhor). O
+ * resumo mostra o que mudou. Se a consulta falhar, o preenchimento manual segue valendo. */
 function LookupField({ field, data, onFill }: { field: ImplField; data: ImplData; onFill: (fieldId: string, value: any) => void }) {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "warn" | "err"; text: string } | null>(null);
@@ -60,30 +63,34 @@ function LookupField({ field, data, onFill }: { field: ImplField; data: ImplData
   const isCnpj = field.lookup === "cnpj";
   const digits = onlyDigits(value);
   const complete = isCnpj ? digits.length === 14 : digits.length === 8;
-
-  const fillEmpty = (id: string, v: string) => { if (v && !String(data?.[id] ?? "").trim()) onFill(id, v); };
+  const cur = (id: string) => String(data?.[id] ?? "").trim();
 
   const buscar = async () => {
     setLoading(true); setMsg(null);
     try {
       if (isCnpj) {
         const info = await fetchCnpj(value);
-        const filled: string[] = [];
-        const tryFill = (id: string, v: string, label: string) => { if (v && !String(data?.[id] ?? "").trim()) { onFill(id, v); filled.push(label); } };
-        tryFill("razao_social", info.razao_social, "razão social");
-        tryFill("nome_fantasia", info.nome_fantasia || info.razao_social, "nome fantasia");
-        tryFill("segmento", info.segmento, "segmento");
-        tryFill("endereco", info.endereco, "endereço");
-        tryFill("cep", formatCepMask(info.cep), "CEP");
+        const changed: string[] = [];
+        const apply = (id: string, v: string, label: string, onlyIfEmpty = false) => {
+          if (!v || cur(id) === v) return;
+          if (onlyIfEmpty && cur(id)) return;
+          onFill(id, v); changed.push(label);
+        };
+        apply("razao_social", info.razao_social, "razão social");
+        apply("nome_fantasia", info.nome_fantasia, "nome fantasia");
+        apply("segmento", info.segmento, "segmento", true);
+        apply("endereco", info.endereco, "endereço");
+        apply("cep", formatCepMask(info.cep), "CEP");
         const ativa = /ativa/i.test(info.situacao);
         setMsg({
           tone: ativa ? "ok" : "warn",
-          text: `${info.razao_social} — situação ${info.situacao || "não informada"}.${filled.length ? ` Preenchido: ${filled.join(", ")}.` : " Os campos já estavam preenchidos."}`,
+          text: `${info.razao_social} — situação ${info.situacao || "não informada"}. ${changed.length ? `Atualizado: ${changed.join(", ")}.` : "Os dados já estavam iguais aos da Receita."}`,
         });
       } else {
         const info = await fetchCep(value);
-        fillEmpty("endereco", info.endereco);
-        setMsg({ tone: "ok", text: `${info.endereco}${String(data?.endereco ?? "").trim() ? " (endereço já preenchido — não alterado)" : ""}` });
+        const changed = cur("endereco") !== info.endereco;
+        if (changed) onFill("endereco", info.endereco);
+        setMsg({ tone: "ok", text: `${info.endereco}${changed ? " — endereço atualizado." : " — o endereço já estava igual."}` });
       }
     } catch (e: any) {
       setMsg({ tone: "err", text: e instanceof LookupError ? e.message : "Não foi possível consultar agora." });

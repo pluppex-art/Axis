@@ -60,7 +60,7 @@ export const IMPLEMENTATION_SECTIONS: ImplSection[] = [
     fields: [
       { id: "razao_social", label: "Razão social", type: "text", audience: "client", track: "answered" },
       { id: "nome_fantasia", label: "Nome fantasia", type: "text", audience: "client" },
-      { id: "cnpj", label: "CNPJ", type: "text", audience: "client", track: "answered", lookup: "cnpj", help: "Digite o CNPJ e clique em Buscar: razão social, nome fantasia, segmento e endereço são preenchidos pela Receita (só nos campos vazios)." },
+      { id: "cnpj", label: "CNPJ", type: "text", audience: "client", track: "answered", lookup: "cnpj", help: "Digite o CNPJ e clique em Buscar: razão social, nome fantasia, endereço e CEP são atualizados com os dados da Receita (o segmento só é preenchido se estiver vazio)." },
       { id: "segmento", label: "Segmento de atuação", type: "text", audience: "client", track: "answered" },
       { id: "site", label: "Site / Instagram", type: "text", audience: "client" },
       { id: "cep", label: "CEP", type: "text", audience: "client", lookup: "cep", placeholder: "00000-000" },
