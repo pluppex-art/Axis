@@ -1,0 +1,186 @@
+﻿Nome do exame;Código;Quantidade;Valor
+HEMOGRAMA COMPLETO;;1;17,60
+GLICOSE EM JEJUM;;6;29,68
+ÁCIDO ÚRICO;;11;91,20
+TRIGLICÉRIDES SÉRICOS;;16;27,78
+CREATININA SÉRICA;;21;53,56
+URÉIA;;26;67,32
+FOSFATASE ALCALINA;;31;49,68
+MAGNÉSIO;;36;18,53
+POTÁSSIO;;1;27,54
+SÓDIO;;6;39,98
+FERRITINA;;11;34,50
+PROLACTINA;;16;8,70
+PROGESTERONA;;21;44,20
+GLICEMIA DE JEJUM;;26;37,03
+Hemoglobina Glicosilada;;31;50,59
+HbA1c;;36;59,84
+Transaminase oxalacética;;1;8,36
+Transaminase pirúvica;;6;25,74
+Gama glutamil transferase;;11;39,44
+Tiroxina livre;;16;31,42
+Cobalamina;;21;88,20
+Folato;;26;16,59
+Antígeno prostático específico;;31;54,52
+Urina tipo I;;36;16,98
+Urina rotina;;1;12,70
+Cultura de urina;;6;32,00
+Exame parasitológico de fezes;;11;45,75
+Velocidade de hemossedimentação;;16;55,98
+Creatinofosfoquinase;;21;27,03
+Desidrogenase lática;;26;19,68
+Tempo de tromboplastina parcial ativada;;31;22,61
+Hormônio tireoestimulante;;36;31,36
+25-OH Vitamina D;;1;49,98
+Vitamina D;;6;60,10
+HB GLICADA;;11;64,19
+TGO;;16;9,18
+TGP;;21;27,82
+AST;;26;12,65
+ALT;;31;24,96
+GGT;;36;38,42
+FT4;;1;30,35
+EAS;;6;15,61
+EPF;;11;46,53
+PCR;;16;54,60
+VHS;;21;67,93
+TG;;26;25,84
+BHCG;;31;83,42
+VIT D;;36;67,83
+25 OH VIT D;;1;51,17
+VIT B12;;6;86,52
+TAP;;11;16,80
+KTTP;;16;21,90
+CPK;;21;27,80
+LDH;;26;12,96
+HBSAG;;31;37,24
+FSH;;36;73,60
+LH;;1;57,68
+CREAT;;6;54,08
+COLEST TOTAL;;11;94,38
+COLEST HDL;;16;7,91
+COLEST LDL;;21;26,40
+GLIC JEJUM;;26;25,09
+HEMOG GLICADA;;31;53,86
+Colesterol - HDL;;36;9,86
+HDL colesterol;;1;7,48
+Colesterol LDL;;6;25,20
+Colesterol Total;;11;95,16
+Glicose (jejum);;16;28,76
+Glicemia pós prandial 2h;;21;55,50
+Ácido úrico, dosagem;;26;66,40
+Úrico, ácido;;31;80,00
+Vitamina D (25 hidroxi);;36;69,61
+Vitamina B12 sérica;;1;74,76
+Fosf. alcalina;;6;57,24
+Bilirrubina Total;;11;71,09
+Bilirrubina Direta;;16;77,90
+BILIRRUBINA INDIRETA;;21;13,33
+T3 Total;;26;47,04
+PSA TOTAL;;31;58,58
+PSA LIVRE;;36;72,22
+BETA HCG QUANTITATIVO;;1;77,40
+HCG quantitativo;;6;92,02
+Toxoplasmose IgG;;11;14,88
+Toxoplasmose IgM;;16;21,22
+Rubéola IgG;;21;45,20
+Rubéola IgM;;26;39,02
+Citomegalovírus IgG;;31;69,36
+Citomegalovírus IgM;;36;82,94
+Anti-HIV;;1;18,56
+HIV 1 e 2 anticorpos;;6;22,03
+Anti HCV;;11;52,80
+Anti-HBs;;16;42,87
+VDRL;;21;77,52
+Proteína C reativa;;26;51,60
+Cálcio;;31;90,64
+Cálcio total;;36;105,60
+Insulina;;1;59,43
+Insulina basal;;6;70,41
+Testosterona total;;11;6,48
+Testosterona livre;;16;18,33
+Estradiol;;21;41,40
+Cortisol;;26;53,94
+Tempo de protrombina;;31;14,56
+D dímero;;36;50,82
+Homocisteína;;1;44,27
+Amilase;;6;77,00
+Lipase;;11;58,55
+CK-MB;;16;43,56
+Fibrinogênio;;21;83,52
+Zinco;;26;64,33
+Ferro sérico;;31;39,27
+Ferro;;36;45,63
+HEMOGRAMMA COMPLETO;;1;20,68
+COLESTEROL TOTA;;6;86,58
+creatinnina;;11;43,16
+TRIGLICERIDEOS  ;;16;32,30
+Glicose em jejun;;21;35,80
+Bilirrubina diretta;;26;72,98
+Vitamna D;;31;63,07
+Ferritna;;36;36,90
+Exame 40304361;40304361;1;20,90
+Prova 40302040;40302040;6;34,27
+Dosagem X 40316521;40316521;11;23,52
+Hemograma completo com plaquetas;;16;22,22
+TSH ultrassensível;;21;33,04
+Glicose em jejum (8h);;26;27,54
+Creatinina sérica - método enzimático;;31;55,64
+Urocultura com antibiograma;;36;39,68
+Troponina I;;1;47,33
+Vitamina B12 (cobalamina);;6;94,92
+T4 TOTAL;;11;161,50
+T3 LIVRE;;16;21,42
+VITAMINA B6;;21;38,08
+VITAMINA C;;26;39,13
+VITAMINA A;;31;58,32
+CÁLCIO IÔNICO;;36;52,00
+CORTISOL SALIVAR;;1;73,72
+TOXOPLASMOSE IgA;;6;99,18
+RUBÉOLA IgA;;11;84,28
+HEPATITE A ANTI-HAV;;16;112,27
+GLICOSE URINÁRIA;;21;144,00
+PROTEÍNA URINÁRIA;;26;120,52
+CREATININA URINÁRIA;;31;154,78
+COLESTEROL VLDL;;36;123,93
+HEMOGLOBINA;;1;160,72
+FERRO TOTAL LIGAÇÃO (TIBC);;6;201,25
+TSH NEONATAL;;11;161,82
+PSA COMPLEXADO;;16;204,88
+ANTI-TPO;;21;33,88
+FOSFATASE ÁCIDA;;26;36,27
+BILIRRUBINA NEONATAL;;31;55,00
+TESTOSTERONA BIODISPONÍVEL;;36;50,02
+INSULINA PÓS-PRANDIAL;;1;71,28
+CLEARANCE DE CREATININA;;6;96,28
+GLICEMIA CAPILAR;;11;82,72
+CURVA GLICÊMICA;;16;110,25
+CITOMEGALOVÍRUS IgA;;21;141,52
+HIV CARGA VIRAL;;26;119,38
+HEPATITE B ANTI-HBC;;31;153,18
+TOXOPLASMOSE;;36;9,96
+RUBÉOLA;;1;40,00
+CITOMEGALOVÍRUS;;6;79,56
+PSA;;11;51,62
+TESTOSTERONA;;16;8,48
+BILIRRUBINAS;;21;71,09
+COLESTEROL;;26;74,10
+GLICOSE;;31;34,27
+HEPATITE B;;36;31,92
+CK;;1;25,76
+Bilirrubinas total e frações;;6;68,20
+Colesterol total e frações;;11;70,20
+DENSITOMETRIA ÓSSEA;;16;108,07
+RESSONÂNCIA MAGNÉTICA DE JOELHO;;21;138,88
+ELETROCARDIOGRAMA;;26;118,08
+RAIO X DE TÓRAX;;31;151,42
+ULTRASSOM ABDOME TOTAL;;36;123,25
+TESTE ERGOMÉTRICO;;1;159,12
+COLONOSCOPIA;;6;198,73
+PAPANICOLAU;;11;161,98
+ESPERMOGRAMA;;16;204,12
+AUDIOMETRIA;;21;16,00
+HORMÔNIO DO CRESCIMENTO GH;;26;30,07
+SELÊNIO;;31;47,88
+CHUMBO SÉRICO;;36;45,58
+COBRE;;1;65,92

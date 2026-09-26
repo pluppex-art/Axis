@@ -14,6 +14,7 @@ import { supabase } from "../../lib/supabase";
 import { apiFetch } from "../../lib/apiClient";
 import { cn } from "../../lib/utils";
 import { COMPARISON_STATUS_LABEL, COMPARISON_STATUS_TONE } from "./ComparacaoTabelas";
+import { ComparacaoExportButtons } from "./components/ComparacaoExportButtons";
 
 const PAGE_SIZE = 50;
 const inputCls =
@@ -149,6 +150,7 @@ export default function ComparacaoResultado() {
       actions={
         <div className="flex items-center gap-2">
           <Link to="/app/clinicas/comparacao-tabelas" className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] px-2"><ArrowLeft className="w-3.5 h-3.5" /> Histórico</Link>
+          {activeTenantId && <ComparacaoExportButtons comparacaoId={comp.id} tenantId={activeTenantId} />}
           <span className={cn("inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border", COMPARISON_STATUS_TONE[comp.status])}>{COMPARISON_STATUS_LABEL[comp.status] || comp.status}</span>
         </div>
       }

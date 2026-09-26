@@ -1,0 +1,71 @@
+﻿Nome oficial;Código interno;Código externo;Categoria;Sinônimos;Custo;Valor comercial
+Hemograma completo;LV001;40304361;Hematologia;Hemograma | Eritrograma leucograma plaquetas;11,00;22,00
+Glicose em jejum;LV002;40302040;Bioquímica;Glicemia de jejum;18,00;30,60
+Glicose pós-prandial;LV003;;Bioquímica;Glicemia pós-prandial | Glicemia 2h pós;25,00;50,00
+Hemoglobina glicada;LV004;;Bioquímica;HbA1c | Hemoglobina glicosilada;32,00;54,40
+Colesterol total;LV005;;Bioquímica;;39,00;78,00
+Colesterol HDL;LV006;;Bioquímica;;5,00;8,50
+Colesterol LDL;LV007;;Bioquímica;;12,00;24,00
+Triglicerídeos;LV008;;Bioquímica;Triglicérides;19,00;32,30
+Creatinina;LV009;;Bioquímica;Creatinina sérica;26,00;52,00
+Ureia;LV010;;Bioquímica;;33,00;56,10
+Ácido úrico;LV011;;Bioquímica;;40,00;80,00
+TGO (AST);LV012;;Bioquímica;Transaminase oxalacética | AST | TGO;6,00;10,20
+TGP (ALT);LV013;;Bioquímica;Transaminase pirúvica | ALT | TGP;13,00;26,00
+Gama GT;LV014;;Bioquímica;Gama glutamil transferase | GGT;20,00;34,00
+Fosfatase alcalina;LV015;;Bioquímica;;27,00;54,00
+Bilirrubina total;LV016;;Bioquímica;;34,00;57,80
+Bilirrubina direta;LV017;;Bioquímica;;41,00;82,00
+Bilirrubina indireta;LV018;;Bioquímica;;7,00;11,90
+TSH;LV019;40316521;Hormônios;Hormônio tireoestimulante;14,00;28,00
+T4 livre;LV020;;Hormônios;Tiroxina livre | FT4;21,00;35,70
+T3 total;LV021;;Hormônios;;28,00;56,00
+Vitamina D 25-hidroxi;LV022;;Vitaminas e Marcadores;Vitamina D | 25-OH Vitamina D | 25 hidroxivitamina D;35,00;59,50
+Vitamina B12;LV023;;Vitaminas e Marcadores;Cobalamina;42,00;84,00
+Ácido fólico;LV024;;Vitaminas e Marcadores;Folato;8,00;13,60
+Ferritina;LV025;;Vitaminas e Marcadores;;15,00;30,00
+Ferro sérico;LV026;;Vitaminas e Marcadores;;22,00;37,40
+PSA total;LV027;;Vitaminas e Marcadores;Antígeno prostático específico;29,00;58,00
+PSA livre;LV028;;Vitaminas e Marcadores;;36,00;61,20
+Beta HCG quantitativo;LV029;;Análises clínicas;BHCG | Gonadotrofina coriônica;43,00;86,00
+EAS;LV030;;Análises clínicas;Urina tipo I | Urina rotina | Sumário de urina;9,00;15,30
+Urocultura;LV031;;Análises clínicas;Cultura de urina;16,00;32,00
+Parasitológico de fezes;LV032;;Análises clínicas;EPF | Exame parasitológico de fezes;23,00;39,10
+Proteína C reativa;LV033;;Análises clínicas;PCR;30,00;60,00
+VHS;LV034;;Análises clínicas;Velocidade de hemossedimentação;37,00;62,90
+Cálcio total;LV035;;Análises clínicas;;44,00;88,00
+Magnésio;LV036;;Análises clínicas;;10,00;17,00
+Potássio;LV037;;Análises clínicas;;17,00;34,00
+Sódio;LV038;;Análises clínicas;;24,00;40,80
+Cortisol;LV039;;Análises clínicas;;31,00;62,00
+Insulina basal;LV040;;Análises clínicas;;38,00;64,60
+Testosterona total;LV041;;Análises clínicas;;4,00;8,00
+Testosterona livre;LV042;;Análises clínicas;;11,00;18,70
+Estradiol;LV043;;Análises clínicas;;18,00;36,00
+Progesterona;LV044;;Análises clínicas;;25,00;42,50
+FSH;LV045;;Análises clínicas;;32,00;64,00
+LH;LV046;;Análises clínicas;;39,00;66,30
+Prolactina;LV047;;Análises clínicas;;5,00;10,00
+Anti-HIV 1 e 2;LV048;;Sorologia;HIV | Sorologia HIV;12,00;20,40
+Hepatite B HBsAg;LV049;;Sorologia;HBsAg;19,00;38,00
+Anti-HBs;LV050;;Sorologia;;26,00;44,20
+Hepatite C Anti-HCV;LV051;;Sorologia;Anti-HCV;33,00;66,00
+VDRL;LV052;;Sorologia;Sífilis VDRL;40,00;68,00
+Toxoplasmose IgG;LV053;;Sorologia;;6,00;12,00
+Toxoplasmose IgM;LV054;;Sorologia;;13,00;22,10
+Rubéola IgG;LV055;;Sorologia;;20,00;40,00
+Rubéola IgM;LV056;;Sorologia;;27,00;45,90
+Citomegalovírus IgG;LV057;;Sorologia;CMV IgG;34,00;68,00
+Citomegalovírus IgM;LV058;;Sorologia;CMV IgM;41,00;69,70
+Tempo de protrombina;LV059;;Bioquímica;TAP | TP;7,00;14,00
+TTPA;LV060;;Bioquímica;Tempo de tromboplastina parcial ativada | KTTP;14,00;23,80
+D-dímero;LV061;;Bioquímica;;21,00;42,00
+Homocisteína;LV062;;Bioquímica;;28,00;47,60
+Amilase;LV063;;Bioquímica;;35,00;70,00
+Lipase;LV064;;Bioquímica;;42,00;71,40
+LDH;LV065;;Bioquímica;Desidrogenase lática;8,00;16,00
+CK total;LV066;;Bioquímica;CPK | Creatinofosfoquinase;15,00;25,50
+CK-MB;LV067;;Bioquímica;;22,00;44,00
+Troponina;LV068;;Bioquímica;;29,00;49,30
+Fibrinogênio;LV069;;Bioquímica;;36,00;72,00
+Zinco;LV070;;Bioquímica;;43,00;73,10
