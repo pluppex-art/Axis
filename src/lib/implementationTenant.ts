@@ -1,7 +1,7 @@
 // Criar o ambiente (tenant) do cliente a partir dos dados da implementação.
 // Compartilhado entre a tela (mostra o que falta) e o servidor (revalida e monta o cadastro da
 // empresa — o servidor NUNCA confia no que o navegador diz estar completo).
-import { isValidCnpj, onlyDigits } from "./brLookup";
+import { isValidCnpj, onlyDigits } from "./brLookup.js";
 
 const s = (v: unknown) => String(v ?? "").trim();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
