@@ -4331,15 +4331,6 @@ app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) 
     const { data: existingUser } = await supabaseService.from("users").select("id").eq("email", adminEmail.trim()).maybeSingle();
     if (existingUser) return res.status(409).json({ error: "Este e-mail já está cadastrado no sistema." });
 
-    const { data: tenantData, error: tenantError } = await supabaseService
-      .from("tenants")
-      .insert({
-        name: tenantName.trim(),
-        niche: niche || "Parceira",
-        plan: typeof plan === "string" && plan.trim() ? plan.trim().slice(0, 50) : "start",
-        status: "Active",
-        timezone: timezone?.trim() || "America/Sao_Paulo",
-        primary_color: /^#[0-9A-Fa-f]{6}$/.test(primaryColor) ? primaryColor : "#2563EB",
     // Criação a partir de uma implementação: a implementação (lida sob a RLS de quem pediu) é a
     // fonte da verdade — o servidor revalida se os dados estão completos e monta o cadastro da
     // empresa a partir dela; nada disso vem do corpo da requisição.
@@ -4356,6 +4347,15 @@ app.post("/api/admin/tenant", requireUser, requireMaster, async (req: any, res) 
       impl = { id: found.id, data: found.data || {} };
     }
 
+    const { data: tenantData, error: tenantError } = await supabaseService
+      .from("tenants")
+      .insert({
+        name: tenantName.trim(),
+        niche: niche || "Parceira",
+        plan: typeof plan === "string" && plan.trim() ? plan.trim().slice(0, 50) : "start",
+        status: "Active",
+        timezone: timezone?.trim() || "America/Sao_Paulo",
+        primary_color: /^#[0-9A-Fa-f]{6}$/.test(primaryColor) ? primaryColor : "#2563EB",
         modules: modules && typeof modules === "object"
           ? modules
           : { crm: true, sdr: false, advDashboard: false, financeiro: true, marketing: false, educacao: false, clinica: false, produtividade: true, rh: false, bi: false, engajamento: false },
