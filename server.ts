@@ -16,6 +16,7 @@ import { assertSafeHttpUrl, assertSafeSmtpTarget } from "./server/ssrfGuard.js";
 import { readTenantSnapshot } from "./server/implementationSync.js";
 import { registerTableComparisonRoutes } from "./server/tableComparison.js";
 import { registerTableComparisonExportRoutes } from "./server/tableComparisonExport.js";
+import { registerTableComparisonResearchRoutes } from "./server/tableComparisonResearch.js";
 import { connFromConfig as maxConnFromConfig, maxdataAuth, maxdataGet, MaxDataError } from "./server/maxdataClient.js";
 import { extractDocs as maxExtractDocs, mapMaxEntryToNota, type MaxEntry, type MaxEntryItem } from "./src/lib/maxdataEntry.js";
 import { findProductForItem, defaultQtdEstoque } from "./src/lib/notaEntrada.js";
@@ -292,6 +293,8 @@ const tableComparisonLimiter = rateLimit({ windowMs: 60_000, limit: 20, standard
 registerTableComparisonRoutes(app, { requireUser, resolveRequestedTenantId, limiter: tableComparisonLimiter });
 // Resultado estruturado + exportações (Excel/PDF) — só leitura; o limiter acima já cobre este prefixo.
 registerTableComparisonExportRoutes(app, { requireUser, resolveRequestedTenantId });
+// Pesquisa externa (web) da Aurora para itens não identificados — a busca roda no n8n; só gera sugestões p/ revisão.
+registerTableComparisonResearchRoutes(app, { requireUser, resolveRequestedTenantId });
 app.use("/api/auth/tenant-theme", tenantThemeLimiter);
 app.use("/api/v1/leads", apiKeyLimiter);
 app.use("/api/v1/lead-activities", apiKeyLimiter);

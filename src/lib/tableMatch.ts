@@ -189,7 +189,7 @@ export function similarity(normA: string, normB: string): number {
   return Math.round((tokenScore * 0.6 + charScore * 0.4) * 100);
 }
 
-function criticalDiff(tokA: string[], tokB: string[]): string[] {
+export function criticalDiff(tokA: string[], tokB: string[]): string[] {
   const a = new Set(tokA.filter((t) => CRITICAL_TOKENS.has(t) || /^\d+$/.test(t)));
   const b = new Set(tokB.filter((t) => CRITICAL_TOKENS.has(t) || /^\d+$/.test(t)));
   const diff: string[] = [];
