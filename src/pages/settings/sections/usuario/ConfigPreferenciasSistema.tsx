@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../../../contexts/AuthContext";
 import { useData } from "../../../../contexts/DataContext";
 import { useLocalization } from "../../../../contexts/LocalizationContext";
-import { BRAND_COLORS } from "../../../../lib/theme";
+import { BRAND_COLORS, MIN_BRAND_CONTRAST, contrastWithWhite, normalizeBrandHex } from "../../../../lib/theme";
 import { Logo } from "../../../../components/ui/Logo";
 
 const PREF_KEY = "systemPreferences";
@@ -101,6 +101,19 @@ export function ConfigPreferenciasSistema() {
     if (result.success) toast.success("Cor do tema atualizada.");
   };
 
+  // Cor personalizada: o cliente escolhe qualquer cor (seletor ou hex). Só grava ao "Aplicar".
+  const isPresetColor = BRAND_COLORS.some((c) => c.hex.toLowerCase() === tenantPrimaryColor.toLowerCase());
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customInput, setCustomInput] = useState(tenantPrimaryColor);
+  const customHex = normalizeBrandHex(customInput);
+  const customContrast = customHex ? contrastWithWhite(customHex) : 0;
+  const customTooLight = !!customHex && customContrast < MIN_BRAND_CONTRAST;
+  const applyCustomColor = async () => {
+    if (!customHex || customTooLight) return;
+    await handlePickBrandColor(customHex);
+    setCustomOpen(false);
+  };
+
   return (
     <div className="max-w-4xl space-y-6 animate-in fade-in duration-300 pb-12">
       <div>
@@ -159,7 +172,7 @@ export function ConfigPreferenciasSistema() {
           {t("Cor de destaque do S.P.Y. para a sua empresa. Vale para todos os usuários deste tenant.")}
         </p>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           {BRAND_COLORS.map((c) => {
             const isSelected = tenantPrimaryColor.toLowerCase() === c.hex.toLowerCase();
             return (
@@ -186,7 +199,74 @@ export function ConfigPreferenciasSistema() {
               </button>
             );
           })}
+
+          {/* Personalizada */}
+          <button
+            type="button"
+            disabled={!canEditBrandColor}
+            onClick={() => { setCustomInput(tenantPrimaryColor); setCustomOpen((v) => !v); }}
+            className={`p-4 rounded-xl border text-left transition-all flex flex-col items-center gap-3 ${
+              !isPresetColor
+                ? "border-[var(--color-primary-blue)] bg-[var(--color-primary-blue)]/10 shadow-xs"
+                : "border-[var(--color-border-subtle)] bg-[var(--color-surface-sunken)] hover:border-[var(--color-border-default)]"
+            } ${canEditBrandColor ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
+          >
+            <div className="relative">
+              <div
+                className="w-10 h-10 rounded-full shadow-inner"
+                style={!isPresetColor
+                  ? { backgroundColor: tenantPrimaryColor }
+                  : { background: "conic-gradient(#f43f5e, #f59e0b, #10b981, #06b6d4, #2563eb, #7c3aed, #f43f5e)" }}
+              />
+              {!isPresetColor && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--color-primary-blue)] flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-white" />
+                </div>
+              )}
+            </div>
+            <p className="text-xs font-bold text-[var(--color-text-primary)]">{t("Personalizar")}</p>
+          </button>
         </div>
+
+        {customOpen && canEditBrandColor && (
+          <div className="rounded-xl border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] p-4 space-y-3 animate-in fade-in duration-200">
+            <p className="text-xs font-bold text-[var(--color-text-primary)]">{t("Escolha qualquer cor para a sua marca")}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="color"
+                value={customHex ?? "#2563eb"}
+                onChange={(e) => setCustomInput(e.target.value)}
+                className="w-12 h-10 rounded-lg border border-[var(--color-border-default)] bg-transparent cursor-pointer p-0.5"
+                aria-label={t("Seletor de cor")}
+              />
+              <input
+                type="text"
+                value={customInput}
+                onChange={(e) => setCustomInput(e.target.value)}
+                placeholder="#2563EB"
+                maxLength={7}
+                className="w-32 bg-[var(--color-surface-elevated)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]"
+              />
+              {customHex && (
+                <span
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-bold"
+                  style={{ backgroundColor: customHex, color: customTooLight ? "#0f172a" : "#ffffff" }}
+                >
+                  {t("Prévia do botão")}
+                </span>
+              )}
+              <Button type="button" onClick={applyCustomColor} disabled={!customHex || customTooLight} className="h-9 px-4 text-xs font-medium">
+                {t("Aplicar cor")}
+              </Button>
+            </div>
+            {!customHex && customInput.trim() !== "" && (
+              <p className="text-[11px] text-rose-500">{t("Digite uma cor válida no formato #RRGGBB (ex.: #0EA5E9).")}</p>
+            )}
+            {customTooLight && (
+              <p className="text-[11px] text-amber-600">{t("Essa cor é clara demais: o texto branco dos botões e do menu ficaria ilegível. Escolha uma cor mais escura.")}</p>
+            )}
+          </div>
+        )}
 
         {!canEditBrandColor && (
           <p className="text-xs text-[var(--color-text-faint)]">

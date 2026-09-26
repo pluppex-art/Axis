@@ -15,6 +15,35 @@ export const BRAND_COLORS: BrandColorOption[] = [
 
 export const DEFAULT_BRAND_COLOR = BRAND_COLORS[0].hex;
 
+/** Aceita só "#RRGGBB" (é o que vai para a variável CSS e para o banco). */
+export function isValidBrandHex(hex: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(hex.trim());
+}
+
+/** "abc"/"#abc"/"#AABBCC" → "#aabbcc"; devolve null se não for uma cor válida. */
+export function normalizeBrandHex(input: string): string | null {
+  let v = input.trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{3}$/.test(v)) v = v.split("").map((c) => c + c).join("");
+  return /^[0-9a-fA-F]{6}$/.test(v) ? `#${v.toLowerCase()}` : null;
+}
+
+/** Luminância relativa (WCAG) de 0 (preto) a 1 (branco). */
+export function relativeLuminance(hex: string): number {
+  const n = normalizeBrandHex(hex);
+  if (!n) return 0;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(n.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** Razão de contraste do texto branco sobre a cor (botões e itens ativos usam texto branco). */
+export function contrastWithWhite(hex: string): number {
+  return 1.05 / (relativeLuminance(hex) + 0.05);
+}
+
+/** Cores muito claras deixam botões/menu ativo (texto branco) ilegíveis. */
+export const MIN_BRAND_CONTRAST = 2.2;
+
 /**
  * Gera o SVG do Favicon oficial do S.P.Y. (mira, chapéu e óculos de espião)
  * customizado dinamicamente com a cor primária escolhida.
@@ -66,7 +95,7 @@ export function updateFaviconColor(hex: string) {
  * Aplica a cor do tema nas variáveis CSS globais e no favicon.
  */
 export function applyThemeColor(hex: string, _tenantName?: string) {
-  if (typeof document === "undefined" || !hex) return;
+  if (typeof document === "undefined" || !hex || !/^#[0-9a-fA-F]{3,8}$/.test(hex)) return;
   document.documentElement.style.setProperty("--color-primary-blue", hex);
   document.documentElement.style.setProperty("--primary", hex);
   updateFaviconColor(hex);
