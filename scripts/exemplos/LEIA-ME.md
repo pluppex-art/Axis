@@ -4,9 +4,12 @@ Dados **sintéticos** (nenhum cliente real): uma base de laboratório com 70 exa
 parceiro com 185 linhas (sinônimos, abreviações, erros de digitação e armadilhas de propósito).
 
 ## Antes de testar
-1. **Gemini com faturamento.** A chave do SPY (`GEMINI_API_KEY`) é do plano gratuito: 20 chamadas/dia
-   por modelo. Sem ativar o faturamento no projeto Google, o botão "Analisar pendências com a Aurora"
-   vai falhar (erro 429) depois de poucos lotes. As regras determinísticas funcionam sem IA.
+1. **A IA (Aurora) roda no n8n**, no workflow "Comparação de Tabelas - Analisar Itens (IA)"
+   (`6Cb8wS7AMofvb8Uc`, ativo). O backend do SPY precisa da variável `TABLE_COMPARISON_AI_WEBHOOK_URL`
+   (já está no `.env` local; **no servidor de produção/Vercel ela precisa ser cadastrada** — ver
+   `.env.example`). Sem ela, "Analisar pendências com a Aurora" responde 503. As regras
+   determinísticas funcionam sem IA. O consumo entra no limitador de tokens da empresa
+   (`ai_usage_log`, grupo "Clínicas e Saúde").
 2. Use uma empresa de **teste** com o módulo **Clínica** ativo (nunca uma empresa de cliente).
 
 ## Passo a passo na tela (Clínicas e Saúde)
@@ -28,7 +31,7 @@ parceiro com 185 linhas (sinônimos, abreviações, erros de digitação e armad
 ## Teste offline (sem tela, sem banco)
 ```
 npx tsx scripts/tableMatchLabTest.ts          # motor determinístico — "AUTO ERRADO" tem que ser 0
-npx tsx scripts/tableMatchLabTestAurora.ts    # com a Aurora real (gasta ~9 chamadas do Gemini)
+npx tsx scripts/tableMatchLabTestAurora.ts    # com a Aurora real, passando pelo n8n (~5 chamadas)
 ```
 
 ## Regenerar os CSVs
