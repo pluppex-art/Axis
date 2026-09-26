@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Rocket, Play, Search, ClipboardList, CheckCircle2, Clock, Gauge, ChevronRight } from "lucide-react";
+import { Rocket, Play, Search, ClipboardList, CheckCircle2, Clock, Gauge, ChevronRight, LayoutList, Columns3 } from "lucide-react";
 import { PageContainer } from "../../components/PageContainer";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/empty-state";
 import { StatCell, StatCellRow } from "../finance/components/StatCell";
 import { ImplementationProgressBar } from "../../components/implementacao/ImplementationProgressBar";
+import { ImplementacoesKanban } from "../../components/implementacao/ImplementacoesKanban";
 import { useData } from "../../contexts/DataContext";
 import { supabase } from "../../lib/supabase";
 import { cn } from "../../lib/utils";
@@ -35,13 +36,21 @@ function prefillFrom(cliente: any, lead?: any, contatos: any[] = []): Record<str
 }
 
 export default function Implementacoes() {
-  const { implementations, clienteBase, leads, addImplementation, updateClienteBase } = useData();
+  const { implementations, clienteBase, leads, addImplementation, updateImplementation, updateClienteBase } = useData();
   const navigate = useNavigate();
   const [filtro, setFiltro] = useState<(typeof FILTROS)[number]>("Todas");
   const [busca, setBusca] = useState("");
   const [outroClienteId, setOutroClienteId] = useState("");
   const [iniciando, setIniciando] = useState<string | null>(null);
   const iniciandoRef = useRef(false);
+  // Lista ou Kanban — lembra a última escolha neste navegador.
+  const [view, setView] = useState<"lista" | "kanban">(() => {
+    try { return localStorage.getItem("implementacoes_view") === "kanban" ? "kanban" : "lista"; } catch { return "lista"; }
+  });
+  const changeView = (v: "lista" | "kanban") => {
+    setView(v);
+    try { localStorage.setItem("implementacoes_view", v); } catch { /* sem storage: só não lembra */ }
+  };
 
   const clientePorId = useMemo(() => new Map((clienteBase as any[]).map((c) => [c.id, c])), [clienteBase]);
   const comImplementacao = useMemo(() => new Set((implementations as any[]).map((i) => i.cliente_id)), [implementations]);
@@ -92,6 +101,30 @@ export default function Implementacoes() {
     });
   }, [linhas, filtro, busca]);
 
+  const aguardandoFiltrado = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return aguardando.filter(({ cliente }) => !q || (cliente.name || "").toLowerCase().includes(q));
+  }, [aguardando, busca]);
+
+  // Mesmas regras da tela de detalhe ao mudar o status (conclusão finaliza o cliente e vice-versa).
+  const moverStatus = async (impl: any, cliente: any, next: ImplementationStatus) => {
+    if (impl.status === next) return;
+    const patch: Record<string, any> = { status: next };
+    if (next === "Concluída") {
+      patch.completed_at = new Date().toISOString();
+      if (cliente?.status === "Em Implantação") await updateClienteBase(cliente.id, { status: "Ativo" });
+    } else if (impl.status === "Concluída") {
+      patch.completed_at = null;
+      if (cliente?.status === "Ativo") await updateClienteBase(cliente.id, { status: "Em Implantação" });
+    }
+    await updateImplementation(impl.id, patch);
+  };
+
+  const linhasBusca = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return linhas.filter((l) => !q || (l.cliente?.name || "").toLowerCase().includes(q) || (l.impl.responsavel || "").toLowerCase().includes(q));
+  }, [linhas, busca]);
+
   const iniciar = async (cliente: any, lead?: any) => {
     // Trava síncrona (o estado só atualiza no próximo render — um duplo clique passaria).
     if (iniciandoRef.current) return;
@@ -140,7 +173,7 @@ export default function Implementacoes() {
           <StatCell label="Progresso médio (em andamento)" value={`${kpis.media}%`} icon={Gauge} />
         </StatCellRow>
 
-        {(aguardando.length > 0 || clientesLivres.length > 0) && (
+        {view === "lista" && (aguardando.length > 0 || clientesLivres.length > 0) && (
           <Card className="p-6">
             <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-1 flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-500" /> Aguardando início ({aguardando.length})
@@ -185,6 +218,22 @@ export default function Implementacoes() {
         )}
 
         <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 bg-[var(--color-surface-sunken)] p-1 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)]">
+            {([["lista", "Lista", LayoutList], ["kanban", "Kanban", Columns3]] as const).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => changeView(id)}
+                className={cn(
+                  "px-3 py-1 text-xs font-medium rounded cursor-pointer transition-all flex items-center gap-1.5",
+                  view === id ? "bg-[var(--color-primary-blue)] !text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+          {view === "lista" && (
           <div className="flex items-center gap-1 bg-[var(--color-surface-sunken)] p-1 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)] flex-wrap">
             {FILTROS.map((f) => (
               <button
@@ -200,6 +249,7 @@ export default function Implementacoes() {
               </button>
             ))}
           </div>
+          )}
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-text-faint)]" />
             <input
@@ -209,7 +259,38 @@ export default function Implementacoes() {
           </div>
         </div>
 
-        {filtradas.length === 0 ? (
+        {view === "kanban" ? (
+          <>
+            <ImplementacoesKanban
+              linhas={linhasBusca}
+              aguardando={aguardandoFiltrado}
+              iniciandoId={iniciando}
+              onOpen={(id) => navigate(`/app/crm/implementacoes/${id}`)}
+              onStart={iniciar}
+              onMove={moverStatus}
+            />
+            {clientesLivres.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-[var(--color-text-muted)]">Iniciar para outro cliente:</span>
+                <select
+                  value={outroClienteId}
+                  onChange={(e) => setOutroClienteId(e.target.value)}
+                  className="bg-[var(--color-surface-sunken)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-1.5 text-xs cursor-pointer max-w-[260px]"
+                >
+                  <option value="">Selecione…</option>
+                  {clientesLivres.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <Button
+                  size="sm" variant="outline" disabled={!outroClienteId || iniciando === outroClienteId}
+                  onClick={() => { const c = clientePorId.get(outroClienteId); if (c) iniciar(c); }}
+                  className="h-8 px-3 text-xs font-medium"
+                >
+                  Iniciar
+                </Button>
+              </div>
+            )}
+          </>
+        ) : filtradas.length === 0 ? (
           <EmptyState
             icon={ClipboardList}
             title={linhas.length === 0 ? "Nenhuma implementação iniciada ainda" : "Nenhuma implementação para esse filtro"}
