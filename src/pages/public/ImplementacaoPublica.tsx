@@ -155,9 +155,10 @@ export default function ImplementacaoPublica() {
   const { overall, sections: bySection } = computeProgress(data, "client");
   const brandColor = impl.tenant.primary_color && /^#[0-9a-fA-F]{6}$/.test(impl.tenant.primary_color) ? impl.tenant.primary_color : null;
   const brand = brandColor ? ({ "--color-primary-blue": brandColor } as CSSProperties) : undefined;
-  // Texto do topo: branco, a menos que a cor de marca seja clara demais para ele.
-  const heroDark = brandColor ? contrastWithWhite(brandColor) < MIN_BRAND_CONTRAST : false;
-  const heroText = heroDark ? "text-slate-900" : "text-white";
+  // Topo: cor da marca SEM degradê e letras sempre brancas. Se a cor for clara demais para texto branco,
+  // escurece só o fundo (a letra continua branca). `!text-white` porque o tema claro sobrescreve `text-white`.
+  const heroTooLight = brandColor ? contrastWithWhite(brandColor) < MIN_BRAND_CONTRAST : false;
+  const heroBg = heroTooLight ? "color-mix(in srgb, var(--color-primary-blue) 55%, #0b1120)" : "var(--color-primary-blue)";
   const allDone = overall.total > 0 && overall.percent >= 100;
   const isDone = (id: string) => (bySection[id]?.total ?? 0) > 0 && bySection[id].percent >= 100;
   const go = (i: number) => { setActive(sections[i].id); window.scrollTo({ top: 0, behavior: "smooth" }); };
@@ -168,18 +169,17 @@ export default function ImplementacaoPublica() {
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Topo */}
         <header
-          className={cn("relative overflow-hidden rounded-3xl p-6 sm:p-8 shadow-[var(--shadow-panel)]", heroText)}
-          style={{ background: "linear-gradient(135deg, var(--color-primary-blue), color-mix(in srgb, var(--color-primary-blue) 62%, #0b1120))" }}
+          className="relative overflow-hidden rounded-3xl p-6 sm:p-8 shadow-[var(--shadow-panel)] !text-white"
+          style={{ backgroundColor: heroBg }}
         >
-          <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-white/10 blur-2xl pointer-events-none" />
           <div className="relative flex items-start justify-between gap-3 flex-wrap">
             {impl.tenant.name ? (
-              <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-widest", heroDark ? "bg-black/10" : "bg-white/15")}>
+              <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-widest bg-white/15 !text-white">
                 <Building2 className="w-3.5 h-3.5" /> {impl.tenant.name}
               </span>
             ) : <span />}
             <div className="flex items-center gap-2">
-            <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold min-h-[26px]", heroDark ? "bg-black/10" : "bg-white/15")}>
+            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold min-h-[26px] bg-white/15 !text-white">
               {saveState === "saving" && <><Loader2 className="w-3 h-3 animate-spin" /> Salvando…</>}
               {saveState === "saved" && <><Check className="w-3 h-3" /> Tudo salvo</>}
               {saveState === "error" && <>Não foi possível salvar — tentaremos de novo</>}
@@ -190,7 +190,7 @@ export default function ImplementacaoPublica() {
               onClick={toggleTheme}
               aria-label={isDark ? "Mudar para o modo claro" : "Mudar para o modo escuro"}
               title={isDark ? "Modo claro" : "Modo escuro"}
-              className={cn("w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-colors", heroDark ? "bg-black/10 hover:bg-black/20" : "bg-white/15 hover:bg-white/25")}
+              className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-colors bg-white/15 hover:bg-white/25 !text-white"
             >
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
@@ -199,20 +199,20 @@ export default function ImplementacaoPublica() {
 
           <div className="relative mt-5 grid gap-6 md:grid-cols-[1fr_auto] md:items-end">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight">Vamos implantar {impl.clienteNome}</h1>
-              <p className={cn("text-sm mt-2 max-w-xl leading-relaxed", heroDark ? "text-slate-800" : "text-white/85")}>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight !text-white">Vamos implantar {impl.clienteNome}</h1>
+              <p className={cn("text-sm mt-2 max-w-xl leading-relaxed", "!text-white opacity-90")}>
                 Preencha o que souber, no seu tempo. Tudo é salvo automaticamente e você pode voltar depois pelo mesmo link.
               </p>
             </div>
             <div className="md:w-64">
               <div className="flex items-end justify-between mb-1.5">
-                <span className={cn("text-[11px] font-semibold uppercase tracking-wide", heroDark ? "text-slate-800" : "text-white/80")}>Seu preenchimento</span>
-                <span className="text-3xl font-black tabular-nums leading-none">{overall.percent}%</span>
+                <span className={cn("text-[11px] font-semibold uppercase tracking-wide", "!text-white opacity-80")}>Seu preenchimento</span>
+                <span className="text-3xl font-black tabular-nums leading-none !text-white">{overall.percent}%</span>
               </div>
-              <div className={cn("h-2.5 rounded-full overflow-hidden", heroDark ? "bg-black/15" : "bg-white/25")}>
-                <div className={cn("h-full rounded-full transition-all duration-500", heroDark ? "bg-slate-900" : "bg-white")} style={{ width: `${Math.min(100, overall.percent)}%` }} />
+              <div className={cn("h-2.5 rounded-full overflow-hidden", "bg-white/25")}>
+                <div className={cn("h-full rounded-full transition-all duration-500", "bg-white")} style={{ width: `${Math.min(100, overall.percent)}%` }} />
               </div>
-              <p className={cn("text-[11px] mt-1.5", heroDark ? "text-slate-800" : "text-white/80")}>{overall.done} de {overall.total} itens principais respondidos</p>
+              <p className={cn("text-[11px] mt-1.5", "!text-white opacity-80")}>{overall.done} de {overall.total} itens principais respondidos</p>
             </div>
           </div>
         </header>
