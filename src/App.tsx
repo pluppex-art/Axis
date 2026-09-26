@@ -162,6 +162,9 @@ import ComprasVarejo from "./pages/varejo/ComprasVarejo";
 import NotasEntrada from "./pages/varejo/NotasEntrada";
 import OrdensServico from "./pages/operative/OrdensServico";
 import OrdemServicoDetalhe from "./pages/operative/OrdemServicoDetalhe";
+import BaseExames from "./pages/clinica/BaseExames";
+import ComparacaoTabelas from "./pages/clinica/ComparacaoTabelas";
+import ComparacaoResultado from "./pages/clinica/ComparacaoResultado";
 import NotaEntradaDetalhe from "./pages/varejo/NotaEntradaDetalhe";
 import PedidosVarejo from "./pages/varejo/PedidosVarejo";
 
@@ -442,6 +445,9 @@ function AppContent() {
             <Route path="estoque" element={<Estoque />} />
             <Route path="telemedicina" element={<Telemedicina />} />
             <Route path="exames" element={<Exames />} />
+            <Route path="base-exames" element={<BaseExames />} />
+            <Route path="comparacao-tabelas" element={<ComparacaoTabelas />} />
+            <Route path="comparacao-tabelas/:id" element={<ComparacaoResultado />} />
             <Route path="bi" element={<EstatisticasClinicas />} />
           </Route>
           {/* Alias legado /clinica */}

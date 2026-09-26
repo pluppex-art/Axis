@@ -44,6 +44,7 @@ import {
   ClipboardList,
   Wrench,
   Truck,
+  GitCompare,
 } from "lucide-react";
 
 /**
@@ -192,6 +193,8 @@ export const navSections = [
       { name: "Faturamento Clínico", path: "/app/clinicas/faturamento", icon: Wallet },
       { name: "Estoque de Insumos", path: "/app/clinicas/estoque", icon: Archive },
       { name: "Exames & Labs", path: "/app/clinicas/exames", icon: FlaskConical },
+      { name: "Base de Exames", path: "/app/clinicas/base-exames", icon: Boxes },
+      { name: "Comparação de Tabelas", path: "/app/clinicas/comparacao-tabelas", icon: GitCompare },
       { name: "BI Clínico", path: "/app/clinicas/bi", icon: BarChart3 },
     ],
   },

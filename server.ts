@@ -14,6 +14,7 @@ import { getWhatsAppProvider, getActiveProviderName, isWahaConfigured } from "./
 import { cacheGet, cacheSet, redisHealthCheck } from "./server/redisClient.js";
 import { assertSafeHttpUrl, assertSafeSmtpTarget } from "./server/ssrfGuard.js";
 import { readTenantSnapshot } from "./server/implementationSync.js";
+import { registerTableComparisonRoutes } from "./server/tableComparison.js";
 import { connFromConfig as maxConnFromConfig, maxdataAuth, maxdataGet, MaxDataError } from "./server/maxdataClient.js";
 import { extractDocs as maxExtractDocs, mapMaxEntryToNota, type MaxEntry, type MaxEntryItem } from "./src/lib/maxdataEntry.js";
 import { findProductForItem, defaultQtdEstoque } from "./src/lib/notaEntrada.js";
@@ -286,6 +287,8 @@ app.use("/api/public-implementation", publicImplementationLimiter);
 const maxdataLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
 app.use("/api/integrations/maxdata", maxdataLimiter);
 app.use("/api/varejo/maxdata", maxdataLimiter);
+const tableComparisonLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
+registerTableComparisonRoutes(app, { requireUser, resolveRequestedTenantId, limiter: tableComparisonLimiter });
 app.use("/api/auth/tenant-theme", tenantThemeLimiter);
 app.use("/api/v1/leads", apiKeyLimiter);
 app.use("/api/v1/lead-activities", apiKeyLimiter);
