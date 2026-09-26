@@ -25,6 +25,8 @@ export interface ImplField {
   track?: ImplTrack;
   /** Subtítulo exibido quando muda de um campo pro outro dentro da seção. */
   group?: string;
+  /** Consulta pública que preenche este campo e os vizinhos (CNPJ → Receita, CEP → endereço). */
+  lookup?: "cnpj" | "cep";
 }
 
 export interface ImplSection {
@@ -58,9 +60,10 @@ export const IMPLEMENTATION_SECTIONS: ImplSection[] = [
     fields: [
       { id: "razao_social", label: "Razão social", type: "text", audience: "client", track: "answered" },
       { id: "nome_fantasia", label: "Nome fantasia", type: "text", audience: "client" },
-      { id: "cnpj", label: "CNPJ", type: "text", audience: "client", track: "answered" },
+      { id: "cnpj", label: "CNPJ", type: "text", audience: "client", track: "answered", lookup: "cnpj", help: "Digite o CNPJ e clique em Buscar: razão social, nome fantasia, segmento e endereço são preenchidos pela Receita (só nos campos vazios)." },
       { id: "segmento", label: "Segmento de atuação", type: "text", audience: "client", track: "answered" },
       { id: "site", label: "Site / Instagram", type: "text", audience: "client" },
+      { id: "cep", label: "CEP", type: "text", audience: "client", lookup: "cep", placeholder: "00000-000" },
       { id: "endereco", label: "Endereço", type: "text", audience: "client" },
       { id: "faixa_colaboradores", label: "Nº de colaboradores", type: "select", options: ["1–5", "6–20", "21–50", "51–200", "200+"], audience: "client" },
       { id: "operacao_descricao", label: "Como a operação funciona hoje?", type: "textarea", audience: "client", track: "answered", help: "Do primeiro contato do cliente até a entrega/cobrança." },

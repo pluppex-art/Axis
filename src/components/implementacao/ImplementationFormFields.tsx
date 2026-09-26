@@ -1,6 +1,8 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
+import { CheckCircle2, Loader2, Search, AlertTriangle } from "lucide-react";
 import { cn } from "../../lib/utils";
 import type { ImplData, ImplField, ImplSection } from "../../lib/implementationForm";
+import { LookupError, fetchCep, fetchCnpj, formatCepMask, formatCnpjMask, isValidCnpj, onlyDigits } from "../../lib/brLookup";
 
 const inputCls =
   "w-full bg-[var(--color-surface-sunken)] text-[var(--color-text-primary)] border border-[var(--color-border-default)] rounded-[var(--radius-control)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-blue)]";
@@ -49,6 +51,72 @@ function FieldControl({ field, value, onChange }: { field: ImplField; value: any
   );
 }
 
+/** Campo com consulta pública (CNPJ → Receita, CEP → endereço). Só preenche campos VAZIOS: nunca
+ * sobrescreve o que a pessoa já digitou. Se a consulta falhar, o preenchimento manual segue valendo. */
+function LookupField({ field, data, onFill }: { field: ImplField; data: ImplData; onFill: (fieldId: string, value: any) => void }) {
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "ok" | "warn" | "err"; text: string } | null>(null);
+  const value = (data?.[field.id] as string) ?? "";
+  const isCnpj = field.lookup === "cnpj";
+  const digits = onlyDigits(value);
+  const complete = isCnpj ? digits.length === 14 : digits.length === 8;
+
+  const fillEmpty = (id: string, v: string) => { if (v && !String(data?.[id] ?? "").trim()) onFill(id, v); };
+
+  const buscar = async () => {
+    setLoading(true); setMsg(null);
+    try {
+      if (isCnpj) {
+        const info = await fetchCnpj(value);
+        const filled: string[] = [];
+        const tryFill = (id: string, v: string, label: string) => { if (v && !String(data?.[id] ?? "").trim()) { onFill(id, v); filled.push(label); } };
+        tryFill("razao_social", info.razao_social, "razão social");
+        tryFill("nome_fantasia", info.nome_fantasia || info.razao_social, "nome fantasia");
+        tryFill("segmento", info.segmento, "segmento");
+        tryFill("endereco", info.endereco, "endereço");
+        tryFill("cep", formatCepMask(info.cep), "CEP");
+        const ativa = /ativa/i.test(info.situacao);
+        setMsg({
+          tone: ativa ? "ok" : "warn",
+          text: `${info.razao_social} — situação ${info.situacao || "não informada"}.${filled.length ? ` Preenchido: ${filled.join(", ")}.` : " Os campos já estavam preenchidos."}`,
+        });
+      } else {
+        const info = await fetchCep(value);
+        fillEmpty("endereco", info.endereco);
+        setMsg({ tone: "ok", text: `${info.endereco}${String(data?.endereco ?? "").trim() ? " (endereço já preenchido — não alterado)" : ""}` });
+      }
+    } catch (e: any) {
+      setMsg({ tone: "err", text: e instanceof LookupError ? e.message : "Não foi possível consultar agora." });
+    } finally { setLoading(false); }
+  };
+
+  const invalid = isCnpj && digits.length === 14 && !isValidCnpj(digits);
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text" inputMode="numeric" value={value} placeholder={field.placeholder}
+          maxLength={isCnpj ? 18 : 9}
+          onChange={(e) => { setMsg(null); onFill(field.id, isCnpj ? formatCnpjMask(e.target.value) : formatCepMask(e.target.value)); }}
+          className={cn(inputCls, invalid && "!border-rose-500")}
+        />
+        <button
+          type="button" onClick={buscar} disabled={!complete || invalid || loading}
+          className="shrink-0 h-[34px] px-3 rounded-[var(--radius-control)] border border-[var(--color-border-default)] text-xs font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-sunken)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
+        >
+          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Buscar
+        </button>
+      </div>
+      {invalid && !msg && <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> CNPJ inválido — confira os dígitos.</p>}
+      {msg && (
+        <p className={cn("text-[11px] mt-1 flex items-start gap-1", msg.tone === "ok" ? "text-emerald-600" : msg.tone === "warn" ? "text-amber-600" : "text-rose-500")}>
+          {msg.tone === "ok" ? <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" /> : <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />} <span>{msg.text}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Renderiza os campos de uma seção. `audience="client"` esconde os campos
  * internos (status de integração, checklist de go-live) — é o mesmo componente
@@ -85,7 +153,9 @@ export function ImplementationSectionForm({
                   <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-[var(--color-surface-sunken)] border border-[var(--color-border-subtle)] text-[var(--color-text-faint)]">interno</span>
                 )}
               </label>
-              <FieldControl field={f} value={data?.[f.id]} onChange={(v) => onChange(f.id, v)} />
+              {f.lookup
+                ? <LookupField field={f} data={data} onFill={onChange} />
+                : <FieldControl field={f} value={data?.[f.id]} onChange={(v) => onChange(f.id, v)} />}
               {f.help && <p className="text-[10px] text-[var(--color-text-faint)] mt-1">{f.help}</p>}
             </div>
           </Fragment>

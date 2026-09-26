@@ -78,9 +78,14 @@ export default function ImplementacaoDetalhe() {
   flushRef.current = flush;
   useEffect(() => () => { flushRef.current(); }, []);
 
+  // Vários campos podem mudar no mesmo instante (ex.: consulta de CNPJ preenche 5 campos de uma vez):
+  // parte sempre do último snapshot local, não do `data` da render — senão só o último campo ficaria.
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const handleFieldChange = (fieldId: string, value: any) => {
-    const next = { ...data, [fieldId]: value };
+    const next = { ...(pending.current ?? dataRef.current), [fieldId]: value };
     if (value === undefined) delete next[fieldId];
+    dataRef.current = next;
     setData(next);
     pending.current = next;
     setSaveState("idle");
